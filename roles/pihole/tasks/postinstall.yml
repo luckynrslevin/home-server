@@ -14,6 +14,14 @@
     "'
   register: pihole_adlists_result
 
+- name: Fix listsCache permissions for rootless container
+  become: true
+  ansible.builtin.shell: >
+    su - pihole -c 'podman unshare rm -rf
+    $(podman volume inspect systemd-pihole-etc --format={% raw %}{{.Mountpoint}}{% endraw %})/listsCache'
+  changed_when: false
+  failed_when: false
+
 - name: Update Pi-hole gravity # noqa: command-instead-of-shell
   become: true
   ansible.builtin.shell: su - pihole -c 'podman exec pihole pihole -g'
