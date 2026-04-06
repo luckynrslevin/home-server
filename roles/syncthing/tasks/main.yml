@@ -54,26 +54,7 @@
       - "{{ syncthing_listen_port }}/tcp"
       - "{{ syncthing_listen_port }}/udp"
       - "{{ syncthing_discovery_port }}/udp"
-    podman_quadlet_volumes_files_to_stage: >-
-      {{
-        (syncthing_restore_config | bool) | ternary(
-          [
-            {
-              'name': 'syncthing-config',
-              'files': [
-                {'src': 'config/', 'state': 'directory', 'owner': my_linux_users.syncthg.uid, 'group': my_linux_users.syncthg.gid, 'mode': '0700'},
-                {'src': 'config/config.xml.j2', 'owner': my_linux_users.syncthg.uid, 'group': my_linux_users.syncthg.gid, 'mode': '0600'},
-                {'src': 'config/cert.pem', 'owner': my_linux_users.syncthg.uid, 'group': my_linux_users.syncthg.gid, 'mode': '0644'},
-                {'src': 'config/key.pem', 'owner': my_linux_users.syncthg.uid, 'group': my_linux_users.syncthg.gid, 'mode': '0600'}
-              ]
-            },
-            {
-              'name': 'syncthing-data',
-              'files': [
-                {'src': 'SyncedDocs/', 'state': 'directory', 'owner': my_linux_users.syncthg.uid, 'group': my_linux_users.syncthg.gid}
-              ]
-            }
-          ],
-          []
-        )
-      }}
+
+
+- name: Run post-install configuration
+  ansible.builtin.import_tasks: postinstall.yml

@@ -1,0 +1,72 @@
+---
+# Post-install configuration for Syncthing
+# Restores device identity and config from backup files.
+# Only runs when syncthing_restore_config is true.
+# Can be re-run independently to restore config without redeploying the container.
+
+- name: Restore config - stop container service
+  become: true
+  ansible.builtin.shell: >
+    sudo -u syncthg XDG_RUNTIME_DIR=/run/user/{{ my_linux_users.syncthg.uid }}
+    DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/{{ my_linux_users.syncthg.uid }}/bus
+    systemctl --user stop syncthing
+  when: syncthing_restore_config | bool
+  changed_when: false
+  failed_when: false
+
+- name: Restore config - get config volume path
+  become: true
+  ansible.builtin.shell: >
+    su - syncthg -c 'podman volume inspect systemd-syncthing-config --format={% raw %}{{.Mountpoint}}{% endraw %}'
+  register: syncthing_config_volume_path
+  when: syncthing_restore_config | bool
+  changed_when: false
+
+- name: Restore config - deploy config.xml
+  become: true
+  ansible.builtin.template:
+    src: "{{ syncthing_role_path }}/templates/volumes/syncthing-config/config/config.xml.j2"
+    dest: "{{ syncthing_config_volume_path.stdout }}/config/config.xml"
+    mode: "0600"
+  when: syncthing_restore_config | bool
+
+- name: Restore config - deploy cert.pem
+  become: true
+  ansible.builtin.copy:
+    src: "{{ syncthing_role_path }}/files/volumes/syncthing-config/config/cert.pem"
+    dest: "{{ syncthing_config_volume_path.stdout }}/config/cert.pem"
+    mode: "0644"
+  when: syncthing_restore_config | bool
+
+- name: Restore config - deploy key.pem
+  become: true
+  ansible.builtin.copy:
+    src: "{{ syncthing_role_path }}/files/volumes/syncthing-config/config/key.pem"
+    dest: "{{ syncthing_config_volume_path.stdout }}/config/key.pem"
+    mode: "0600"
+  when: syncthing_restore_config | bool
+
+# Fix ownership and prepare data directory using podman unshare.
+# Container PUID maps to a host subuid — podman unshare translates
+# container-perspective UIDs to the correct host UIDs.
+- name: Restore config - fix volume ownership and prepare data directory
+  become: true
+  ansible.builtin.shell: |
+    CONFIG_VOL=$(su - syncthg -c 'podman volume inspect systemd-syncthing-config --format={% raw %}{{.Mountpoint}}{% endraw %}')
+    DATA_VOL=$(su - syncthg -c 'podman volume inspect systemd-syncthing-data --format={% raw %}{{.Mountpoint}}{% endraw %}')
+    su - syncthg -c "podman unshare sh -c '
+      chown -R {{ my_linux_users.syncthg.uid }}:{{ my_linux_users.syncthg.gid }} $CONFIG_VOL/
+      mkdir -p $DATA_VOL/SyncedDocs
+      chown -R {{ my_linux_users.syncthg.uid }}:{{ my_linux_users.syncthg.gid }} $DATA_VOL/
+    '"
+  when: syncthing_restore_config | bool
+  changed_when: false
+
+- name: Restore config - start container service
+  become: true
+  ansible.builtin.shell: >
+    sudo -u syncthg XDG_RUNTIME_DIR=/run/user/{{ my_linux_users.syncthg.uid }}
+    DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/{{ my_linux_users.syncthg.uid }}/bus
+    systemctl --user start syncthing
+  when: syncthing_restore_config | bool
+  changed_when: false

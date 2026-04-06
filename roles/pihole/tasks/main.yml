@@ -20,7 +20,7 @@
     cmd: "loginctl enable-linger pihole"
   changed_when: false
 
-- name: Enable podman auto-update timer for rootless user # noqa: no-changed-when
+- name: Enable podman auto-update timer for rootless user # noqa: no-changed-when yaml[line-length]
   become: true
   ansible.builtin.command:
     cmd: "sudo -u pihole XDG_RUNTIME_DIR=/run/user/{{ my_linux_users.pihole.uid }} DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/{{ my_linux_users.pihole.uid }}/bus systemctl --user enable --now podman-auto-update.timer"
@@ -70,27 +70,14 @@
       DNS=127.0.0.1:1053
       DNSStubListener=yes
     mode: "0644"
-  register: resolved_config
+  register: pihole_resolved_config
 
-- name: Restart systemd-resolved
+- name: Restart systemd-resolved # noqa: no-handler
   become: true
   ansible.builtin.systemd_service:
     name: systemd-resolved
     state: restarted
-  when: resolved_config.changed
+  when: pihole_resolved_config.changed
 
-# Configure Pi-hole adlists (v6 uses /etc/pihole/adlists.list, not SQLite)
-- name: Add adlists to Pi-hole # noqa: no-changed-when
-  become: true
-  ansible.builtin.shell: |
-    su - pihole -c 'podman exec pihole sh -c "
-      {% for adlist in pihole_adlists %}
-      grep -qxF \"{{ adlist.address }}\" /etc/pihole/adlists.list 2>/dev/null || echo \"{{ adlist.address }}\" >> /etc/pihole/adlists.list
-      {% endfor %}
-    "'
-  register: pihole_adlists_result
-
-- name: Update Pi-hole gravity
-  become: true
-  ansible.builtin.shell: su - pihole -c 'podman exec pihole pihole -g'
-  changed_when: false
+- name: Run post-install configuration
+  ansible.builtin.import_tasks: postinstall.yml

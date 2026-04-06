@@ -1,0 +1,20 @@
+---
+# Post-install configuration for Pi-hole
+# Manages adlists and gravity database updates.
+# Can be re-run independently to update adlists without redeploying the container.
+
+# Configure Pi-hole adlists (v6 uses /etc/pihole/adlists.list, not SQLite)
+- name: Add adlists to Pi-hole # noqa: no-changed-when
+  become: true
+  ansible.builtin.shell: |
+    su - pihole -c 'podman exec pihole sh -c "
+      {% for adlist in pihole_adlists %}
+      grep -qxF \"{{ adlist.address }}\" /etc/pihole/adlists.list 2>/dev/null || echo \"{{ adlist.address }}\" >> /etc/pihole/adlists.list
+      {% endfor %}
+    "'
+  register: pihole_adlists_result
+
+- name: Update Pi-hole gravity # noqa: command-instead-of-shell
+  become: true
+  ansible.builtin.shell: su - pihole -c 'podman exec pihole pihole -g'
+  changed_when: false

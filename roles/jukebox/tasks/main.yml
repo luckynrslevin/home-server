@@ -90,45 +90,5 @@
       # - "3483/tcp" # player and server communicate over
       # - "3483/udp" # pod related network
 
-# Install Material Skin plugin if not already present.
-# Must be done from inside the container to preserve correct SELinux labels
-# on the volume files. Installing from the host causes SELinux context
-# mismatches that break container startup.
-- name: Check if Material Skin plugin is installed # noqa: no-changed-when
-  become: true
-  ansible.builtin.shell: >
-    su - jukebox -c 'podman exec jukebox-server test -f /config/cache/Plugins/MaterialSkin/install.xml'
-  register: jukebox_material_skin_check
-  failed_when: false
-  changed_when: false
-
-- name: Get latest Material Skin release URL # noqa: command-instead-of-module risky-shell-pipe
-  become: true
-  ansible.builtin.shell: >
-    set -o pipefail &&
-    curl -fsSL https://api.github.com/repos/CDrummond/lms-material/releases/latest
-    | grep browser_download_url | grep '\.zip"' | head -1 | cut -d'"' -f4
-  register: jukebox_material_skin_url
-  when: jukebox_material_skin_check.rc != 0
-  changed_when: false
-
-- name: Install Material Skin plugin into config volume # noqa: no-changed-when
-  become: true
-  ansible.builtin.shell: |
-    PLUGIN_DIR=$(su - jukebox -c 'podman volume inspect jukebox-server-config --format={% raw %}{{.Mountpoint}}{% endraw %}')/cache/Plugins/MaterialSkin
-    mkdir -p "$PLUGIN_DIR"
-    cd "$PLUGIN_DIR"
-    curl -fsSL -o material.zip "{{ jukebox_material_skin_url.stdout }}"
-    unzip -q -o material.zip
-    rm material.zip
-    chown -R {{ my_linux_users.jukebox.uid }}:{{ my_linux_users.jukebox.gid }} "$PLUGIN_DIR"
-    restorecon -R "$PLUGIN_DIR" 2>/dev/null || true
-  when: jukebox_material_skin_check.rc != 0
-
-- name: Restart jukebox to load Material Skin plugin # noqa: no-changed-when
-  become: true
-  ansible.builtin.shell: >
-    sudo -u jukebox XDG_RUNTIME_DIR=/run/user/{{ my_linux_users.jukebox.uid }}
-    DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/{{ my_linux_users.jukebox.uid }}/bus
-    systemctl --user restart jukebox-pod
-  when: jukebox_material_skin_check.rc != 0
+- name: Run post-install configuration
+  ansible.builtin.import_tasks: postinstall.yml
