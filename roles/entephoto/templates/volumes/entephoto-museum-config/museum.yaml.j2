@@ -1,0 +1,41 @@
+db:
+    host: localhost
+    port: 5432
+    name: ente_db
+    user: pguser
+    password: {{ entephoto_db_password }}
+
+s3:
+    are_local_buckets: true
+    use_path_style_urls: true
+    b2-eu-cen:
+        key: enteadmin
+        secret: {{ entephoto_minio_password }}
+        endpoint: {{ ansible_default_ipv4.address }}:3200
+        region: eu-central-2
+        bucket: b2-eu-cen
+    wasabi-eu-central-2-v3:
+        key: enteadmin
+        secret: {{ entephoto_minio_password }}
+        endpoint: {{ ansible_default_ipv4.address }}:3200
+        region: eu-central-2
+        bucket: wasabi-eu-central-2-v3
+        compliance: false
+    scw-eu-fr-v3:
+        key: enteadmin
+        secret: {{ entephoto_minio_password }}
+        endpoint: {{ ansible_default_ipv4.address }}:3200
+        region: eu-central-2
+        bucket: scw-eu-fr-v3
+
+key:
+    encryption: {{ entephoto_encryption_key }}
+    hash: {{ entephoto_hash_key }}
+
+jwt:
+    secret: {{ entephoto_jwt_secret }}
+
+apps:
+    public-albums: http://{{ ansible_default_ipv4.address }}:3002
+    cast: http://{{ ansible_default_ipv4.address }}:3004
+    accounts: http://{{ ansible_default_ipv4.address }}:3001

@@ -1,0 +1,49 @@
+# Ensure the system is up-to-date
+# - name: INSTALL - Ensure system is up-to-date
+#   become: true
+#   ansible.builtin.dnf:
+#     name: "*"
+#     state: latest # noqa: package-latest
+#     update_cache: true
+
+# Install required base packages (e.g., alsa-utils)
+- name: INSTALL - Install required base packages
+  become: true
+  ansible.builtin.dnf:
+    name:
+      - alsa-utils
+    state: present
+
+# Ensure the line 'blacklist snd_hda_intel' is present in /etc/modprobe.d/blacklist.conf
+- name: Ensure the line 'blacklist snd_hda_intel' is present in /etc/modprobe.d/blacklist.conf
+  become: true
+  ansible.builtin.lineinfile:
+    path: /etc/modprobe.d/blacklist.conf
+    line: "blacklist snd_hda_intel"
+    create: true  # Create the file if it does not exist
+    owner: root
+    group: root
+    mode: '0644'
+  register: blacklist_result
+
+# Reboot the system if the line was added
+- name: Reboot the system if the line was added
+  become: true
+  ansible.builtin.reboot:
+    msg: "Rebooting to apply modprobe blacklist change"
+    test_command: whoami
+  when: blacklist_result.changed  # noqa: no-handler # Reboot only if the file was modified
+
+# Wait for the system to be online after reboot
+- name: Wait for the system to be online after reboot
+  ansible.builtin.wait_for:
+    host: "{{ ansible_host | default(inventory_hostname) }}"
+    port: 22
+    timeout: 600
+    state: started
+  when: blacklist_result.changed  # noqa: no-handler # Only wait in case of reboot
+
+# Continue with further tasks after reboot
+- name: Continue with further tasks after reboot
+  ansible.builtin.debug:
+    msg: "The system is back online and ready for further tasks"

@@ -1,0 +1,14 @@
+vault.pw
+*.retry
+.vscode/
+.claude/settings.local.json
+.ansible/
+
+# Private inventory and secrets (use *.example files as templates)
+inventory/hosts.yml
+inventory/host_vars/homeserver.yml
+
+# Syncthing personal config (device IDs, private key)
+roles/syncthing/files/volumes/syncthing-config/config/key.pem
+roles/syncthing/files/volumes/syncthing-config/config/cert.pem
+roles/syncthing/templates/volumes/syncthing-config/config/config.xml.j2

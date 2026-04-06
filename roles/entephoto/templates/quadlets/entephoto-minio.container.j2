@@ -1,0 +1,17 @@
+[Unit]
+Description=entephoto minio object storage
+PartOf=entephoto-pod.service
+
+[Container]
+ContainerName=%N
+Image=docker.io/minio/minio:latest
+AutoUpdate=registry
+
+Pod=entephoto.pod
+
+Volume=entephoto-minio-data.volume:/data
+
+Exec=server /data --address :3200 --console-address :3201
+
+Environment=MINIO_ROOT_USER=enteadmin
+Environment=MINIO_ROOT_PASSWORD={{ entephoto_minio_password }}

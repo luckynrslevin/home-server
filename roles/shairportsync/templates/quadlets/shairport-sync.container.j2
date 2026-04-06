@@ -1,0 +1,29 @@
+[Unit]
+Description=shairport-sync container
+After=network-online.target
+Wants=network-online.target
+
+[Container]
+ContainerName=shairport-sync
+Image=docker.io/mikebrady/shairport-sync
+AutoUpdate=registry
+DropCapability=ALL
+AddCapability=SYS_NICE SETUID SETGID NET_RAW NET_BIND_SERVICE CHOWN DAC_OVERRIDE
+NoNewPrivileges=true
+ReadOnly=yes
+Network=host
+
+Exec=-a {{ shairportsync_airplay_name }}
+#Exec=-a {{ shairportsync_airplay_name }} -vvv # for debugging
+
+# ALSA access
+AddDevice={{ shairportsync_audio_device }}
+GroupAdd=keep-groups
+
+[Service]
+Restart=on-failure
+TimeoutStartSec=900
+
+[Install]
+# Start by default on boot
+WantedBy=multi-user.target default.target

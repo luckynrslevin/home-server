@@ -1,0 +1,15 @@
+[Unit]
+Description=entephoto web frontend
+PartOf=entephoto-pod.service
+After=entephoto-museum.service
+
+[Container]
+ContainerName=%N
+Image=ghcr.io/ente-io/web:latest
+AutoUpdate=registry
+
+Pod=entephoto.pod
+
+Environment=ENTE_API_ORIGIN=http://{{ ansible_default_ipv4.address }}:8080
+Environment=ENTE_ALBUMS_ORIGIN=http://{{ ansible_default_ipv4.address }}:3002
+Environment=ENTE_PHOTOS_ORIGIN=http://{{ ansible_default_ipv4.address }}:3000

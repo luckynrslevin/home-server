@@ -1,0 +1,7 @@
+- name: Install pihole container on my home server
+  hosts: homeserver
+  become: true
+  gather_facts: true
+
+  roles:
+    - pihole

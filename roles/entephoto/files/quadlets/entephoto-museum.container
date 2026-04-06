@@ -1,0 +1,15 @@
+[Unit]
+Description=entephoto museum api
+PartOf=entephoto-pod.service
+After=entephoto-postgres.service entephoto-minio.service
+
+[Container]
+ContainerName=%N
+Image=ghcr.io/ente-io/server:latest
+AutoUpdate=registry
+
+Pod=entephoto.pod
+
+Volume=entephoto-museum-config.volume:/museum.yaml.d:ro
+
+Environment=ENTE_CREDENTIALS_FILE=/museum.yaml.d/museum.yaml

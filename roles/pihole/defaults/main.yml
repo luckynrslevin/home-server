@@ -1,0 +1,24 @@
+pihole_web_port_https: 8443
+
+# Upstream DNS servers (semicolon-separated)
+# Examples: Quad9, Cloudflare, Google
+pihole_dns_upstreams: "9.9.9.9;149.112.112.112"
+
+# DNS used by the Pi-hole container itself (not for clients)
+pihole_container_dns: "9.9.9.9"
+
+# Local domain name
+pihole_domain_name: "lan"
+
+# Pi-hole container hostname
+pihole_hostname: "pihole.lan"
+
+# Local network settings for conditional DNS forwarding
+pihole_local_network: "192.168.x.0/24"
+pihole_local_router: "192.168.x.1"
+
+pihole_adlists:
+  - address: "https://raw.githubusercontent.com/StevenBlack/hosts/master/hosts"
+    comment: "StevenBlack unified hosts"
+  - address: "https://raw.githubusercontent.com/Turtlecute33/Toolz/master/src/d3host.txt"
+    comment: "https://adblock.turtlecute.org/"

@@ -1,0 +1,25 @@
+[Unit]
+Description=entephoto
+After=network-online.target
+Wants=network-online.target
+
+[Pod]
+PodName=entephoto
+Network=entephoto.network
+
+# Museum API
+PublishPort=8080:8080/tcp
+# MinIO S3 API (needed for browser uploads via presigned URLs)
+PublishPort=3200:3200/tcp
+# Web apps: photos, accounts, public-albums, auth, cast, share, embed, paste
+PublishPort=3000:3000/tcp
+PublishPort=3001:3001/tcp
+PublishPort=3002:3002/tcp
+PublishPort=3003:3003/tcp
+PublishPort=3004:3004/tcp
+PublishPort=3005:3005/tcp
+PublishPort=3006:3006/tcp
+PublishPort=3008:3008/tcp
+
+[Install]
+WantedBy=default.target

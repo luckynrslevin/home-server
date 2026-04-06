@@ -1,0 +1,37 @@
+[Unit]
+Description=syncthing container
+Wants=network-online.target
+After=network-online.target
+After=local-fs.target
+
+[Container]
+ContainerName={{ podman_quadlet_app_name }}
+
+Image=docker.io/syncthing/syncthing:2
+AutoUpdate=registry
+
+Environment=PUID={{ my_linux_users.syncthg.uid }}
+Environment=GUID={{ my_linux_users.syncthg.gid }}
+
+Network=host
+HostName={{ ansible_host_name }}
+
+Volume=syncthing-config.volume:/var/syncthing
+Volume=syncthing-data.volume:/data
+
+# Healthcheck
+HealthCmd=/bin/sh -c "curl -fkLsS -m 2 127.0.0.1:8384/rest/noauth/health | grep -o OK || exit 1"
+HealthInterval=1m
+HealthTimeout=10s
+HealthRetries=3
+
+# Ensure Podman uses the correct environment (important for rootless containers)
+Environment=XDG_RUNTIME_DIR=%t
+Environment=DBUS_SESSION_BUS_ADDRESS=unix:path=%t/bus
+
+[Service]
+Restart=on-failure
+TimeoutStartSec=90
+
+[Install]
+WantedBy=multi-user.target default.target

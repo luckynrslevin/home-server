@@ -1,0 +1,7 @@
+- name: Install Ente Photos pod on my home server
+  hosts: homeserver
+  become: true
+  gather_facts: true
+
+  roles:
+    - entephoto

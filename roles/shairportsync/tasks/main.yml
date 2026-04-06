@@ -1,0 +1,33 @@
+---
+
+- name: Install audio prerequisites on os level
+  ansible.builtin.import_role:
+    name: os-audio
+
+- name: Enable podman auto-update timer
+  become: true
+  ansible.builtin.systemd_service:
+    name: podman-auto-update.timer
+    enabled: true
+    state: started
+
+- name: Save my role path
+  ansible.builtin.set_fact:
+    shairportsync_role_path: "{{ role_path }}"
+
+- name: Deploy shairport-sync container using podman_quadlet
+  ansible.builtin.include_role:
+    name: luckynrslevin.podman_quadlet
+  vars:
+    podman_quadlet_app_name: shairport-sync
+    podman_quadlet_files_templates_src_path: "{{ shairportsync_role_path }}"
+    podman_quadlet_file_names:
+      - shairport-sync.container.j2
+    podman_quadlet_firewall_ports:
+      - 7000/tcp
+      - 3689/tcp
+      - 5000/tcp
+      - 32768-60999/tcp
+      - 32768-60999/udp
+      - 6000-6009/udp
+      - 319-320/udp

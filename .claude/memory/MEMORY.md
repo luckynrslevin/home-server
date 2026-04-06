@@ -1,0 +1,3 @@
+- [Feedback: Memory Location](feedback_memory_location.md) — Store project memory in repo at .claude/memory/, not in ~/.claude
+- [Project Goals](project_goals.md) — Kickstart OS install, then Ansible+Podman quadlet containers for all services
+- [CRITICAL: No Secrets](feedback_no_secrets.md) — NEVER push credentials/passwords/keys to GitHub, always warn and ask

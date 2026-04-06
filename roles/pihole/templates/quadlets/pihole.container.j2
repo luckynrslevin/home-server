@@ -1,0 +1,39 @@
+[Unit]
+Description=Pi-hole
+After=network-online.target
+After=local-fs.target
+Wants=network-online.target
+
+[Container]
+Image=docker.io/pihole/pihole:latest
+ContainerName={{ podman_quadlet_app_name }}
+AutoUpdate=registry
+
+Environment=TZ=Europe/Berlin
+#Environment=INTERFACE=tap0
+Environment=ServerIP={{ ansible_host }}
+Environment=FTLCONF_dns_listeningMode=ALL
+
+Environment=FTLCONF_dns_upstreams={{ pihole_dns_upstreams }}
+Environment=FTLCONF_webserver_api_password={{ pihole_api_password }}
+Environment=FTLCONF_dns_domain_name={{ pihole_domain_name }}
+Environment=FTLCONF_dns_revServers=true,{{ pihole_local_network }},{{ pihole_local_router }}#53,{{ pihole_domain_name }}
+
+PublishPort=1053:53/tcp
+PublishPort=1053:53/udp
+PublishPort=8443:443/tcp
+
+DNS={{ pihole_container_dns }}
+
+#SecurityLabelDisable=true
+
+HostName={{ pihole_hostname }}
+
+Volume=pihole-etc.volume:/etc/pihole
+Volume=pihole-dnsmasq.volume:/etc/dnsmasq.d
+
+AddCapability=NET_ADMIN
+
+[Install]
+# Start by default on boot
+WantedBy=multi-user.target default.target

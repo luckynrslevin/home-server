@@ -1,0 +1,3 @@
+---
+# MinIO admin username (password comes from vault: entephoto_minio_password)
+entephoto_minio_root_user: enteadmin

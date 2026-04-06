@@ -1,0 +1,79 @@
+---
+
+- name: Ensure group exists
+  ansible.builtin.group:
+    name: syncthg
+    gid: "{{ my_linux_users.syncthg.gid }}"
+    state: present
+
+- name: Ensure user exists
+  ansible.builtin.user:
+    name: syncthg
+    state: present
+    uid: "{{ my_linux_users.syncthg.uid }}"
+    group: syncthg
+    create_home: true
+
+- name: Enable linger for user
+  become: true
+  ansible.builtin.command:
+    cmd: "loginctl enable-linger syncthg"
+  changed_when: false
+
+- name: Enable podman auto-update timer for rootless user # noqa: no-changed-when
+  become: true
+  ansible.builtin.command:
+    cmd: >
+      sudo -u syncthg XDG_RUNTIME_DIR=/run/user/{{ my_linux_users.syncthg.uid }}
+      DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/{{ my_linux_users.syncthg.uid }}/bus
+      systemctl --user enable --now podman-auto-update.timer
+  changed_when: false
+
+- name: Save current role path
+  ansible.builtin.set_fact:
+    syncthing_role_path: "{{ role_path }}"
+
+# Deploy container using podman_quadlet.
+# When syncthing_restore_config is enabled, config backup files (config.xml,
+# cert.pem, key.pem) are staged into the config volume and SyncedDocs
+# directory is created in the data volume. The role handles UID/GID mapping
+# via 'podman unshare chown' for rootless containers.
+- name: Deploy container using podman_quadlet
+  ansible.builtin.include_role:
+    name: luckynrslevin.podman_quadlet
+  vars:
+    podman_quadlet_app_name: syncthing
+    podman_quadlet_rootless_user_name: syncthg
+    podman_quadlet_files_templates_src_path: "{{ syncthing_role_path }}"
+    podman_quadlet_file_names:
+      - syncthing.container.j2
+      - syncthing-config.volume
+      - syncthing-data.volume
+    podman_quadlet_firewall_ports:
+      - "{{ syncthing_gui_port }}/tcp"
+      - "{{ syncthing_listen_port }}/tcp"
+      - "{{ syncthing_listen_port }}/udp"
+      - "{{ syncthing_discovery_port }}/udp"
+    podman_quadlet_volumes_files_to_stage: >-
+      {{
+        (syncthing_restore_config | bool) | ternary(
+          [
+            {
+              'name': 'syncthing-config',
+              'files': [
+                {'src': 'config/', 'state': 'directory', 'owner': my_linux_users.syncthg.uid, 'group': my_linux_users.syncthg.gid, 'mode': '0700'},
+                {'src': 'config/config.xml.j2', 'owner': my_linux_users.syncthg.uid, 'group': my_linux_users.syncthg.gid, 'mode': '0600'},
+                {'src': 'config/cert.pem', 'owner': my_linux_users.syncthg.uid, 'group': my_linux_users.syncthg.gid, 'mode': '0644'},
+                {'src': 'config/key.pem', 'owner': my_linux_users.syncthg.uid, 'group': my_linux_users.syncthg.gid, 'mode': '0600'}
+              ]
+            },
+            {
+              'name': 'syncthing-data',
+              'files': [
+                {'src': 'SyncedDocs/', 'state': 'directory', 'owner': my_linux_users.syncthg.uid, 'group': my_linux_users.syncthg.gid}
+              ]
+            }
+          ],
+          []
+        )
+      }}

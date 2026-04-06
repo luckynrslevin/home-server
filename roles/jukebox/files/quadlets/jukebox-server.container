@@ -1,0 +1,16 @@
+[Unit]
+Description=jukebox server (lyrionmusicserver)
+PartOf=jukebox-pod.service
+
+[Container]
+ContainerName=%N
+Image=docker.io/lmscommunity/lyrionmusicserver
+AutoUpdate=registry
+
+Pod=jukebox.pod
+
+Volume=jukebox-server-config.volume:/config
+Volume=jukebox-server-music.volume:/music
+Volume=jukebox-server-playlist.volume:/playlist
+
+Environment=TZ=Europe/Berlin

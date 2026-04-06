@@ -1,0 +1,76 @@
+# Copy this file to homeserver.yml and fill in your values.
+# Do NOT commit homeserver.yml — it is gitignored.
+#
+# All secrets should be encrypted with ansible-vault:
+#   ansible-vault encrypt_string '<value>' --name '<variable_name>'
+
+##################################################################################################
+### Linux users
+### Assign a unique UID/GID per service for rootless container isolation.
+my_linux_users:
+  myuser:
+    uid: 1000
+    gid: 1000
+  shairport:
+    uid: 1001
+    gid: 1001
+  syncthg:
+    uid: 1003
+    gid: 1003
+  pihole:
+    uid: 1005
+    gid: 1005
+  jukebox:
+    uid: 1006
+    gid: 1006
+  entephoto:
+    uid: 1008
+    gid: 1008
+  samba:
+    uid: 1010
+    gid: 1010
+
+##################################################################################################
+
+##################################################################################################
+### Pi-hole configuration
+### Generate: openssl rand -base64 24 | ansible-vault encrypt_string --stdin-name 'pihole_api_password'
+pihole_api_password: !vault |
+          <your vault-encrypted password here>
+##################################################################################################
+
+##################################################################################################
+### Syncthing configuration
+### The GUI password hash can be obtained from an existing syncthing instance.
+### The API key can be found in syncthing's config.xml.
+syncthing_gui_password_hash: !vault |
+          <your vault-encrypted hash here>
+syncthing_api_key: !vault |
+          <your vault-encrypted key here>
+##################################################################################################
+
+##################################################################################################
+### Jukebox (Lyrion Music Server) configuration
+### Generate: openssl rand -hex 16 | ansible-vault encrypt_string --stdin-name 'jukebox_security_secret'
+jukebox_security_secret: !vault |
+          <your vault-encrypted secret here>
+##################################################################################################
+
+##################################################################################################
+### Ente Photos configuration
+### Generate passwords:  openssl rand -base64 24
+### Generate keys:       openssl rand -base64 32  (encryption_key)
+###                      openssl rand -base64 64  (hash_key)
+### Generate JWT secret: openssl rand -hex 32
+### Then encrypt each:   ansible-vault encrypt_string '<value>' --name '<var_name>'
+entephoto_db_password: !vault |
+          <your vault-encrypted password here>
+entephoto_minio_password: !vault |
+          <your vault-encrypted password here>
+entephoto_encryption_key: !vault |
+          <your vault-encrypted key here>
+entephoto_hash_key: !vault |
+          <your vault-encrypted key here>
+entephoto_jwt_secret: !vault |
+          <your vault-encrypted secret here>
+##################################################################################################

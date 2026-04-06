@@ -1,0 +1,4 @@
+---
+roles:
+  - name: luckynrslevin.podman_quadlet
+    version: v1.0.0

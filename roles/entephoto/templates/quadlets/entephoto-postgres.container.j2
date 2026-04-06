@@ -1,0 +1,20 @@
+[Unit]
+Description=entephoto postgres database
+PartOf=entephoto-pod.service
+
+[Container]
+ContainerName=%N
+Image=docker.io/library/postgres:15
+AutoUpdate=registry
+
+Pod=entephoto.pod
+
+Volume=entephoto-postgres-data.volume:/var/lib/postgresql/data
+
+Environment=POSTGRES_USER=pguser
+Environment=POSTGRES_DB=ente_db
+Environment=POSTGRES_PASSWORD={{ entephoto_db_password }}
+
+HealthCmd=pg_isready -U pguser -d ente_db
+HealthInterval=10s
+HealthStartPeriod=40s

@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Example radio station favorites for Lyrion Music Server.
+     Add your own stations in the same format. -->
+<opml version="1.0">
+  <head title="Favorites">
+    <expansionState></expansionState>
+  </head>
+  <body>
+    <outline URL="https://strmreg.1.fm/crock_mobile_mp3" icon="https://station-images-prod.radio-assets.com/300/1fmclassicrock.png?version=e191d22a1399ae43ed7aef2c3c5708f8" text="1.FM - Classic Rock" type="audio" />
+    <outline URL="http://stream.radioparadise.com/rock-128" icon="https://station-images-prod.radio-assets.com/300/radioparadiserockmix.png?version=471659c89796516e54d5e10eb3fc5be0" text="Radio Paradise Rock Mix" type="audio" />
+  </body>
+</opml>

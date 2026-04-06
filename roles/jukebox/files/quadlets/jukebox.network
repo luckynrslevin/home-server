@@ -1,0 +1,5 @@
+[Unit]
+Description=jukebox pod network
+
+[Network]
+NetworkName=jukebox

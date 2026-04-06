@@ -1,0 +1,5 @@
+[Unit]
+Description=entephoto pod network
+
+[Network]
+NetworkName=entephoto

@@ -1,0 +1,7 @@
+- name: Install syncthing container on my home server
+  hosts: homeserver
+  become: true
+  gather_facts: true
+
+  roles:
+    - syncthing

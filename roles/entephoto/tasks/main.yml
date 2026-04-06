@@ -1,0 +1,91 @@
+---
+
+- name: Ensure rootless user group exists
+  ansible.builtin.group:
+    name: entephoto
+    gid: "{{ my_linux_users.entephoto.gid }}"
+    state: present
+
+- name: Ensure rootless user exists
+  ansible.builtin.user:
+    name: entephoto
+    state: present
+    uid: "{{ my_linux_users.entephoto.uid }}"
+    group: entephoto
+    create_home: true
+
+- name: Enable linger for rootless user
+  become: true
+  ansible.builtin.command:
+    cmd: "loginctl enable-linger entephoto"
+  changed_when: false
+
+- name: Enable podman auto-update timer for rootless user # noqa: no-changed-when
+  become: true
+  ansible.builtin.command:
+    cmd: >
+      sudo -u entephoto XDG_RUNTIME_DIR=/run/user/{{ my_linux_users.entephoto.uid }}
+      DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/{{ my_linux_users.entephoto.uid }}/bus
+      systemctl --user enable --now podman-auto-update.timer
+  changed_when: false
+
+- name: Save current role path
+  ansible.builtin.set_fact:
+    entephoto_role_path: "{{ role_path }}"
+
+# Deploy Ente Photos stack as a rootless Podman pod.
+# The pod contains postgres, minio, museum (API) and web (frontend) sharing
+# one network namespace — so museum can reach minio and postgres via
+# localhost without a socat bridge (which the upstream docker-compose needs).
+- name: Deploy entephoto pod using podman_quadlet
+  ansible.builtin.include_role:
+    name: luckynrslevin.podman_quadlet
+  vars:
+    podman_quadlet_app_name: "entephoto-pod"
+    podman_quadlet_rootless_user_name: entephoto
+    podman_quadlet_files_templates_src_path: "{{ entephoto_role_path }}"
+    podman_quadlet_file_names:
+      - entephoto.pod
+      - entephoto.network
+      - entephoto-postgres.container.j2
+      - entephoto-minio.container.j2
+      - entephoto-museum.container
+      - entephoto-web.container.j2
+      - entephoto-postgres-data.volume
+      - entephoto-minio-data.volume
+      - entephoto-museum-config.volume
+    podman_quadlet_volumes_files_to_stage:
+      - name: entephoto-museum-config
+        files:
+          - src: museum.yaml.j2
+            mode: "0600"
+    podman_quadlet_firewall_ports:
+      - "8080/tcp"         # museum API
+      - "3200/tcp"         # MinIO S3 API (for browser uploads via presigned URLs)
+      - "3000-3008/tcp"    # web apps (photos, accounts, albums, auth, cast, share, embed, paste)
+
+# --------------------------------------------------------------------------
+# MinIO bucket initialization
+#
+# Ente expects three hardcoded buckets (b2-eu-cen, wasabi-eu-central-2-v3,
+# scw-eu-fr-v3). The upstream docker-compose uses a post_start hook running
+# `mc mb` inside the minio container, but the minio/minio image doesn't
+# include `mc`. We run `mc` from a one-shot minio/mc container joined to
+# the entephoto pod's network namespace so it can reach localhost:3200.
+# --------------------------------------------------------------------------
+- name: Wait for MinIO and create buckets # noqa: no-changed-when
+  become: true
+  ansible.builtin.shell:
+    cmd: |
+      su - entephoto -c 'podman run --rm --pod entephoto \
+        --entrypoint sh docker.io/minio/mc:latest -c "
+          for i in \$(seq 1 30); do
+            mc alias set h0 http://localhost:3200 {{ entephoto_minio_root_user }} {{ entephoto_minio_password | quote }} && break
+            sleep 2
+          done
+          mc mb -p h0/b2-eu-cen
+          mc mb -p h0/wasabi-eu-central-2-v3
+          mc mb -p h0/scw-eu-fr-v3
+        "'
+  register: entephoto_bucket_create
+  changed_when: "'Bucket created successfully' in entephoto_bucket_create.stdout"

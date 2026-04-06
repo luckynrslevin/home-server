@@ -1,0 +1,28 @@
+[Unit]
+Description=Samba file sharing
+After=network-online.target
+Wants=network-online.target
+
+[Container]
+Image=ghcr.io/servercontainers/samba:latest
+ContainerName={{ podman_quadlet_app_name }}
+AutoUpdate=registry
+
+Environment=TZ={{ samba_timezone }}
+Environment=SAMBA_CONF_WORKGROUP={{ samba_workgroup }}
+Environment=SAMBA_CONF_SERVER_STRING={{ samba_server_string }}
+Environment=SAMBA_GLOBAL_CONFIG_netbios_SPACE_name={{ samba_netbios_name }}
+Environment=SAMBA_GLOBAL_CONFIG_server_SPACE_min_SPACE_protocol=SMB2
+PodmanArgs=--env SAMBA_VOLUME_CONFIG_exchange="[exchange]; path=/share; guest ok=yes; read only=no; browseable=yes; create mask=0666; directory mask=0777; force user=root; force group=root"
+
+PublishPort={{ samba_smb_port }}:445/tcp
+PublishPort={{ samba_netbios_port }}:139/tcp
+
+Volume=samba-data.volume:/share
+
+[Service]
+Restart=on-failure
+TimeoutStartSec=900
+
+[Install]
+WantedBy=multi-user.target default.target

@@ -1,0 +1,102 @@
+---
+
+- name: Ensure rootless user group exists
+  ansible.builtin.group:
+    name: pihole
+    gid: "{{ my_linux_users.pihole.gid }}"
+    state: present
+
+- name: Ensure rootless user exists
+  ansible.builtin.user:
+    name: pihole
+    state: present
+    uid: "{{ my_linux_users.pihole.uid }}"
+    group: pihole
+    create_home: true
+
+- name: Enable linger for rootless user
+  become: true
+  ansible.builtin.command:
+    cmd: "loginctl enable-linger pihole"
+  changed_when: false
+
+- name: Enable podman auto-update timer for rootless user # noqa: no-changed-when
+  become: true
+  ansible.builtin.command:
+    cmd: "sudo -u pihole XDG_RUNTIME_DIR=/run/user/{{ my_linux_users.pihole.uid }} DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/{{ my_linux_users.pihole.uid }}/bus systemctl --user enable --now podman-auto-update.timer"
+  changed_when: false
+
+- name: Save current role path
+  ansible.builtin.set_fact:
+    pihole_role_path: "{{ role_path }}"
+
+- name: Deploy pihole container using podman_quadlet
+  ansible.builtin.include_role:
+    name: luckynrslevin.podman_quadlet
+  vars:
+    podman_quadlet_app_name: "pihole"
+    podman_quadlet_rootless_user_name: pihole
+    podman_quadlet_files_templates_src_path: "{{ pihole_role_path }}"
+    podman_quadlet_file_names:
+      - pihole.container.j2
+      - pihole-etc.volume
+      - pihole-dnsmasq.volume
+    podman_quadlet_firewall_ports:
+      - "{{ pihole_web_port_https }}/tcp"
+    podman_quadlet_firewall_port_forwards:
+      - port: 53
+        proto: tcp
+        toport: 1053
+      - port: 53
+        proto: udp
+        toport: 1053
+
+# Configure the host itself to use Pi-hole for DNS via systemd-resolved
+# The firewall port forward (53→1053) only applies to external traffic,
+# so the host needs to point directly at 127.0.0.1:1053
+- name: Create systemd-resolved drop-in directory
+  become: true
+  ansible.builtin.file:
+    path: /etc/systemd/resolved.conf.d
+    state: directory
+    mode: "0755"
+
+- name: Configure systemd-resolved to use Pi-hole
+  become: true
+  ansible.builtin.copy:
+    dest: /etc/systemd/resolved.conf.d/pihole.conf
+    content: |
+      [Resolve]
+      DNS=127.0.0.1:1053
+      DNSStubListener=yes
+    mode: "0644"
+  register: resolved_config
+
+- name: Restart systemd-resolved
+  become: true
+  ansible.builtin.systemd_service:
+    name: systemd-resolved
+    state: restarted
+  when: resolved_config.changed
+
+# Configure Pi-hole adlists
+- name: Add adlists to Pi-hole
+  become: true
+  ansible.builtin.shell: |
+    su - pihole -c "podman exec pihole pihole-FTL sqlite3 /etc/pihole/gravity.db \
+      \"INSERT OR IGNORE INTO adlist (address, enabled, comment) VALUES ('{{ item.address }}', 1, '{{ item.comment }}');\""
+  loop: "{{ pihole_adlists }}"
+  changed_when: false
+
+- name: Fix listsCache permissions for rootless container
+  become: true
+  ansible.builtin.shell: >
+    su - pihole -c 'podman unshare rm -rf
+    $(podman volume inspect systemd-pihole-etc --format={% raw %}{{.Mountpoint}}{% endraw %})/listsCache'
+  changed_when: false
+  failed_when: false
+
+- name: Update Pi-hole gravity
+  become: true
+  ansible.builtin.shell: su - pihole -c 'podman exec pihole pihole -g'
+  changed_when: false
