@@ -79,22 +79,16 @@
     state: restarted
   when: resolved_config.changed
 
-# Configure Pi-hole adlists
-- name: Add adlists to Pi-hole
+# Configure Pi-hole adlists (v6 uses /etc/pihole/adlists.list, not SQLite)
+- name: Add adlists to Pi-hole # noqa: no-changed-when
   become: true
   ansible.builtin.shell: |
-    su - pihole -c "podman exec pihole pihole-FTL sqlite3 /etc/pihole/gravity.db \
-      \"INSERT OR IGNORE INTO adlist (address, enabled, comment) VALUES ('{{ item.address }}', 1, '{{ item.comment }}');\""
-  loop: "{{ pihole_adlists }}"
-  changed_when: false
-
-- name: Fix listsCache permissions for rootless container
-  become: true
-  ansible.builtin.shell: >
-    su - pihole -c 'podman unshare rm -rf
-    $(podman volume inspect systemd-pihole-etc --format={% raw %}{{.Mountpoint}}{% endraw %})/listsCache'
-  changed_when: false
-  failed_when: false
+    su - pihole -c 'podman exec pihole sh -c "
+      {% for adlist in pihole_adlists %}
+      grep -qxF \"{{ adlist.address }}\" /etc/pihole/adlists.list 2>/dev/null || echo \"{{ adlist.address }}\" >> /etc/pihole/adlists.list
+      {% endfor %}
+    "'
+  register: pihole_adlists_result
 
 - name: Update Pi-hole gravity
   become: true
