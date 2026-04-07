@@ -120,11 +120,19 @@ graph LR
         subgraph rootless
             direction TB
 
-            subgraph row1[" "]
+            subgraph PH_S["Pi-hole"]
                 direction LR
-                PH["Pi-hole<br/>DNS"] --- PH_V[("pihole-etc<br/>pihole-dnsmasq")]
-                SMB["Samba<br/>File Sharing"] --- SMB_V[("samba-data")]
-                ST["Syncthing<br/>File Sync"] --- ST_V[("syncthing-config<br/>syncthing-data")]
+                PH["DNS Ad-Blocker"] --- PH_V[("pihole-etc<br/>pihole-dnsmasq")]
+            end
+
+            subgraph SMB_S["Samba"]
+                direction LR
+                SMB["File Sharing"] --- SMB_V[("samba-data")]
+            end
+
+            subgraph ST_S["Syncthing"]
+                direction LR
+                ST["File Sync"] --- ST_V[("syncthing-config<br/>syncthing-data")]
             end
 
             subgraph row2["Jukebox Pod"]
