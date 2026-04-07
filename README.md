@@ -117,20 +117,21 @@ graph TD
 
             subgraph PODMAN["Podman Quadlets"]
                 subgraph RL["rootless (~/.config/containers/systemd/)"]
-                    PH["Pi-hole"]
-                    SMB["Samba"]
-                    ST["Syncthing"]
+                    PH["Pi-hole"] --- PH_V[("pihole-etc<br/>pihole-dnsmasq")]
+                    SMB["Samba"] --- SMB_V[("samba-data")]
+                    ST["Syncthing"] --- ST_V[("syncthing-config<br/>syncthing-data")]
                     subgraph JB["Jukebox Pod"]
                         LMS["Lyrion Music Server"]
                         SL["Squeezelite"]
                     end
+                    JB --- JB_V[("server-config<br/>server-music<br/>server-playlist")]
                     subgraph EP["Ente Photos Pod"]
                         MUS["Museum API"]
                         PG["PostgreSQL"]
                         MIN["MinIO"]
                         WEB["Web Frontend"]
                     end
-                    ULVOL[("Rootless Volumes<br/>~/.local/share/containers/storage/")]
+                    EP --- EP_V[("postgres-data<br/>minio-data<br/>museum-config")]
                 end
                 subgraph RF["rootful (/etc/containers/systemd/)"]
                     SH["Shairport-sync"]
