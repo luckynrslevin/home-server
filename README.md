@@ -144,6 +144,8 @@ graph TD
                 direction LR
                 MUS["Museum API"] ~~~ PG["PostgreSQL"] ~~~ MIN["MinIO"] ~~~ WEB["Web"] ~~~ EP_V[("postgres-data<br/>minio-data<br/>museum-config")]
             end
+
+            PH_S ~~~ SMB_S ~~~ ST_S ~~~ JB ~~~ EP
         end
     end
 ```
