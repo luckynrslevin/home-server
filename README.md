@@ -117,14 +117,6 @@ graph TD
 
             subgraph PODMAN["Podman Quadlets"]
                 subgraph RL["rootless (~/.config/containers/systemd/)"]
-                    subgraph PH_S[" "]
-                        PH["Pi-hole"]
-                        PH_V[("pihole-etc<br/>pihole-dnsmasq")]
-                    end
-                    subgraph SMB_S[" "]
-                        SMB["Samba"]
-                        SMB_V[("samba-data")]
-                    end
                     subgraph ST_S[" "]
                         ST["Syncthing"]
                         ST_V[("syncthing-config<br/>syncthing-data")]
@@ -140,6 +132,14 @@ graph TD
                         MIN["MinIO"]
                         WEB["Web Frontend"]
                         EP_V[("postgres-data<br/>minio-data<br/>museum-config")]
+                    end
+                    subgraph PH_S[" "]
+                        PH["Pi-hole"]
+                        PH_V[("pihole-etc<br/>pihole-dnsmasq")]
+                    end
+                    subgraph SMB_S[" "]
+                        SMB["Samba"]
+                        SMB_V[("samba-data")]
                     end
                 end
                 subgraph RF["rootful (/etc/containers/systemd/)"]
