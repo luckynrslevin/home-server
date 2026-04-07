@@ -109,42 +109,32 @@ The guiding principle is **rebuild over repair**: if the system drifts, it shoul
 ## High-Level Architecture Diagram
 
 ```mermaid
-graph TD
-    subgraph HW["Hardware / VM"]
-        subgraph OS["Fedora Server OS"]
-            KS["Kickstart<br/>(Disk, Base OS)"] -->|provisions| ANS["Ansible<br/>Configuration"]
-            ANS -->|deploys| PODMAN
+graph LR
+    subgraph OS["Fedora Server OS (Kickstart + Ansible)"]
+        direction TB
 
-            subgraph PODMAN["Podman Quadlets"]
-                subgraph RL["rootless (~/.config/containers/systemd/)"]
-                    subgraph ST_S[" "]
-                        ST["Syncthing"]
-                        ST_V[("syncthing-config<br/>syncthing-data")]
-                    end
-                    subgraph JB["Jukebox Pod"]
-                        LMS["Lyrion Music Server"]
-                        SL["Squeezelite"]
-                        JB_V[("server-config<br/>server-music<br/>server-playlist")]
-                    end
-                    subgraph EP["Ente Photos Pod"]
-                        MUS["Museum API"]
-                        PG["PostgreSQL"]
-                        MIN["MinIO"]
-                        WEB["Web Frontend"]
-                        EP_V[("postgres-data<br/>minio-data<br/>museum-config")]
-                    end
-                    subgraph PH_S[" "]
-                        PH["Pi-hole"]
-                        PH_V[("pihole-etc<br/>pihole-dnsmasq")]
-                    end
-                    subgraph SMB_S[" "]
-                        SMB["Samba"]
-                        SMB_V[("samba-data")]
-                    end
-                end
-                subgraph RF["rootful (/etc/containers/systemd/)"]
-                    SH["Shairport-sync"]
-                end
+        subgraph rootful
+            SH["Shairport-sync<br/>(AirPlay)"]
+        end
+
+        subgraph rootless
+            direction TB
+
+            subgraph row1[" "]
+                direction LR
+                PH["Pi-hole<br/>DNS"] --- PH_V[("pihole-etc<br/>pihole-dnsmasq")]
+                SMB["Samba<br/>File Sharing"] --- SMB_V[("samba-data")]
+                ST["Syncthing<br/>File Sync"] --- ST_V[("syncthing-config<br/>syncthing-data")]
+            end
+
+            subgraph row2["Jukebox Pod"]
+                direction LR
+                LMS["Lyrion Music<br/>Server"] & SL["Squeezelite"] --- JB_V[("server-config<br/>server-music<br/>server-playlist")]
+            end
+
+            subgraph row3["Ente Photos Pod"]
+                direction LR
+                MUS["Museum API"] & PG["PostgreSQL"] & MIN["MinIO"] & WEB["Web"] --- EP_V[("postgres-data<br/>minio-data<br/>museum-config")]
             end
         end
     end
