@@ -124,6 +124,12 @@ graph TD
                         LMS["Lyrion Music Server"]
                         SL["Squeezelite"]
                     end
+                    subgraph EP["Ente Photos Pod"]
+                        MUS["Museum API"]
+                        PG["PostgreSQL"]
+                        MIN["MinIO"]
+                        WEB["Web Frontend"]
+                    end
                     ULVOL[("Rootless Volumes<br/>~/.local/share/containers/storage/")]
                 end
                 subgraph RF["rootful (/etc/containers/systemd/)"]
@@ -230,10 +236,10 @@ ansible-playbook playbooks/pihole.yml
 - Samba (guest-accessible exchange folder)
 - Syncthing (file synchronization with config restore)
 - Lyrion Music Server / Squeezelite (Jukebox with Material Skin)
+- Ente Photos (self-hosted photo storage with PostgreSQL + MinIO)
 
 ### Planned
 - Paperless NGX
-- Ente Photos
 - IoT stack (Mosquitto, InfluxDB, Grafana, Telegraf)
 - Uptime Kuma
 - Home Assistant
