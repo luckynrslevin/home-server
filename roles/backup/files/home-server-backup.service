@@ -1,0 +1,8 @@
+[Unit]
+Description=Home server volume backup
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/home-server-backup.sh
+StandardOutput=journal
+StandardError=journal

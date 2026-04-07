@@ -1,0 +1,39 @@
+---
+# Deploy standalone backup script and systemd timer.
+# After deployment, backups run autonomously — no Ansible needed.
+
+- name: Deploy backup script
+  become: true
+  ansible.builtin.copy:
+    src: home-server-backup.sh
+    dest: /usr/local/bin/home-server-backup.sh
+    mode: "0755"
+
+- name: Deploy backup systemd service unit
+  become: true
+  ansible.builtin.copy:
+    src: home-server-backup.service
+    dest: /etc/systemd/system/home-server-backup.service
+    mode: "0644"
+  register: backup_service_unit
+
+- name: Deploy backup systemd timer unit
+  become: true
+  ansible.builtin.copy:
+    src: home-server-backup.timer
+    dest: /etc/systemd/system/home-server-backup.timer
+    mode: "0644"
+  register: backup_timer_unit
+
+- name: Reload systemd daemon
+  become: true
+  ansible.builtin.systemd_service:
+    daemon_reload: true
+  when: backup_service_unit.changed or backup_timer_unit.changed
+
+- name: Enable and start backup timer
+  become: true
+  ansible.builtin.systemd_service:
+    name: home-server-backup.timer
+    enabled: true
+    state: started

@@ -1,0 +1,7 @@
+- name: Deploy backup service on home server
+  hosts: homeserver
+  become: true
+  gather_facts: true
+
+  roles:
+    - backup
