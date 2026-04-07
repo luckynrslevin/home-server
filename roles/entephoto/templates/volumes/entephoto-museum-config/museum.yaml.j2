@@ -39,3 +39,9 @@ apps:
     public-albums: http://{{ ansible_default_ipv4.address }}:3002
     cast: http://{{ ansible_default_ipv4.address }}:3004
     accounts: http://{{ ansible_default_ipv4.address }}:3001
+
+internal:
+    admins:
+{% for admin_id in entephoto_admin_user_ids | default([]) %}
+        - {{ admin_id }}
+{% endfor %}

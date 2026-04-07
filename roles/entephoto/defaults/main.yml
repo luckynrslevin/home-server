@@ -1,3 +1,8 @@
 ---
 # MinIO admin username (password comes from vault: entephoto_minio_password)
 entephoto_minio_root_user: enteadmin
+
+# Admin user IDs (set after first signup, found via:
+#   podman exec entephoto-postgres psql -U pguser ente_db -c "SELECT user_id FROM users;")
+# Admins can manage subscriptions and storage for all users.
+entephoto_admin_user_ids: []
