@@ -117,12 +117,18 @@ graph TD
 
             subgraph PODMAN["Podman Quadlets"]
                 subgraph RL["rootless (~/.config/containers/systemd/)"]
-                    PH["Pi-hole"]
-                    PH_V[("pihole-etc<br/>pihole-dnsmasq")]
-                    SMB["Samba"]
-                    SMB_V[("samba-data")]
-                    ST["Syncthing"]
-                    ST_V[("syncthing-config<br/>syncthing-data")]
+                    subgraph PH_S[" "]
+                        PH["Pi-hole"]
+                        PH_V[("pihole-etc<br/>pihole-dnsmasq")]
+                    end
+                    subgraph SMB_S[" "]
+                        SMB["Samba"]
+                        SMB_V[("samba-data")]
+                    end
+                    subgraph ST_S[" "]
+                        ST["Syncthing"]
+                        ST_V[("syncthing-config<br/>syncthing-data")]
+                    end
                     subgraph JB["Jukebox Pod"]
                         LMS["Lyrion Music Server"]
                         SL["Squeezelite"]
