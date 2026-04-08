@@ -1,0 +1,70 @@
+---
+
+- name: Ensure rootless user group exists
+  ansible.builtin.group:
+    name: webproxy
+    gid: "{{ my_linux_users.webproxy.gid }}"
+    state: present
+
+- name: Ensure rootless user exists
+  ansible.builtin.user:
+    name: webproxy
+    state: present
+    uid: "{{ my_linux_users.webproxy.uid }}"
+    group: webproxy
+    create_home: true
+
+- name: Enable linger for rootless user
+  become: true
+  ansible.builtin.command:
+    cmd: "loginctl enable-linger webproxy"
+  changed_when: false
+
+- name: Enable podman auto-update timer for rootless user # noqa: no-changed-when
+  become: true
+  ansible.builtin.command:
+    cmd: >
+      sudo -u webproxy XDG_RUNTIME_DIR=/run/user/{{ my_linux_users.webproxy.uid }}
+      DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/{{ my_linux_users.webproxy.uid }}/bus
+      systemctl --user enable --now podman-auto-update.timer
+  changed_when: false
+
+- name: Ensure dashboard output directory exists
+  become: true
+  ansible.builtin.file:
+    path: /var/www/dashboard
+    state: directory
+    mode: "0755"
+
+- name: Save current role path
+  ansible.builtin.set_fact:
+    caddy_role_path: "{{ role_path }}"
+
+- name: Deploy caddy container using podman_quadlet
+  ansible.builtin.include_role:
+    name: luckynrslevin.podman_quadlet
+  vars:
+    podman_quadlet_app_name: caddy
+    podman_quadlet_rootless_user_name: webproxy
+    podman_quadlet_files_templates_src_path: "{{ caddy_role_path }}"
+    podman_quadlet_file_names:
+      - caddy.container
+      - caddy-data.volume
+      - caddy-config.volume
+      - caddy-etc.volume
+    podman_quadlet_volumes_files_to_stage:
+      - name: caddy-etc
+        files:
+          - src: Caddyfile
+            mode: "0644"
+    podman_quadlet_firewall_port_forwards:
+      - port: 80
+        proto: tcp
+        toport: "{{ caddy_listen_port }}"
+
+- name: Reload Caddy configuration # noqa: no-changed-when
+  become: true
+  ansible.builtin.shell: >
+    su - webproxy -c 'podman exec caddy caddy reload --config /etc/caddy/Caddyfile 2>&1'
+  changed_when: false
+  failed_when: false

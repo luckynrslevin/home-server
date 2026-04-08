@@ -1,0 +1,23 @@
+[Unit]
+Description=caddy web server / reverse proxy
+After=network-online.target
+Wants=network-online.target
+
+[Container]
+ContainerName=caddy
+Image=docker.io/library/caddy:latest
+AutoUpdate=registry
+
+Volume=caddy-data.volume:/data
+Volume=caddy-config.volume:/config
+Volume=caddy-etc.volume:/etc/caddy
+Volume=/var/www/dashboard:/srv/dashboard:ro,z
+
+PublishPort=9080:80/tcp
+
+[Service]
+Restart=on-failure
+TimeoutStartSec=900
+
+[Install]
+WantedBy=multi-user.target default.target

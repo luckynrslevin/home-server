@@ -1,0 +1,2 @@
+# Caddy listen port (unprivileged, mapped via firewall from 80)
+caddy_listen_port: 9080
