@@ -18,8 +18,6 @@ import os
 import re
 import subprocess
 import sys
-import urllib.request
-import urllib.error
 from datetime import datetime
 from pathlib import Path
 
@@ -111,98 +109,27 @@ def get_volumes(user):
         return []
 
 
-def parse_image_ref(image):
-    """Parse image reference into registry, repo, tag."""
-    # Remove digest if present
-    image = image.split("@")[0]
+def get_auto_update_status(user):
+    """Get update status using podman auto-update --dry-run.
 
-    # Default tag
-    if ":" in image.split("/")[-1]:
-        parts = image.rsplit(":", 1)
-        ref, tag = parts[0], parts[1]
-    else:
-        ref, tag = image, "latest"
-
-    # Determine registry
-    if ref.startswith("docker.io/"):
-        registry = "docker.io"
-        repo = ref[len("docker.io/"):]
-    elif ref.startswith("ghcr.io/"):
-        registry = "ghcr.io"
-        repo = ref[len("ghcr.io/"):]
-    elif "/" not in ref or "." not in ref.split("/")[0]:
-        registry = "docker.io"
-        repo = "library/" + ref if "/" not in ref else ref
-    else:
-        parts = ref.split("/", 1)
-        registry = parts[0]
-        repo = parts[1]
-
-    # Docker Hub library images
-    if registry == "docker.io" and "/" not in repo:
-        repo = "library/" + repo
-
-    return registry, repo, tag
-
-
-def get_registry_digest(registry, repo, tag):
-    """Query registry for the latest digest of an image tag."""
+    Returns a dict mapping container name to update status:
+    'pending' = update available, 'false' = up to date, 'true' = updated.
+    """
+    output = run_cmd(
+        "su - %s -c 'podman auto-update --dry-run --format json' 2>/dev/null"
+        % user,
+        timeout=60,
+    )
+    if not output:
+        return {}
     try:
-        if registry == "docker.io":
-            # Get auth token
-            token_url = (
-                "https://auth.docker.io/token?"
-                "service=registry.docker.io&scope=repository:%s:pull" % repo
-            )
-            req = urllib.request.Request(token_url)
-            with urllib.request.urlopen(req, timeout=10) as resp:
-                token = json.loads(resp.read())["token"]
-
-            # Get manifest
-            manifest_url = (
-                "https://registry-1.docker.io/v2/%s/manifests/%s"
-                % (repo, tag)
-            )
-            req = urllib.request.Request(manifest_url)
-            req.add_header("Authorization", "Bearer " + token)
-            req.add_header(
-                "Accept",
-                "application/vnd.docker.distribution.manifest.v2+json, "
-                "application/vnd.oci.image.manifest.v1+json"
-            )
-            with urllib.request.urlopen(req, timeout=10) as resp:
-                digest = resp.headers.get("Docker-Content-Digest", "")
-                return digest
-
-        elif registry == "ghcr.io":
-            manifest_url = (
-                "https://ghcr.io/v2/%s/manifests/%s" % (repo, tag)
-            )
-            req = urllib.request.Request(manifest_url)
-            req.add_header(
-                "Accept",
-                "application/vnd.docker.distribution.manifest.v2+json, "
-                "application/vnd.oci.image.manifest.v1+json"
-            )
-            with urllib.request.urlopen(req, timeout=10) as resp:
-                digest = resp.headers.get("Docker-Content-Digest", "")
-                return digest
-
-        else:
-            # Generic registry
-            manifest_url = (
-                "https://%s/v2/%s/manifests/%s" % (registry, repo, tag)
-            )
-            req = urllib.request.Request(manifest_url)
-            req.add_header(
-                "Accept",
-                "application/vnd.docker.distribution.manifest.v2+json"
-            )
-            with urllib.request.urlopen(req, timeout=10) as resp:
-                return resp.headers.get("Docker-Content-Digest", "")
-
-    except Exception:
-        return ""
+        data = json.loads(output)
+        return {
+            item["ContainerName"]: item["Updated"]
+            for item in data
+        }
+    except (json.JSONDecodeError, KeyError):
+        return {}
 
 
 def get_last_backup(service_name, backup_log, backup_dir):
@@ -383,6 +310,9 @@ def main():
         if containers:
             svc_data["running"] = True
 
+        # Get update status via podman auto-update --dry-run
+        update_status = get_auto_update_status(user)
+
         for ct in containers:
             ct_name = ct.get("Names", [""])[0] if isinstance(ct.get("Names"), list) else ct.get("Names", "")
             image = ct.get("Image", "")
@@ -395,18 +325,17 @@ def main():
             # Get image details
             img_info = get_image_inspect(user, image_id)
             created = ""
-            local_digest = ""
             if img_info:
                 created = img_info.get("Created", "")
-                local_digest = img_info.get("Digest", "")
 
-            # Check registry for updates
-            registry, repo, tag = parse_image_ref(image)
-            remote_digest = get_registry_digest(registry, repo, tag)
-
-            update_available = None
-            if local_digest and remote_digest:
-                update_available = local_digest != remote_digest
+            # Check update status from podman auto-update
+            ct_update = update_status.get(ct_name, "")
+            if ct_update == "pending":
+                update_available = True
+            elif ct_update == "false":
+                update_available = False
+            else:
+                update_available = None
 
             if svc_data["update_available"] is None:
                 svc_data["update_available"] = update_available
