@@ -135,7 +135,8 @@ start_service samba 1010 samba
 # === Syncthing ===
 log "--- Syncthing ---"
 stop_service syncthg 1003 syncthing
-backup_tar_volume syncthg 1003 systemd-syncthing
+backup_tar_volume syncthg 1003 systemd-syncthing-config
+backup_rsync_volume syncthg 1003 systemd-syncthing-data
 start_service syncthg 1003 syncthing
 
 # === Jukebox ===

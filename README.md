@@ -135,9 +135,9 @@ graph TD
                 ST["File Sync"] ~~~ ST_V[("syncthing-config<br/>syncthing-data")]
             end
 
-            subgraph JB["Jukebox"]
+            subgraph JB["Jukebox Pod"]
                 direction LR
-                LMS["Lyrion Music Server<br/>+ Local Player"] ~~~ JB_V[("server-config<br/>server-music<br/>server-playlist")]
+                LMS["Lyrion Music Server"] ~~~ SL["Squeezelite"] ~~~ JB_V[("server-config<br/>server-music<br/>server-playlist")]
             end
 
             subgraph EP["Ente Photos Pod"]

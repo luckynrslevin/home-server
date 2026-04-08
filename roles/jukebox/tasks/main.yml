@@ -47,19 +47,23 @@
   ansible.builtin.set_fact:
     jukebox_role_path: "{{ role_path }}"
 
-# Deploy lyrion music server with built-in Local Player plugin (squeezelite)
+# Deploy lyrion music server and squeezelite player in rootless mode
+# TODO: Use squeezelite integrated to lyrion music server container
 - name: Deploy jukebox container using podman_quadlet
   ansible.builtin.include_role:
     name: luckynrslevin.podman_quadlet
   vars:
-    podman_quadlet_app_name: "jukebox-server"
+    podman_quadlet_app_name: "jukebox-pod"
     podman_quadlet_rootless_user_name: jukebox
     podman_quadlet_files_templates_src_path: "{{ jukebox_role_path }}"
     podman_quadlet_file_names:
-      - jukebox-server.container.j2
+      - jukebox-server.container
       - jukebox-server-config.volume
       - jukebox-server-playlist.volume
       - jukebox-server-music.volume
+      - jukebox-player.container
+      - jukebox.pod
+      - jukebox.network
     podman_quadlet_volumes_files_to_stage:
       - name: jukebox-server-config
         files:
