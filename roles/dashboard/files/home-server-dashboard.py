@@ -187,14 +187,6 @@ def generate_html(services_data, generated_at):
         # Volumes
         vol_list = "<br>".join(svc.get("volume_names", []))
 
-        # Update status
-        if svc.get("update_available") is True:
-            update_badge = '<span class="badge update">Update available</span>'
-        elif svc.get("update_available") is False:
-            update_badge = '<span class="badge current">Up to date</span>'
-        else:
-            update_badge = '<span class="badge unknown">Unknown</span>'
-
         # Container status
         if svc.get("running"):
             status_badge = '<span class="badge running">Running</span>'
@@ -209,6 +201,15 @@ def generate_html(services_data, generated_at):
             backup_str = "No backup"
 
         for ct in svc.get("containers", [{}]):
+            # Per-container update status
+            ct_update = ct.get("update_available")
+            if ct_update is True:
+                update_badge = '<span class="badge update">Update available</span>'
+            elif ct_update is False:
+                update_badge = '<span class="badge current">Up to date</span>'
+            else:
+                update_badge = '<span class="badge unknown">Unknown</span>'
+
             rows.append("""
         <tr>
             <td><strong>%s</strong></td>
@@ -299,7 +300,6 @@ def main():
             "volume_names": svc.get("volumes", []),
             "running": False,
             "containers": [],
-            "update_available": None,
             "last_backup": get_last_backup(
                 svc["name"], BACKUP_LOG, BACKUP_DIR
             ),
@@ -332,20 +332,18 @@ def main():
             ct_update = update_status.get(ct_name, "")
             if ct_update == "pending":
                 update_available = True
-            elif ct_update == "false":
+            elif ct_update in ("false", "true"):
                 update_available = False
+            elif ct_update == "failed":
+                update_available = None  # check failed, show as unknown
             else:
                 update_available = None
-
-            if svc_data["update_available"] is None:
-                svc_data["update_available"] = update_available
-            elif update_available is True:
-                svc_data["update_available"] = True
 
             svc_data["containers"].append({
                 "name": ct_name,
                 "image": image,
                 "created": created,
+                "update_available": update_available,
             })
 
         if not svc_data["containers"]:
