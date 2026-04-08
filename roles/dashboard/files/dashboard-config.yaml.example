@@ -1,0 +1,64 @@
+# Home Server Dashboard Configuration
+# Copy to /etc/home-server-dashboard.yaml and adjust URLs/IPs.
+
+services:
+  - name: Shairport-sync
+    user: root
+    service: shairport-sync
+    rootful: true
+    volumes: []
+
+  - name: Pi-hole
+    user: pihole
+    uid: 1005
+    service: pihole
+    urls:
+      - label: Admin UI
+        url: https://192.168.x.x:8443/admin
+    volumes:
+      - systemd-pihole-etc
+      - systemd-pihole-dnsmasq
+
+  - name: Samba
+    user: samba
+    uid: 1010
+    service: samba
+    volumes:
+      - systemd-samba-data
+
+  - name: Syncthing
+    user: syncthg
+    uid: 1003
+    service: syncthing
+    urls:
+      - label: Web UI
+        url: https://192.168.x.x:8384
+    volumes:
+      - systemd-syncthing-config
+      - systemd-syncthing-data
+
+  - name: Jukebox
+    user: jukebox
+    uid: 1006
+    service: jukebox-pod
+    urls:
+      - label: Web UI
+        url: http://192.168.x.x:9100
+    volumes:
+      - jukebox-server-config
+      - jukebox-server-music
+      - jukebox-server-playlist
+
+  - name: Ente Photos
+    user: entephoto
+    uid: 1008
+    service: entephoto-pod
+    urls:
+      - label: Photos
+        url: http://192.168.x.x:3000
+      - label: API
+        url: http://192.168.x.x:8080/ping
+    volumes:
+      - entephoto-postgres-data
+      - entephoto-minio-data
+      - entephoto-museum-config

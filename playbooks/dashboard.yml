@@ -1,0 +1,7 @@
+- name: Deploy home server dashboard
+  hosts: homeserver
+  become: true
+  gather_facts: true
+
+  roles:
+    - dashboard

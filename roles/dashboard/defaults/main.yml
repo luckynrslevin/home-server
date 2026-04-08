@@ -1,0 +1,3 @@
+# Path to the dashboard config file on the control host.
+# Override this in your private inventory to point to your real config.
+dashboard_config_file: "{{ playbook_dir }}/../roles/dashboard/files/dashboard-config.yaml.example"

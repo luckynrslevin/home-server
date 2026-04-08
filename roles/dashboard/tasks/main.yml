@@ -1,0 +1,85 @@
+---
+# Deploy the home server dashboard: static HTML generator + web server.
+# The dashboard script runs every 15 minutes via systemd timer.
+# A simple Python HTTP server serves the generated HTML on port 8888.
+
+- name: Install PyYAML for dashboard script
+  become: true
+  ansible.builtin.dnf:
+    name: python3-pyyaml
+    state: present
+
+- name: Deploy dashboard generator script
+  become: true
+  ansible.builtin.copy:
+    src: home-server-dashboard.py
+    dest: /usr/local/bin/home-server-dashboard.py
+    mode: "0755"
+
+- name: Deploy dashboard configuration
+  become: true
+  ansible.builtin.copy:
+    src: "{{ dashboard_config_file }}"
+    dest: /etc/home-server-dashboard.yaml
+    mode: "0644"
+
+- name: Create dashboard output directory
+  become: true
+  ansible.builtin.file:
+    path: /var/www/dashboard
+    state: directory
+    mode: "0755"
+
+- name: Deploy dashboard generator systemd service
+  become: true
+  ansible.builtin.copy:
+    src: home-server-dashboard.service
+    dest: /etc/systemd/system/home-server-dashboard.service
+    mode: "0644"
+
+- name: Deploy dashboard generator systemd timer
+  become: true
+  ansible.builtin.copy:
+    src: home-server-dashboard.timer
+    dest: /etc/systemd/system/home-server-dashboard.timer
+    mode: "0644"
+
+- name: Deploy dashboard web server systemd service
+  become: true
+  ansible.builtin.copy:
+    src: home-server-webserver.service
+    dest: /etc/systemd/system/home-server-webserver.service
+    mode: "0644"
+
+- name: Reload systemd daemon
+  become: true
+  ansible.builtin.systemd_service:
+    daemon_reload: true
+
+- name: Generate dashboard now
+  become: true
+  ansible.builtin.systemd_service:
+    name: home-server-dashboard.service
+    state: started
+
+- name: Enable and start dashboard timer
+  become: true
+  ansible.builtin.systemd_service:
+    name: home-server-dashboard.timer
+    enabled: true
+    state: started
+
+- name: Enable and start dashboard web server
+  become: true
+  ansible.builtin.systemd_service:
+    name: home-server-webserver.service
+    enabled: true
+    state: started
+
+- name: Open firewall port for dashboard
+  become: true
+  ansible.posix.firewalld:
+    port: 8888/tcp
+    permanent: true
+    state: enabled
+    immediate: true

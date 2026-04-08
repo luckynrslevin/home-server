@@ -1,0 +1,8 @@
+[Unit]
+Description=Generate home server dashboard HTML
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 /usr/local/bin/home-server-dashboard.py
+StandardOutput=journal
+StandardError=journal
