@@ -1,0 +1,28 @@
+[Unit]
+Description=jukebox (lyrionmusicserver)
+After=network-online.target
+Wants=network-online.target
+
+[Container]
+ContainerName=%N
+Image=docker.io/lmscommunity/lyrionmusicserver
+AutoUpdate=registry
+
+Volume=jukebox-server-config.volume:/config
+Volume=jukebox-server-music.volume:/music
+Volume=jukebox-server-playlist.volume:/playlist
+
+Environment=TZ={{ jukebox_timezone }}
+
+# ALSA access for built-in Local Player plugin (squeezelite)
+AddDevice={{ jukebox_audio_device }}
+GroupAdd=keep-groups
+
+PublishPort={{ jukebox_web_port }}:9000/tcp
+
+[Service]
+Restart=on-failure
+TimeoutStartSec=900
+
+[Install]
+WantedBy=multi-user.target default.target

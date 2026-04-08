@@ -1,0 +1,8 @@
+# Jukebox web UI port (maps to container port 9000)
+jukebox_web_port: 9100
+
+# Timezone
+jukebox_timezone: "Europe/Berlin"
+
+# Audio output device for built-in Local Player plugin
+jukebox_audio_device: "/dev/snd"

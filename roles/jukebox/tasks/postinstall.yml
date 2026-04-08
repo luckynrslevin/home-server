@@ -1,12 +1,11 @@
 ---
 # Post-install configuration for Jukebox (Lyrion Music Server)
-# Installs the Material Skin plugin if not already present.
-# Can be re-run independently to update the plugin without redeploying the container.
+# Installs Material Skin and Local Player plugins if not already present.
+# Can be re-run independently without redeploying the container.
 
-# Install Material Skin plugin if not already present.
-# Must be done from inside the container to preserve correct SELinux labels
-# on the volume files. Installing from the host causes SELinux context
-# mismatches that break container startup.
+# --------------------------------------------------------------------------
+# Material Skin plugin (UI theme)
+# --------------------------------------------------------------------------
 - name: Check if Material Skin plugin is installed # noqa: no-changed-when
   become: true
   ansible.builtin.shell: >
@@ -38,10 +37,47 @@
     restorecon -R "$PLUGIN_DIR" 2>/dev/null || true
   when: jukebox_material_skin_check.rc != 0
 
-- name: Restart jukebox to load Material Skin plugin # noqa: no-changed-when
+# --------------------------------------------------------------------------
+# Local Player plugin (built-in squeezelite — replaces separate container)
+# --------------------------------------------------------------------------
+- name: Check if Local Player plugin is installed # noqa: no-changed-when
+  become: true
+  ansible.builtin.shell: >
+    su - jukebox -c 'podman exec jukebox-server test -f /config/cache/Plugins/LocalPlayer/install.xml'
+  register: jukebox_local_player_check
+  failed_when: false
+  changed_when: false
+
+- name: Get latest Local Player release URL # noqa: command-instead-of-module risky-shell-pipe
+  become: true
+  ansible.builtin.shell: >
+    set -o pipefail &&
+    curl -fsSL https://api.github.com/repos/LMS-Community/plugin-LocalPlayer/releases/latest
+    | grep browser_download_url | grep '\.zip"' | head -1 | cut -d'"' -f4
+  register: jukebox_local_player_url
+  when: jukebox_local_player_check.rc != 0
+  changed_when: false
+
+- name: Install Local Player plugin into config volume # noqa: no-changed-when
+  become: true
+  ansible.builtin.shell: |
+    PLUGIN_DIR=$(su - jukebox -c 'podman volume inspect jukebox-server-config --format={% raw %}{{.Mountpoint}}{% endraw %}')/cache/Plugins/LocalPlayer
+    mkdir -p "$PLUGIN_DIR"
+    cd "$PLUGIN_DIR"
+    curl -fsSL -o localplayer.zip "{{ jukebox_local_player_url.stdout }}"
+    unzip -q -o localplayer.zip
+    rm localplayer.zip
+    chown -R {{ my_linux_users.jukebox.uid }}:{{ my_linux_users.jukebox.gid }} "$PLUGIN_DIR"
+    restorecon -R "$PLUGIN_DIR" 2>/dev/null || true
+  when: jukebox_local_player_check.rc != 0
+
+# --------------------------------------------------------------------------
+# Restart if any plugin was installed
+# --------------------------------------------------------------------------
+- name: Restart jukebox to load plugins # noqa: no-changed-when
   become: true
   ansible.builtin.shell: >
     sudo -u jukebox XDG_RUNTIME_DIR=/run/user/{{ my_linux_users.jukebox.uid }}
     DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/{{ my_linux_users.jukebox.uid }}/bus
-    systemctl --user restart jukebox-pod
-  when: jukebox_material_skin_check.rc != 0
+    systemctl --user restart jukebox-server
+  when: jukebox_material_skin_check.rc != 0 or jukebox_local_player_check.rc != 0
