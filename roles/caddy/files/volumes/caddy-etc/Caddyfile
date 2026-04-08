@@ -1,4 +1,42 @@
+# Home Server Reverse Proxy
+# Dashboard is the default landing page.
+# Services are accessible via /service-name/ paths.
+
 :80 {
-    root * /srv/dashboard
-    file_server
+	# Default: serve dashboard
+	root * /srv/dashboard
+	file_server
+
+	# Pi-hole admin (backend uses self-signed HTTPS)
+	handle_path /pihole/* {
+		reverse_proxy https://host.containers.internal:8443 {
+			transport http {
+				tls_insecure_skip_verify
+			}
+		}
+	}
+
+	# Syncthing (backend uses self-signed HTTPS)
+	handle_path /syncthing/* {
+		reverse_proxy https://host.containers.internal:8384 {
+			transport http {
+				tls_insecure_skip_verify
+			}
+		}
+	}
+
+	# Jukebox (Lyrion Music Server)
+	handle_path /jukebox/* {
+		reverse_proxy host.containers.internal:9100
+	}
+
+	# Ente Photos web UI
+	handle_path /photos/* {
+		reverse_proxy host.containers.internal:3000
+	}
+
+	# Ente Photos API
+	handle_path /api/* {
+		reverse_proxy host.containers.internal:8080
+	}
 }
