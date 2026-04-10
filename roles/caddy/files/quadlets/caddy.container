@@ -5,7 +5,7 @@ Wants=network-online.target
 
 [Container]
 ContainerName=caddy
-Image=docker.io/library/caddy:latest
+Image=public.ecr.aws/docker/library/caddy:latest
 AutoUpdate=registry
 
 Volume=caddy-data.volume:/data

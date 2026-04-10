@@ -7,7 +7,7 @@ After=local-fs.target
 [Container]
 ContainerName={{ podman_quadlet_app_name }}
 
-Image=docker.io/syncthing/syncthing:2
+Image=ghcr.io/syncthing/syncthing:2
 AutoUpdate=registry
 
 Environment=PUID={{ my_linux_users.syncthg.uid }}

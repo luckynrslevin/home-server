@@ -5,7 +5,7 @@ After=local-fs.target
 Wants=network-online.target
 
 [Container]
-Image=docker.io/pihole/pihole:latest
+Image={{ pihole_image }}
 ContainerName={{ podman_quadlet_app_name }}
 AutoUpdate=registry
 

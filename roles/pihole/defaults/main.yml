@@ -1,5 +1,9 @@
 pihole_web_port_https: 8443
 
+# Pi-hole container image. Defaults to the official GHCR mirror to avoid
+# Docker Hub anonymous pull rate limits.
+pihole_image: "ghcr.io/pi-hole/pihole:latest"
+
 # Upstream DNS servers (semicolon-separated)
 # Examples: Quad9, Cloudflare, Google
 pihole_dns_upstreams: "9.9.9.9;149.112.112.112"
