@@ -1,0 +1,21 @@
+[Interface]
+Address = {{ wireguard_srv_address }}
+ListenPort = 51820
+PrivateKey = {{ wireguard_srv_privkey }}
+{% if wireguard_srv_dns %}
+DNS = {{ wireguard_srv_dns }}
+{% endif %}
+
+# MASQUERADE outgoing tunnel traffic so clients get internet routed via
+# the container's eth0 (the rootless Podman network interface).
+PreUp = iptables -t nat -A POSTROUTING -o eth0 -j MASQUERADE
+PostDown = iptables -t nat -D POSTROUTING -o eth0 -j MASQUERADE
+
+# ---- Client Peers ----
+{% for peer in wireguard_peers %}
+[Peer]
+# {{ peer.name }}
+PublicKey = {{ peer.public_key }}
+AllowedIPs = {{ peer.allowed_ips }}
+
+{% endfor %}

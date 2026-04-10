@@ -1,0 +1,35 @@
+[Unit]
+Description=WireGuard VPN server (LinuxServer image)
+After=network-online.target
+Wants=network-online.target
+
+[Container]
+ContainerName={{ podman_quadlet_app_name }}
+Image={{ wireguard_image }}
+AutoUpdate=registry
+
+# WireGuard needs NET_ADMIN to create its tunnel interface. SYS_MODULE is
+# deliberately NOT added — the host kernel already ships the wireguard
+# module, so the container doesn't need to load it.
+AddCapability=NET_ADMIN
+
+# Required sysctl for WireGuard in a container. This is namespaced, so
+# podman can set it inside the container netns even in rootless mode.
+Sysctl=net.ipv4.conf.all.src_valid_mark=1
+
+# LinuxServer image accepts PUID/PGID to set file ownership inside the
+# container; setting them to the host rootless user keeps /config writable.
+Environment=PUID={{ my_linux_users.wireguard.uid }}
+Environment=PGID={{ my_linux_users.wireguard.gid }}
+Environment=TZ=Europe/Berlin
+
+Volume=wireguard-config.volume:/config
+
+PublishPort={{ wireguard_srv_port }}:51820/udp
+
+[Service]
+Restart=on-failure
+TimeoutStartSec=900
+
+[Install]
+WantedBy=multi-user.target default.target
