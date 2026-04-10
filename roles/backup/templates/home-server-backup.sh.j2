@@ -11,35 +11,52 @@ set -euo pipefail
 #   - rsync:  rsync volume mount path (current mirror, no history)
 #   - pgdump: pg_dump logical database backup (with daily retention)
 #
-# Mount/unmount lifecycle:
-#   If MOUNT_DEV is set, the backup target is mounted before backup
-#   and unmounted on exit (even on failure).
+# Backup target: NFS shares on Synology NAS.
+#   One shared folder for all tar/pgdump archives, plus a dedicated shared
+#   folder per rsync dataset (photos, syncthing, xchange, music).
+#   All shares are mounted at startup and unmounted on exit (even on failure).
 # ===========================================================================
 
 # --- Configuration ---
-BACKUP_DIR="/mnt/backup"
-MOUNT_DEV=""                        # e.g. "nas:/backups/homeserver" (empty = no mount)
-MOUNT_TYPE="nfs"
-MOUNT_OPTS="noatime,soft,timeo=30"
+# NOTE: NAS_HOST / NAS_VOLUME are rendered by Ansible from host_vars.
+BACKUP_ROOT="/mnt/backup"
+NAS_HOST="{{ backup_nas_hostname }}"
+NAS_VOLUME="{{ backup_nas_volume }}"
+# Local mount name → Synology shared folder name
+declare -A NFS_SHARES=(
+  [tar]=backup-tar
+  [photos]=backup-photos
+  [syncthing]=backup-syncthing
+  [xchange]=backup-xchange
+  [music]=backup-music
+)
+MOUNT_OPTS="noatime,hard,_netdev,vers=4"
 RETENTION_DAYS=7
 TIMESTAMP=$(date +%Y%m%d-%H%M%S)
 ERRORS=0
 
-# --- Ensure backup dir exists before logging ---
-mkdir -p "$BACKUP_DIR"
-LOG_FILE="$BACKUP_DIR/backup.log"
-
-# --- Logging ---
+# --- Logging (off the NFS mount, so logs survive mount failures) ---
+LOG_FILE="/var/log/home-server-backup.log"
+mkdir -p "$(dirname "$LOG_FILE")"
 log()       { echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*" | tee -a "$LOG_FILE"; }
 log_error() { echo "[$(date '+%Y-%m-%d %H:%M:%S')] ERROR: $*" | tee -a "$LOG_FILE" >&2; ERRORS=$((ERRORS+1)); }
 
-# --- Mount/unmount ---
-if [ -n "$MOUNT_DEV" ]; then
-  log "Mounting $MOUNT_DEV on $BACKUP_DIR"
-  mount -t "$MOUNT_TYPE" -o "$MOUNT_OPTS" "$MOUNT_DEV" "$BACKUP_DIR" \
-    || { log_error "Mount failed, aborting backup"; exit 1; }
-  trap "log 'Unmounting $BACKUP_DIR'; umount '$BACKUP_DIR'" EXIT
-fi
+# --- Mount all NFS shares ---
+for local_name in "${!NFS_SHARES[@]}"; do
+  remote=${NFS_SHARES[$local_name]}
+  mkdir -p "$BACKUP_ROOT/$local_name"
+  log "Mounting $NAS_HOST:$NAS_VOLUME/$remote → $BACKUP_ROOT/$local_name"
+  mount -t nfs -o "$MOUNT_OPTS" \
+    "$NAS_HOST:$NAS_VOLUME/$remote" "$BACKUP_ROOT/$local_name" \
+    || { log_error "Mount failed for $remote, aborting"; exit 1; }
+done
+
+trap '
+  for local_name in "${!NFS_SHARES[@]}"; do
+    log "Unmounting $BACKUP_ROOT/$local_name"
+    umount "$BACKUP_ROOT/$local_name" || true
+  done
+' EXIT
 
 log "=== Backup started ==="
 
@@ -63,7 +80,7 @@ start_service() {
 # --- Backup functions ---
 backup_tar_volume() {
   local user=$1 uid=$2 volume=$3
-  local dest="$BACKUP_DIR/tar/$volume"
+  local dest="$BACKUP_ROOT/tar/$volume"
   mkdir -p "$dest"
   log "  Tar backup: $volume"
   if su - "$user" -c "podman volume export $volume" \
@@ -80,16 +97,21 @@ backup_tar_volume() {
 }
 
 backup_rsync_volume() {
-  local user=$1 uid=$2 volume=$3
+  local user=$1 uid=$2 volume=$3 share=$4
   local mount_path
-  if ! mount_path=$(su - "$user" -c "podman volume inspect $volume --format={{.Mountpoint}}"); then
+  if ! mount_path=$(su - "$user" -c "podman volume inspect $volume --format={% raw %}{{.Mountpoint}}{% endraw %}"); then
     log_error "Cannot inspect volume $volume"
     return 1
   fi
-  local dest="$BACKUP_DIR/rsync/$volume"
-  mkdir -p "$dest"
-  log "  Rsync backup: $volume"
-  if rsync -a --delete "$mount_path/" "$dest/" 2>>"$LOG_FILE"; then
+  local dest="$BACKUP_ROOT/$share"
+  log "  Rsync backup: $volume → $share"
+  # --no-owner --no-group --numeric-ids: NFS all_squash maps every UID to the
+  #   share's anon user, so chowns from rsync would fail. We deliberately
+  #   drop ownership preservation here. On restore, container-native UIDs
+  #   are re-applied with `podman unshare chown` inside the rootless user's
+  #   namespace (UIDs differ per host anyway).
+  if rsync -rltD --delete --no-owner --no-group --numeric-ids \
+      "$mount_path/" "$dest/" 2>>"$LOG_FILE"; then
     log "  Rsync backup: $volume done ($(du -sh "$dest" | cut -f1))"
   else
     log_error "Rsync failed for $volume"
@@ -99,7 +121,7 @@ backup_rsync_volume() {
 
 backup_pgdump() {
   local user=$1 container=$2 db_user=$3 db_name=$4
-  local dest="$BACKUP_DIR/tar/pgdump-$container"
+  local dest="$BACKUP_ROOT/tar/pgdump-$container"
   mkdir -p "$dest"
   log "  pg_dump: $container ($db_name)"
   if su - "$user" -c "podman exec $container pg_dump -U $db_user $db_name" \
@@ -129,14 +151,14 @@ start_service pihole 1005 pihole
 # === Samba ===
 log "--- Samba ---"
 stop_service samba 1010 samba
-backup_rsync_volume samba 1010 systemd-samba-data
+backup_rsync_volume samba 1010 systemd-samba-data xchange
 start_service samba 1010 samba
 
 # === Syncthing ===
+# Single combined volume on this host (config + data live together).
 log "--- Syncthing ---"
 stop_service syncthg 1003 syncthing
-backup_tar_volume syncthg 1003 systemd-syncthing-config
-backup_rsync_volume syncthg 1003 systemd-syncthing-data
+backup_rsync_volume syncthg 1003 systemd-syncthing syncthing
 start_service syncthg 1003 syncthing
 
 # === Jukebox ===
@@ -144,7 +166,7 @@ log "--- Jukebox ---"
 stop_service jukebox 1006 jukebox-pod
 backup_tar_volume jukebox 1006 jukebox-server-config
 backup_tar_volume jukebox 1006 jukebox-server-playlist
-backup_rsync_volume jukebox 1006 jukebox-server-music
+backup_rsync_volume jukebox 1006 jukebox-server-music music
 start_service jukebox 1006 jukebox-pod
 
 # === Ente Photos ===
@@ -154,7 +176,7 @@ backup_pgdump entephoto entephoto-postgres pguser ente_db
 # Stop pod for volume backups
 stop_service entephoto 1008 entephoto-pod
 backup_tar_volume entephoto 1008 entephoto-museum-config
-backup_rsync_volume entephoto 1008 entephoto-minio-data
+backup_rsync_volume entephoto 1008 entephoto-minio-data photos
 start_service entephoto 1008 entephoto-pod
 
 # =======================================================================

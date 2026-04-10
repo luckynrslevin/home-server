@@ -1,6 +1,16 @@
 # Home Server Dashboard Configuration
 # Copy to /etc/home-server-dashboard.yaml and adjust URLs/IPs.
 
+# Optional: display prefix shown next to each volume's backup_share.
+# Example value: "nas:/volume1" — omit or leave empty for no prefix.
+nas_host_display: ""
+
+# Volumes can be given as plain strings (no backup location shown) or as
+# objects with an optional `backup_share` naming the dataset on the NAS:
+#   volumes:
+#     - name: systemd-pihole-etc
+#       backup_share: backup-tar
+
 services:
   - name: Shairport-sync
     user: root

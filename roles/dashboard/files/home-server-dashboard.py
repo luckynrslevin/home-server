@@ -29,8 +29,8 @@ except ImportError:
 
 CONFIG_PATH = "/etc/home-server-dashboard.yaml"
 OUTPUT_DIR = "/var/www/dashboard"
-BACKUP_LOG = "/home/ds/backup/backup.log"
-BACKUP_DIR = "/home/ds/backup"
+BACKUP_LOG = "/var/log/home-server-backup.log"
+BACKUP_DIR = "/var/log"
 
 
 def load_config(path):
@@ -109,6 +109,41 @@ def get_volumes(user):
         return []
 
 
+def get_volume_size(user, volume_name):
+    """Return the on-disk size of a volume in bytes, or None on failure.
+
+    Uses `podman unshare du -sb` so the rootless user namespace maps the
+    container-internal UIDs back to the host user, making the volume
+    contents readable for du.
+    """
+    cmd = (
+        "su - %s -c 'podman unshare du -sb "
+        "\"$(podman volume inspect %s --format {{.Mountpoint}})\" 2>/dev/null' "
+        "2>/dev/null"
+    ) % (user, volume_name)
+    output = run_cmd(cmd, timeout=300)
+    if not output:
+        return None
+    try:
+        return int(output.split()[0])
+    except (ValueError, IndexError):
+        return None
+
+
+def format_size(num_bytes):
+    """Format a byte count as a human-readable string."""
+    if num_bytes is None:
+        return "?"
+    size = float(num_bytes)
+    for unit in ("B", "KB", "MB", "GB", "TB"):
+        if size < 1024.0:
+            if unit == "B":
+                return "%d %s" % (int(size), unit)
+            return "%.1f %s" % (size, unit)
+        size /= 1024.0
+    return "%.1f PB" % size
+
+
 def get_auto_update_status(user):
     """Get update status using podman auto-update --dry-run.
 
@@ -173,7 +208,7 @@ def format_date(iso_str):
         return str(iso_str)[:19]
 
 
-def generate_html(services_data, generated_at):
+def generate_html(services_data, generated_at, nas_host_display):
     """Generate the HTML dashboard page."""
     rows = []
     for svc in services_data:
@@ -184,8 +219,22 @@ def generate_html(services_data, generated_at):
                 u["url"], u["label"]
             )
 
-        # Volumes
-        vol_list = "<br>".join(svc.get("volume_names", []))
+        # Volumes (name + size + optional backup share path)
+        vol_entries = []
+        for v in svc.get("volumes_info", []):
+            entry = "%s <small>(%s)</small>" % (
+                v["name"], format_size(v.get("size"))
+            )
+            share = v.get("backup_share")
+            if share:
+                if nas_host_display:
+                    entry += ' <small class="backup-path">→ %s/%s</small>' % (
+                        nas_host_display, share
+                    )
+                else:
+                    entry += ' <small class="backup-path">→ %s</small>' % share
+            vol_entries.append(entry)
+        vol_list = "<br>".join(vol_entries)
 
         # Container status
         if svc.get("running"):
@@ -259,6 +308,7 @@ def generate_html(services_data, generated_at):
   .update { background: #fff3cd; color: #856404; }
   .current { background: #d4edda; color: #155724; }
   .unknown { background: #e2e3e5; color: #383d41; }
+  .backup-path { color: #6c757d; font-style: italic; }
   .footer { margin-top: 15px; color: #888; font-size: 0.85em; }
 </style>
 </head>
@@ -294,10 +344,26 @@ def main():
 
     for svc in config.get("services", []):
         user = svc["user"]
+        # Volumes config supports two forms:
+        #   - bare string: "vol-name"
+        #   - object: {name: "vol-name", backup_share: "backup-tar"}
+        volumes_info = []
+        for v in svc.get("volumes", []):
+            if isinstance(v, dict):
+                vname = v["name"]
+                backup_share = v.get("backup_share")
+            else:
+                vname = v
+                backup_share = None
+            volumes_info.append({
+                "name": vname,
+                "size": get_volume_size(user, vname),
+                "backup_share": backup_share,
+            })
         svc_data = {
             "name": svc["name"],
             "urls": svc.get("urls", []),
-            "volume_names": svc.get("volumes", []),
+            "volumes_info": volumes_info,
             "running": False,
             "containers": [],
             "last_backup": get_last_backup(
@@ -351,9 +417,13 @@ def main():
 
         services_data.append(svc_data)
 
-    # Generate HTML
+    # Generate HTML. nas_host_display is an optional top-level key in the
+    # dashboard YAML config — e.g. "nas:/volume1" — shown as a prefix next
+    # to each volume's backup_share. Kept out of the script source because
+    # it's environment-specific.
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    html = generate_html(services_data, now)
+    nas_host_display = config.get("nas_host_display", "")
+    html = generate_html(services_data, now, nas_host_display)
 
     # Write output
     os.makedirs(OUTPUT_DIR, exist_ok=True)

@@ -1,0 +1,13 @@
+---
+# NAS target for the NFS backup. Override ALL of these per-host in your
+# inventory (typically in host_vars/<host>.yml).
+#
+# - backup_nas_hostname: short hostname used in the mount command and the
+#   /etc/hosts entry (e.g. "nas")
+# - backup_nas_ip: IP of the NAS on your LAN; pinned in /etc/hosts so the
+#   backup doesn't depend on external DNS being up
+# - backup_nas_volume: absolute path prefix on the NAS where the shared
+#   folders live (e.g. Synology uses "/volume1" for the first storage volume)
+backup_nas_hostname: nas
+backup_nas_ip: 192.168.x.x
+backup_nas_volume: /volume1

@@ -2,10 +2,25 @@
 # Deploy standalone backup script and systemd timer.
 # After deployment, backups run autonomously — no Ansible needed.
 
+- name: Ensure nfs-utils is installed (needed for NFS backup target)
+  become: true
+  ansible.builtin.package:
+    name: nfs-utils
+    state: present
+
+- name: Ensure NAS hostname resolves via /etc/hosts
+  become: true
+  ansible.builtin.lineinfile:
+    path: /etc/hosts
+    regexp: '\s{{ backup_nas_hostname }}$'
+    line: "{{ backup_nas_ip }} {{ backup_nas_hostname }}"
+    state: present
+  when: backup_nas_ip is defined and backup_nas_hostname is defined
+
 - name: Deploy backup script
   become: true
-  ansible.builtin.copy:
-    src: home-server-backup.sh
+  ansible.builtin.template:
+    src: home-server-backup.sh.j2
     dest: /usr/local/bin/home-server-backup.sh
     mode: "0755"
 
