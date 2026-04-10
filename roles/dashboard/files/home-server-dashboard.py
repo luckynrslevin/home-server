@@ -31,6 +31,10 @@ CONFIG_PATH = "/etc/home-server-dashboard.yaml"
 OUTPUT_DIR = "/var/www/dashboard"
 BACKUP_LOG = "/var/log/home-server-backup.log"
 BACKUP_DIR = "/var/log"
+# Persistent state: last-known update status per container. Used to keep
+# the previous status visible when a registry check fails (e.g. Docker Hub
+# rate limit) instead of falling back to "Unknown".
+STATE_PATH = "/var/lib/home-server-dashboard/state.json"
 
 
 def load_config(path):
@@ -128,6 +132,27 @@ def get_volume_size(user, volume_name):
         return int(output.split()[0])
     except (ValueError, IndexError):
         return None
+
+
+def load_state(path):
+    """Load persistent state (last-known update status per container)."""
+    if not os.path.exists(path):
+        return {}
+    try:
+        with open(path) as f:
+            return json.load(f)
+    except (OSError, json.JSONDecodeError):
+        return {}
+
+
+def save_state(path, state):
+    """Persist state. Best-effort; failure to save is non-fatal."""
+    try:
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "w") as f:
+            json.dump(state, f)
+    except OSError:
+        pass
 
 
 def format_size(num_bytes):
@@ -340,6 +365,12 @@ def generate_html(services_data, generated_at, nas_host_display):
 
 def main():
     config = load_config(CONFIG_PATH)
+    state = load_state(STATE_PATH)
+    # Map of container_name -> "true"/"false" (string), the last fresh status
+    # we've ever seen. Used as a fallback when this run gets "failed" (e.g.
+    # Docker Hub anonymous rate limit) so the dashboard keeps showing the
+    # last known good status instead of flipping to "Unknown".
+    last_known = state.get("update_status", {})
     services_data = []
 
     for svc in config.get("services", []):
@@ -394,14 +425,25 @@ def main():
             if img_info:
                 created = img_info.get("Created", "")
 
-            # Check update status from podman auto-update
+            # Check update status from podman auto-update.
+            # On "failed" (typically Docker Hub rate limit), reuse the last
+            # known fresh status from persistent state instead of flipping
+            # the badge to "Unknown".
             ct_update = update_status.get(ct_name, "")
             if ct_update == "pending":
                 update_available = True
+                last_known[ct_name] = "pending"
             elif ct_update in ("false", "true"):
                 update_available = False
+                last_known[ct_name] = ct_update
             elif ct_update == "failed":
-                update_available = None  # check failed, show as unknown
+                fallback = last_known.get(ct_name)
+                if fallback == "pending":
+                    update_available = True
+                elif fallback in ("false", "true"):
+                    update_available = False
+                else:
+                    update_available = None
             else:
                 update_available = None
 
@@ -430,6 +472,10 @@ def main():
     output_path = os.path.join(OUTPUT_DIR, "index.html")
     with open(output_path, "w") as f:
         f.write(html)
+
+    # Persist last-known update statuses for the next run.
+    state["update_status"] = last_known
+    save_state(STATE_PATH, state)
 
     print("Dashboard generated: %s" % output_path)
 
