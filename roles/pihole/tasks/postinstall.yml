@@ -26,3 +26,29 @@
   become: true
   ansible.builtin.shell: su - pihole -c 'podman exec pihole pihole -g'
   changed_when: false
+
+# Local DNS records: write the full list via pihole-FTL --config dns.hosts.
+# This is the canonical v6 way; /etc/pihole/hosts/custom.list is generated
+# from pihole.toml and would be clobbered if edited directly.
+# argv form passes the JSON literal as one argument to podman exec, with no
+# shell-level quoting at all. chdir avoids the "cannot chdir to /home/ds"
+# error that sudo -u causes when the calling user's CWD isn't readable by
+# the target user.
+- name: Configure Pi-hole local DNS records # noqa: no-changed-when
+  become: true
+  ansible.builtin.command:
+    chdir: /tmp
+    argv:
+      - sudo
+      - -u
+      - pihole
+      - --
+      - podman
+      - exec
+      - pihole
+      - pihole-FTL
+      - --config
+      - dns.hosts
+      - "{{ pihole_local_dns_records | map(attribute='ip') | zip(pihole_local_dns_records | map(attribute='hostname')) | map('join', ' ') | list | to_json }}"
+  when: pihole_local_dns_records | length > 0
+  changed_when: false

@@ -22,3 +22,8 @@ pihole_adlists:
     comment: "StevenBlack unified hosts"
   - address: "https://raw.githubusercontent.com/Turtlecute33/Toolz/master/src/d3host.txt"
     comment: "https://adblock.turtlecute.org/"
+
+# Local DNS records (custom A records served by Pi-hole to LAN clients).
+# Stored in pihole.toml under dns.hosts via `pihole-FTL --config`.
+# Format: list of {ip, hostname} dicts. Override per-host in inventory.
+pihole_local_dns_records: []
