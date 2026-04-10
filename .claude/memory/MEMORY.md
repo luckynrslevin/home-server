@@ -1,3 +1,4 @@
 - [Feedback: Memory Location](feedback_memory_location.md) — Store project memory in repo at .claude/memory/, not in ~/.claude
 - [Project Goals](project_goals.md) — Kickstart OS install, then Ansible+Podman quadlet containers for all services
 - [CRITICAL: No Secrets or Host IDs](feedback_no_secrets.md) — NEVER push credentials OR host-specific hostnames/IPs to public repo; use private overlay + host_vars + templates
+- [Commit Cadence](feedback_commit_cadence.md) — Commit small, topical chunks as each unit of work finishes; don't batch many changes into one end-of-session dump
