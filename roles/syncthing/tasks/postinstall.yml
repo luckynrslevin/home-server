@@ -4,18 +4,27 @@
 # Only runs when syncthing_restore_config is true.
 # Can be re-run independently to restore config without redeploying the container.
 #
-# Requires syncthing_config_path to point at a directory containing:
+# Identity files are expected at syncthing_config_path (by convention:
+# inventory/host_vars/<hostname>/syncthing/) containing:
 #   config.xml.j2, cert.pem, key.pem
-# Override per-host in host_vars (e.g. pointing at the private repo).
 
-- name: Restore config - validate syncthing_config_path is set
+- name: Restore config - check syncthing identity directory exists
+  ansible.builtin.stat:
+    path: "{{ syncthing_config_path }}"
+  register: syncthing_config_dir
+  delegate_to: localhost
+  become: false
+  when: syncthing_restore_config | bool
+
+- name: Restore config - fail if identity directory missing
   ansible.builtin.assert:
     that:
-      - syncthing_config_path | length > 0
+      - syncthing_config_dir.stat.exists
+      - syncthing_config_dir.stat.isdir
     fail_msg: >
-      syncthing_restore_config is true but syncthing_config_path is empty.
-      Set syncthing_config_path in host_vars to a directory containing
-      config.xml.j2, cert.pem, and key.pem for this host.
+      syncthing_restore_config is true but {{ syncthing_config_path }}
+      does not exist. Create the directory with config.xml.j2, cert.pem,
+      and key.pem for this host.
   when: syncthing_restore_config | bool
 
 - name: Restore config - stop container service

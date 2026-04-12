@@ -4,6 +4,7 @@ syncthing_discovery_port: 21027
 syncthing_restore_config: false
 
 # Path to host-specific Syncthing identity files (config.xml.j2, cert.pem,
-# key.pem). Override in host_vars to point at a per-host directory in the
-# private repo. Only used when syncthing_restore_config is true.
-syncthing_config_path: ""
+# key.pem). By convention, each host keeps these at
+# inventory/host_vars/<hostname>/syncthing/ in the private repo.
+# Only used when syncthing_restore_config is true.
+syncthing_config_path: "{{ inventory_dir }}/host_vars/{{ inventory_hostname }}/syncthing"

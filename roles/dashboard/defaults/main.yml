@@ -1,3 +1,4 @@
-# Path to the dashboard config file on the control host.
-# Override this in your private inventory to point to your real config.
-dashboard_config_file: "{{ playbook_dir }}/../roles/dashboard/files/dashboard-config.yaml.example"
+# Path to the dashboard config file. By convention, each host keeps its
+# config at inventory/host_vars/<hostname>/dashboard-config.yaml in the
+# private repo.
+dashboard_config_file: "{{ inventory_dir }}/host_vars/{{ inventory_hostname }}/dashboard-config.yaml"
