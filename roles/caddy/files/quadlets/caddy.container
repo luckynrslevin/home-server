@@ -11,7 +11,7 @@ AutoUpdate=registry
 Volume=caddy-data.volume:/data
 Volume=caddy-config.volume:/config
 Volume=caddy-etc.volume:/etc/caddy
-Volume=/var/www/dashboard:/srv/dashboard:ro,z
+Volume=/var/www/dashboard:/srv/dashboard:ro
 
 PublishPort=9080:80/tcp
 
