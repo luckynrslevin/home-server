@@ -2,3 +2,4 @@
 - [Project Goals](project_goals.md) — Kickstart OS install, then Ansible+Podman quadlet containers for all services
 - [CRITICAL: No Secrets or Host IDs](feedback_no_secrets.md) — NEVER push credentials OR host-specific hostnames/IPs to public repo; use private overlay + host_vars + templates
 - [Commit Cadence](feedback_commit_cadence.md) — Commit small, topical chunks as each unit of work finishes; don't batch many changes into one end-of-session dump
+- [Galaxy Roles](feedback_galaxy_roles.md) — NEVER modify Galaxy roles in-place or copy them into roles/; changes go through the role's own repo + release
