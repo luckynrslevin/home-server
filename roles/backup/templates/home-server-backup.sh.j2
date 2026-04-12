@@ -143,41 +143,41 @@ backup_pgdump() {
 
 # === Pi-hole ===
 log "--- Pi-hole ---"
-stop_service pihole 1005 pihole
-backup_tar_volume pihole 1005 systemd-pihole-etc
-backup_tar_volume pihole 1005 systemd-pihole-dnsmasq
-start_service pihole 1005 pihole
+stop_service pihole {{ my_linux_users.pihole.uid }} pihole
+backup_tar_volume pihole {{ my_linux_users.pihole.uid }} systemd-pihole-etc
+backup_tar_volume pihole {{ my_linux_users.pihole.uid }} systemd-pihole-dnsmasq
+start_service pihole {{ my_linux_users.pihole.uid }} pihole
 
 # === Samba ===
 log "--- Samba ---"
-stop_service samba 1010 samba
-backup_rsync_volume samba 1010 systemd-samba-data xchange
-start_service samba 1010 samba
+stop_service samba {{ my_linux_users.samba.uid }} samba
+backup_rsync_volume samba {{ my_linux_users.samba.uid }} systemd-samba-data xchange
+start_service samba {{ my_linux_users.samba.uid }} samba
 
 # === Syncthing ===
 # Single combined volume on this host (config + data live together).
 log "--- Syncthing ---"
-stop_service syncthg 1003 syncthing
-backup_rsync_volume syncthg 1003 systemd-syncthing syncthing
-start_service syncthg 1003 syncthing
+stop_service syncthg {{ my_linux_users.syncthg.uid }} syncthing
+backup_rsync_volume syncthg {{ my_linux_users.syncthg.uid }} systemd-syncthing syncthing
+start_service syncthg {{ my_linux_users.syncthg.uid }} syncthing
 
 # === Jukebox ===
 log "--- Jukebox ---"
-stop_service jukebox 1006 jukebox-pod
-backup_tar_volume jukebox 1006 jukebox-server-config
-backup_tar_volume jukebox 1006 jukebox-server-playlist
-backup_rsync_volume jukebox 1006 jukebox-server-music music
-start_service jukebox 1006 jukebox-pod
+stop_service jukebox {{ my_linux_users.jukebox.uid }} jukebox-pod
+backup_tar_volume jukebox {{ my_linux_users.jukebox.uid }} jukebox-server-config
+backup_tar_volume jukebox {{ my_linux_users.jukebox.uid }} jukebox-server-playlist
+backup_rsync_volume jukebox {{ my_linux_users.jukebox.uid }} jukebox-server-music music
+start_service jukebox {{ my_linux_users.jukebox.uid }} jukebox-pod
 
 # === Ente Photos ===
 log "--- Ente Photos ---"
 # pg_dump runs while service is up (consistent logical snapshot)
 backup_pgdump entephoto entephoto-postgres pguser ente_db
 # Stop pod for volume backups
-stop_service entephoto 1008 entephoto-pod
-backup_tar_volume entephoto 1008 entephoto-museum-config
-backup_rsync_volume entephoto 1008 entephoto-minio-data photos
-start_service entephoto 1008 entephoto-pod
+stop_service entephoto {{ my_linux_users.entephoto.uid }} entephoto-pod
+backup_tar_volume entephoto {{ my_linux_users.entephoto.uid }} entephoto-museum-config
+backup_rsync_volume entephoto {{ my_linux_users.entephoto.uid }} entephoto-minio-data photos
+start_service entephoto {{ my_linux_users.entephoto.uid }} entephoto-pod
 
 # =======================================================================
 log "=== Backup finished ($ERRORS errors) ==="
