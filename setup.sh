@@ -74,8 +74,16 @@ echo
 # ============================================================================
 info "Step 1/7: Installing prerequisites..."
 
-sudo dnf install -y ansible-core podman git python3-pyyaml &>/dev/null \
-    || sudo dnf install -y ansible-core podman git python3-pyyaml
+sudo dnf install -y podman git python3-pyyaml pipx &>/dev/null \
+    || sudo dnf install -y podman git python3-pyyaml pipx
+
+# Install ansible-core via pipx for the latest version (Fedora repos
+# may ship an older version with compatibility issues).
+if ! command -v ansible-playbook &>/dev/null; then
+    pipx install ansible-core &>/dev/null
+    # Inject the full ansible package for built-in collections
+    pipx inject ansible-core ansible &>/dev/null
+fi
 
 ok "Prerequisites installed."
 
