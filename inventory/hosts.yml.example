@@ -1,9 +1,20 @@
 # Copy this file to hosts.yml and fill in your values.
 # Do NOT commit hosts.yml — it is gitignored.
+#
+# Use --limit to target a specific host:
+#   ansible-playbook playbooks/syncthing.yml --limit homeserver
+#   ansible-playbook playbooks/syncthing.yml --limit homeserver-test
 all:
-  hosts:
-    homeserver:
-      ansible_host: 192.168.x.x       # Your server's IP address
-      ansible_host_name: myserver      # Hostname
-      ansible_user: myuser             # SSH user
-      ansible_ssh_private_key_file: ~/.ssh/id_ed25519  # Path to SSH key
+  children:
+    homeservers:
+      hosts:
+        homeserver:
+          ansible_host: 192.168.x.x         # Production server IP
+          ansible_host_name: myserver        # Hostname
+          ansible_user: myuser              # SSH user
+          ansible_ssh_private_key_file: ~/.ssh/id_ed25519
+        homeserver-test:
+          ansible_host: 192.168.x.x         # Test server IP
+          ansible_host_name: mytest          # Hostname
+          ansible_user: myuser              # SSH user
+          ansible_ssh_private_key_file: ~/.ssh/id_ed25519
