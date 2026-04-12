@@ -304,6 +304,7 @@ ENTEPHOTO_MINIO_PW=$(openssl rand -base64 24)
 ENTEPHOTO_ENC_KEY=$(openssl rand -base64 32)
 ENTEPHOTO_HASH_KEY=$(openssl rand -base64 64)
 ENTEPHOTO_JWT=$(openssl rand -hex 32)
+WIREGUARD_PRIVKEY=$(openssl rand -base64 32)
 
 # Build the host_vars file
 {
@@ -371,6 +372,9 @@ echo ""
 vault_encrypt "$ENTEPHOTO_JWT" "entephoto_jwt_secret"
 echo ""
 echo "entephoto_admin_user_ids: []"
+echo ""
+echo "### WireGuard"
+vault_encrypt "$WIREGUARD_PRIVKEY" "wireguard_srv_privkey"
 echo "##################################################################################################"
 } > inventory/host_vars/homeserver/main.yml
 
