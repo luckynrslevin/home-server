@@ -251,14 +251,17 @@ ok "Selected services: ${SELECTED_SERVICES[*]}"
 info "Step 6/7: Generating configuration files..."
 
 # Helper: vault-encrypt a string.
-# Uses a temp file to avoid stdin conflicts when the script is piped via curl.
+# Uses a temp file for the value (avoids stdin conflicts with curl pipe).
+# Uses ANSIBLE_VAULT_PASSWORD_FILE env var instead of --vault-password-file
+# flag to avoid "duplicate vault-ids" error when ansible.cfg also sets it.
 vault_encrypt() {
     local value=$1 name=$2
     local tmpfile
     tmpfile=$(mktemp)
     echo -n "$value" > "$tmpfile"
+    ANSIBLE_VAULT_PASSWORD_FILE="$VAULT_PW_FILE" \
     ansible-vault encrypt_string \
-        --vault-password-file "$VAULT_PW_FILE" \
+        --encrypt-vault-id default \
         --stdin-name "$name" < "$tmpfile" 2>/dev/null
     rm -f "$tmpfile"
 }
