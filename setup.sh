@@ -26,7 +26,7 @@ if [[ ! -t 0 ]]; then
     SELF_PATH="/tmp/home-server-setup.sh"
     curl -fsSL "$SELF_URL" -o "$SELF_PATH"
     chmod +x "$SELF_PATH"
-    exec bash "$SELF_PATH" "$@"
+    exec bash "$SELF_PATH" "$@" < /dev/tty
 fi
 
 # --- Colors ---
