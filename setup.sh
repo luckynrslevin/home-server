@@ -16,6 +16,19 @@
 # ============================================================================
 set -euo pipefail
 
+# --- Detect pipe mode and re-exec from a file ---
+# When run via `curl ... | bash`, stdin is the script stream, not the
+# terminal. Interactive prompts and ansible-vault both need real stdin.
+# Detect this, save the script to a temp file, and re-exec it.
+if [[ ! -t 0 ]]; then
+    echo "Detected pipe mode — downloading script and re-executing..."
+    SELF_URL="https://raw.githubusercontent.com/luckynrslevin/home-server/main/setup.sh"
+    SELF_PATH="/tmp/home-server-setup.sh"
+    curl -fsSL "$SELF_URL" -o "$SELF_PATH"
+    chmod +x "$SELF_PATH"
+    exec bash "$SELF_PATH" "$@"
+fi
+
 # --- Colors ---
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -68,7 +81,7 @@ INSTALL_DIR="$HOME/home-server"
 if [[ -d "$INSTALL_DIR" ]]; then
     warn "$INSTALL_DIR already exists."
     ask "Overwrite it? [y/N]:"
-    read -r overwrite < /dev/tty
+    read -r overwrite
     if [[ "$overwrite" =~ ^[Yy]$ ]]; then
         rm -rf "$INSTALL_DIR"
     else
@@ -108,11 +121,11 @@ else
     echo "You need a vault password — either generate a random one or choose your own."
     echo
     ask "Generate a random vault password? [Y/n]:"
-    read -r gen_vault < /dev/tty
+    read -r gen_vault
 
     if [[ "$gen_vault" =~ ^[Nn]$ ]]; then
         ask "Enter your vault password:"
-        read -rs vault_pw < /dev/tty
+        read -rs vault_pw
         echo
         echo -n "$vault_pw" > "$VAULT_PW_FILE"
     else
@@ -153,19 +166,19 @@ DEFAULT_HOSTNAME=$(hostname -s 2>/dev/null)
 DEFAULT_USER=$(whoami)
 
 ask "Server IP address [$DEFAULT_IP]:"
-read -r SERVER_IP < /dev/tty
+read -r SERVER_IP
 SERVER_IP=${SERVER_IP:-$DEFAULT_IP}
 
 ask "Server hostname [$DEFAULT_HOSTNAME]:"
-read -r SERVER_HOSTNAME < /dev/tty
+read -r SERVER_HOSTNAME
 SERVER_HOSTNAME=${SERVER_HOSTNAME:-$DEFAULT_HOSTNAME}
 
 ask "Your username [$DEFAULT_USER]:"
-read -r SERVER_USER < /dev/tty
+read -r SERVER_USER
 SERVER_USER=${SERVER_USER:-$DEFAULT_USER}
 
 ask "LAN subnet (for Pi-hole) [$DEFAULT_NETWORK]:"
-read -r LAN_NETWORK < /dev/tty
+read -r LAN_NETWORK
 LAN_NETWORK=${LAN_NETWORK:-$DEFAULT_NETWORK}
 # Convert to CIDR notation if needed (e.g., 192.168.1.5/24 → 192.168.1.0/24)
 LAN_PREFIX=$(echo "$LAN_NETWORK" | cut -d/ -f2)
@@ -173,7 +186,7 @@ LAN_NETWORK_BASE=$(echo "$LAN_NETWORK" | cut -d/ -f1 | awk -F. '{printf "%s.%s.%
 LAN_CIDR="${LAN_NETWORK_BASE}/${LAN_PREFIX}"
 
 ask "LAN gateway/router [$DEFAULT_GATEWAY]:"
-read -r LAN_GATEWAY < /dev/tty
+read -r LAN_GATEWAY
 LAN_GATEWAY=${LAN_GATEWAY:-$DEFAULT_GATEWAY}
 
 echo
@@ -181,7 +194,7 @@ echo -e "${BOLD}--- Timezone ---${NC}"
 echo
 DEFAULT_TZ=$(timedatectl show -p Timezone --value 2>/dev/null || echo "UTC")
 ask "Timezone [$DEFAULT_TZ]:"
-read -r TIMEZONE < /dev/tty
+read -r TIMEZONE
 TIMEZONE=${TIMEZONE:-$DEFAULT_TZ}
 
 echo
@@ -215,7 +228,7 @@ for svc in "${SERVICE_ORDER[@]}"; do
     else
         ask "Deploy $svc? ($desc) [y/N]:"
     fi
-    read -r answer < /dev/tty
+    read -r answer
     if [[ "$svc" == "caddy" || "$svc" == "dashboard" ]]; then
         [[ ! "$answer" =~ ^[Nn]$ ]] && SELECTED_SERVICES+=("$svc")
     else
@@ -427,7 +440,7 @@ for svc in "${SELECTED_SERVICES[@]}"; do
 done
 echo
 ask "Proceed with deployment? [Y/n]:"
-read -r proceed < /dev/tty
+read -r proceed
 if [[ "$proceed" =~ ^[Nn]$ ]]; then
     echo
     ok "Setup complete! Configuration files generated at:"
@@ -452,7 +465,7 @@ for svc in "${SELECTED_SERVICES[@]}"; do
     else
         err "$svc deployment failed. Check the output above."
         ask "Continue with remaining services? [Y/n]:"
-        read -r cont < /dev/tty
+        read -r cont
         [[ "$cont" =~ ^[Nn]$ ]] && break
     fi
     echo
