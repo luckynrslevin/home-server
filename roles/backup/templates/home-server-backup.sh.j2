@@ -155,10 +155,10 @@ backup_rsync_volume samba {{ my_linux_users.samba.uid }} systemd-samba-data xcha
 start_service samba {{ my_linux_users.samba.uid }} samba
 
 # === Syncthing ===
-# Single combined volume on this host (config + data live together).
 log "--- Syncthing ---"
 stop_service syncthg {{ my_linux_users.syncthg.uid }} syncthing
-backup_rsync_volume syncthg {{ my_linux_users.syncthg.uid }} systemd-syncthing syncthing
+backup_tar_volume syncthg {{ my_linux_users.syncthg.uid }} systemd-syncthing-config
+backup_rsync_volume syncthg {{ my_linux_users.syncthg.uid }} systemd-syncthing-data syncthing
 start_service syncthg {{ my_linux_users.syncthg.uid }} syncthing
 
 # === Jukebox ===
