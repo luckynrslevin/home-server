@@ -35,6 +35,7 @@
     path: /var/www/dashboard
     state: directory
     mode: "0755"
+    setype: container_file_t
 
 - name: Save current role path
   ansible.builtin.set_fact:
