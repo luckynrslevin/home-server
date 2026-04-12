@@ -1,0 +1,29 @@
+---
+# Unified playbook: deploys all services listed in deploy_services for each host.
+#
+# Usage:
+#   ansible-playbook playbooks/site.yml --limit homeserver       # production
+#   ansible-playbook playbooks/site.yml --limit homeserver-test  # test
+#   ansible-playbook playbooks/site.yml                          # all hosts
+#
+# Each host defines its own deploy_services list in host_vars.
+# If deploy_services is not defined, nothing is deployed (safe default).
+# Individual playbooks (e.g. playbooks/syncthing.yml) still work for
+# targeted single-service deploys.
+
+- name: Deploy all selected services
+  hosts: homeservers
+  become: true
+  gather_facts: true
+
+  roles:
+    - { role: caddy,         when: "'caddy' in (deploy_services | default([]))" }
+    - { role: dashboard,     when: "'dashboard' in (deploy_services | default([]))" }
+    - { role: pihole,        when: "'pihole' in (deploy_services | default([]))" }
+    - { role: syncthing,     when: "'syncthing' in (deploy_services | default([]))" }
+    - { role: samba,         when: "'samba' in (deploy_services | default([]))" }
+    - { role: shairportsync, when: "'shairportsync' in (deploy_services | default([]))" }
+    - { role: jukebox,       when: "'jukebox' in (deploy_services | default([]))" }
+    - { role: entephoto,     when: "'entephoto' in (deploy_services | default([]))" }
+    - { role: wireguard,     when: "'wireguard' in (deploy_services | default([]))" }
+    - { role: backup,        when: "'backup' in (deploy_services | default([]))" }

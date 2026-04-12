@@ -310,6 +310,17 @@ WIREGUARD_PRIVKEY=$(openssl rand -base64 32)
 {
 cat << YAML
 ##################################################################################################
+### Services to deploy on this host (used by playbooks/site.yml)
+deploy_services:
+YAML
+
+for svc in "${SELECTED_SERVICES[@]}"; do
+    echo "  - $svc"
+done
+
+cat << YAML
+
+##################################################################################################
 ### Linux users — service accounts with fixed UIDs
 my_linux_users:
   $SERVER_USER:
@@ -470,27 +481,20 @@ if [[ "$proceed" =~ ^[Nn]$ ]]; then
     echo
     echo "Deploy manually anytime with:"
     echo "  cd $INSTALL_DIR"
-    for svc in "${SELECTED_SERVICES[@]}"; do
-        echo "  ansible-playbook playbooks/${svc}.yml --limit homeserver"
-    done
+    echo "  ansible-playbook playbooks/site.yml --limit homeserver"
     exit 0
 fi
 
 echo
 
-# Deploy in the right order
-for svc in "${SELECTED_SERVICES[@]}"; do
-    info "Deploying $svc..."
-    if ansible-playbook "playbooks/${svc}.yml" --limit homeserver 2>&1 | tail -5; then
-        ok "$svc deployed successfully."
-    else
-        err "$svc deployment failed. Check the output above."
-        ask "Continue with remaining services? [Y/n]:"
-        read -r cont
-        [[ "$cont" =~ ^[Nn]$ ]] && break
-    fi
-    echo
-done
+info "Deploying selected services..."
+ansible-playbook playbooks/site.yml --limit homeserver
+DEPLOY_EXIT=$?
+
+if [[ $DEPLOY_EXIT -ne 0 ]]; then
+    warn "Some services may have failed. Check the output above."
+    echo "Re-run with: cd $INSTALL_DIR && ansible-playbook playbooks/site.yml --limit homeserver"
+fi
 
 # ============================================================================
 # Done!
