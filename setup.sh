@@ -68,7 +68,7 @@ INSTALL_DIR="$HOME/home-server"
 if [[ -d "$INSTALL_DIR" ]]; then
     warn "$INSTALL_DIR already exists."
     ask "Overwrite it? [y/N]:"
-    read -r overwrite
+    read -r overwrite < /dev/tty
     if [[ "$overwrite" =~ ^[Yy]$ ]]; then
         rm -rf "$INSTALL_DIR"
     else
@@ -108,11 +108,11 @@ else
     echo "You need a vault password — either generate a random one or choose your own."
     echo
     ask "Generate a random vault password? [Y/n]:"
-    read -r gen_vault
+    read -r gen_vault < /dev/tty
 
     if [[ "$gen_vault" =~ ^[Nn]$ ]]; then
         ask "Enter your vault password:"
-        read -rs vault_pw
+        read -rs vault_pw < /dev/tty
         echo
         echo -n "$vault_pw" > "$VAULT_PW_FILE"
     else
@@ -153,19 +153,19 @@ DEFAULT_HOSTNAME=$(hostname -s 2>/dev/null)
 DEFAULT_USER=$(whoami)
 
 ask "Server IP address [$DEFAULT_IP]:"
-read -r SERVER_IP
+read -r SERVER_IP < /dev/tty
 SERVER_IP=${SERVER_IP:-$DEFAULT_IP}
 
 ask "Server hostname [$DEFAULT_HOSTNAME]:"
-read -r SERVER_HOSTNAME
+read -r SERVER_HOSTNAME < /dev/tty
 SERVER_HOSTNAME=${SERVER_HOSTNAME:-$DEFAULT_HOSTNAME}
 
 ask "Your username [$DEFAULT_USER]:"
-read -r SERVER_USER
+read -r SERVER_USER < /dev/tty
 SERVER_USER=${SERVER_USER:-$DEFAULT_USER}
 
 ask "LAN subnet (for Pi-hole) [$DEFAULT_NETWORK]:"
-read -r LAN_NETWORK
+read -r LAN_NETWORK < /dev/tty
 LAN_NETWORK=${LAN_NETWORK:-$DEFAULT_NETWORK}
 # Convert to CIDR notation if needed (e.g., 192.168.1.5/24 → 192.168.1.0/24)
 LAN_PREFIX=$(echo "$LAN_NETWORK" | cut -d/ -f2)
@@ -173,7 +173,7 @@ LAN_NETWORK_BASE=$(echo "$LAN_NETWORK" | cut -d/ -f1 | awk -F. '{printf "%s.%s.%
 LAN_CIDR="${LAN_NETWORK_BASE}/${LAN_PREFIX}"
 
 ask "LAN gateway/router [$DEFAULT_GATEWAY]:"
-read -r LAN_GATEWAY
+read -r LAN_GATEWAY < /dev/tty
 LAN_GATEWAY=${LAN_GATEWAY:-$DEFAULT_GATEWAY}
 
 echo
@@ -181,7 +181,7 @@ echo -e "${BOLD}--- Timezone ---${NC}"
 echo
 DEFAULT_TZ=$(timedatectl show -p Timezone --value 2>/dev/null || echo "UTC")
 ask "Timezone [$DEFAULT_TZ]:"
-read -r TIMEZONE
+read -r TIMEZONE < /dev/tty
 TIMEZONE=${TIMEZONE:-$DEFAULT_TZ}
 
 echo
@@ -215,7 +215,7 @@ for svc in "${SERVICE_ORDER[@]}"; do
     else
         ask "Deploy $svc? ($desc) [y/N]:"
     fi
-    read -r answer
+    read -r answer < /dev/tty
     if [[ "$svc" == "caddy" || "$svc" == "dashboard" ]]; then
         [[ ! "$answer" =~ ^[Nn]$ ]] && SELECTED_SERVICES+=("$svc")
     else
@@ -231,12 +231,17 @@ ok "Selected services: ${SELECTED_SERVICES[*]}"
 # ============================================================================
 info "Step 6/7: Generating configuration files..."
 
-# Helper: vault-encrypt a string
+# Helper: vault-encrypt a string.
+# Uses a temp file to avoid stdin conflicts when the script is piped via curl.
 vault_encrypt() {
     local value=$1 name=$2
-    echo -n "$value" | ansible-vault encrypt_string \
+    local tmpfile
+    tmpfile=$(mktemp)
+    echo -n "$value" > "$tmpfile"
+    ansible-vault encrypt_string \
         --vault-password-file "$VAULT_PW_FILE" \
-        --stdin-name "$name" 2>/dev/null
+        --stdin-name "$name" < "$tmpfile" 2>/dev/null
+    rm -f "$tmpfile"
 }
 
 # --- Generate inventory/hosts.yml ---
@@ -422,7 +427,7 @@ for svc in "${SELECTED_SERVICES[@]}"; do
 done
 echo
 ask "Proceed with deployment? [Y/n]:"
-read -r proceed
+read -r proceed < /dev/tty
 if [[ "$proceed" =~ ^[Nn]$ ]]; then
     echo
     ok "Setup complete! Configuration files generated at:"
@@ -447,7 +452,7 @@ for svc in "${SELECTED_SERVICES[@]}"; do
     else
         err "$svc deployment failed. Check the output above."
         ask "Continue with remaining services? [Y/n]:"
-        read -r cont
+        read -r cont < /dev/tty
         [[ "$cont" =~ ^[Nn]$ ]] && break
     fi
     echo
