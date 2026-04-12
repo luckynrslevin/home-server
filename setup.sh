@@ -19,14 +19,19 @@ set -euo pipefail
 # --- Detect pipe mode and re-exec from a file ---
 # When run via `curl ... | bash`, stdin is the script stream, not the
 # terminal. Interactive prompts and ansible-vault both need real stdin.
-# Detect this, save the script to a temp file, and re-exec it.
-if [[ ! -t 0 ]]; then
-    echo "Detected pipe mode — downloading script and re-executing..."
-    SELF_URL="https://raw.githubusercontent.com/luckynrslevin/home-server/main/setup.sh"
+# Detect this, save ourselves to a temp file, and re-exec.
+if [[ "${_SETUP_REEXEC:-}" != "1" && ! -t 0 ]]; then
+    echo "Detected pipe mode — saving script and re-executing..."
     SELF_PATH="/tmp/home-server-setup.sh"
-    curl -fsSL "$SELF_URL" -o "$SELF_PATH"
+    # The script content is already being read from stdin by bash.
+    # Download a fresh copy to the temp file.
+    curl -fsSL "https://raw.githubusercontent.com/luckynrslevin/home-server/main/setup.sh" \
+        -o "$SELF_PATH"
     chmod +x "$SELF_PATH"
-    exec bash "$SELF_PATH" "$@" < /dev/tty
+    # Set flag to prevent infinite loop, then exec with no stdin redirect
+    # (the new bash process gets a fresh terminal stdin by default).
+    export _SETUP_REEXEC=1
+    exec bash "$SELF_PATH" "$@"
 fi
 
 # --- Colors ---
