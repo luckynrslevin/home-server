@@ -3,6 +3,20 @@
 # Restores device identity and config from backup files.
 # Only runs when syncthing_restore_config is true.
 # Can be re-run independently to restore config without redeploying the container.
+#
+# Requires syncthing_config_path to point at a directory containing:
+#   config.xml.j2, cert.pem, key.pem
+# Override per-host in host_vars (e.g. pointing at the private repo).
+
+- name: Restore config - validate syncthing_config_path is set
+  ansible.builtin.assert:
+    that:
+      - syncthing_config_path | length > 0
+    fail_msg: >
+      syncthing_restore_config is true but syncthing_config_path is empty.
+      Set syncthing_config_path in host_vars to a directory containing
+      config.xml.j2, cert.pem, and key.pem for this host.
+  when: syncthing_restore_config | bool
 
 - name: Restore config - stop container service
   become: true
@@ -25,7 +39,7 @@
 - name: Restore config - deploy config.xml
   become: true
   ansible.builtin.template:
-    src: "{{ syncthing_role_path }}/templates/volumes/syncthing-config/config/config.xml.j2"
+    src: "{{ syncthing_config_path }}/config.xml.j2"
     dest: "{{ syncthing_config_volume_path.stdout }}/config/config.xml"
     mode: "0600"
   when: syncthing_restore_config | bool
@@ -33,7 +47,7 @@
 - name: Restore config - deploy cert.pem
   become: true
   ansible.builtin.copy:
-    src: "{{ syncthing_role_path }}/files/volumes/syncthing-config/config/cert.pem"
+    src: "{{ syncthing_config_path }}/cert.pem"
     dest: "{{ syncthing_config_volume_path.stdout }}/config/cert.pem"
     mode: "0644"
   when: syncthing_restore_config | bool
@@ -41,7 +55,7 @@
 - name: Restore config - deploy key.pem
   become: true
   ansible.builtin.copy:
-    src: "{{ syncthing_role_path }}/files/volumes/syncthing-config/config/key.pem"
+    src: "{{ syncthing_config_path }}/key.pem"
     dest: "{{ syncthing_config_volume_path.stdout }}/config/key.pem"
     mode: "0600"
   when: syncthing_restore_config | bool
