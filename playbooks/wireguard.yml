@@ -1,6 +1,6 @@
 ---
 - name: Install WireGuard VPN server
-  hosts: homeserver
+  hosts: homeservers
   become: true
   gather_facts: true
 

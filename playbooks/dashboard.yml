@@ -1,5 +1,5 @@
 - name: Deploy home server dashboard
-  hosts: homeserver
+  hosts: homeservers
   become: true
   gather_facts: true
 

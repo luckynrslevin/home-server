@@ -1,5 +1,5 @@
 - name: Deploy Caddy web server on home server
-  hosts: homeserver
+  hosts: homeservers
   become: true
   gather_facts: true
 

@@ -1,5 +1,5 @@
 - name: Install samba container on my home server
-  hosts: homeserver
+  hosts: homeservers
   become: true
   gather_facts: true
 
