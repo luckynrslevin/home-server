@@ -26,13 +26,23 @@
     mode: '0644'
   register: blacklist_result
 
-# Reboot the system if the line was added
+# Reboot the system if the line was added (skip for local connections —
+# rebooting the controller would kill the playbook).
 - name: Reboot the system if the line was added
   become: true
   ansible.builtin.reboot:
     msg: "Rebooting to apply modprobe blacklist change"
     test_command: whoami
-  when: blacklist_result.changed  # noqa: no-handler # Reboot only if the file was modified
+  when:
+    - blacklist_result.changed  # noqa: no-handler
+    - ansible_connection != "local"
+
+- name: Notify about pending reboot for local connection
+  ansible.builtin.debug:
+    msg: "Kernel module blacklist changed — reboot this server manually to apply."
+  when:
+    - blacklist_result.changed
+    - ansible_connection == "local"
 
 # Wait for the system to be online after reboot
 - name: Wait for the system to be online after reboot
@@ -41,9 +51,6 @@
     port: 22
     timeout: 600
     state: started
-  when: blacklist_result.changed  # noqa: no-handler # Only wait in case of reboot
-
-# Continue with further tasks after reboot
-- name: Continue with further tasks after reboot
-  ansible.builtin.debug:
-    msg: "The system is back online and ready for further tasks"
+  when:
+    - blacklist_result.changed  # noqa: no-handler
+    - ansible_connection != "local"
