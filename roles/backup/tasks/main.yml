@@ -34,8 +34,8 @@
 
 - name: Deploy backup systemd timer unit
   become: true
-  ansible.builtin.copy:
-    src: home-server-backup.timer
+  ansible.builtin.template:
+    src: home-server-backup.timer.j2
     dest: /etc/systemd/system/home-server-backup.timer
     mode: "0644"
   register: backup_timer_unit

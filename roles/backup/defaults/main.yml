@@ -8,6 +8,9 @@
 #   backup doesn't depend on external DNS being up
 # - backup_nas_volume: absolute path prefix on the NAS where the shared
 #   folders live (e.g. Synology uses "/volume1" for the first storage volume)
+# Time of day for the nightly backup (systemd OnCalendar format, HH:MM:SS).
+backup_time: "02:00:00"
+
 backup_nas_hostname: nas
 backup_nas_ip: 192.168.x.x
 backup_nas_volume: /volume1
