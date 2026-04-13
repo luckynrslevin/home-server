@@ -42,6 +42,8 @@ The server acts as its own Ansible controller — no separate workstation
 needed. After the script finishes, open `http://<server-ip>` to see
 your dashboard.
 
+In case you face issues with individual services, see Tips and Tricks section below.
+
 If you prefer more control over the setup, follow the manual steps
 below.
 
