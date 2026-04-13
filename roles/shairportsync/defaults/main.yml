@@ -1,5 +1,5 @@
 # AirPlay device name (visible on iPhones, Macs, etc.)
-shairportsync_airplay_name: "Home Server"
+shairportsync_airplay_name: "{{ ansible_hostname }}"
 
 # Audio output device
 shairportsync_audio_device: "/dev/snd"
