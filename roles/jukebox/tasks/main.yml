@@ -28,6 +28,16 @@
 #       be detected by the squeezelite container. However, after the first reboot
 #       it is working properly.
 
+# os-audio writes /etc/asound.conf when the host's playback card isn't
+# card 0 (typical for VMs with virtio-snd) and registers
+# `asound_conf_stat` so the player quadlet template can decide whether
+# to bind-mount the override. Without this, squeezelite crashes at
+# startup with "playback open error", which tears down the entire pod
+# (including LMS) before LMS can create prefs/server.prefs.
+- name: Install audio prerequisites on os level
+  ansible.builtin.import_role:
+    name: os-audio
+
 - name: Enable linger for rootless user
   become: true
   ansible.builtin.command:
