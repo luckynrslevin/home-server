@@ -44,19 +44,28 @@ pihole_api_password: !vault |
 
 ##################################################################################################
 ### Syncthing configuration
-### The GUI password hash can be obtained from an existing syncthing instance.
-### The API key can be found in syncthing's config.xml.
-syncthing_gui_password_hash: !vault |
-          <your vault-encrypted hash here>
-syncthing_api_key: !vault |
-          <your vault-encrypted key here>
+### Fresh install: no secrets needed. Syncthing will generate its own
+### device identity on first start; set the admin password via the web
+### UI at https://<server-ip>:8384 on first visit.
+###
+### Only when restoring a previous identity (to preserve your device
+### ID + GUI auth) — see roles/syncthing/README.md — do you need to:
+###   - place config.xml.j2, cert.pem, key.pem in
+###     inventory/host_vars/<hostname>/syncthing/
+###   - set syncthing_restore_config: true below
+###   - vault these two values that match your saved config.xml.j2:
+# syncthing_gui_password_hash: !vault |
+#           <your vault-encrypted bcrypt hash here>
+# syncthing_api_key: !vault |
+#           <your vault-encrypted API key here>
 ##################################################################################################
 
 ##################################################################################################
 ### Jukebox (Lyrion Music Server) configuration
-### Generate: openssl rand -hex 16 | ansible-vault encrypt_string --stdin-name 'jukebox_security_secret'
-jukebox_security_secret: !vault |
-          <your vault-encrypted secret here>
+### Fresh install: no secrets needed. Configure admin password + skin
+### via the LMS web UI at http://<server-ip>:9100 on first visit.
+### Set jukebox_squeezelite_mac to pin the player identity across
+### redeploys; setup.sh generates one automatically.
 ##################################################################################################
 
 ##################################################################################################

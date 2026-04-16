@@ -295,8 +295,6 @@ info "Generating secrets (this takes a moment)..."
 
 # Generate all secrets
 PIHOLE_PW=$(openssl rand -base64 24)
-SYNCTHING_PW=$(openssl rand -base64 24)
-SYNCTHING_KEY=$(openssl rand -hex 16)
 ENTEPHOTO_DB_PW=$(openssl rand -base64 24)
 ENTEPHOTO_MINIO_PW=$(openssl rand -base64 24)
 ENTEPHOTO_ENC_KEY=$(openssl rand -base64 32)
@@ -363,11 +361,6 @@ YAML
 
 echo ""
 vault_encrypt "$PIHOLE_PW" "pihole_api_password"
-echo ""
-echo "### Syncthing"
-vault_encrypt "$SYNCTHING_PW" "syncthing_gui_password_hash"
-echo ""
-vault_encrypt "$SYNCTHING_KEY" "syncthing_api_key"
 echo ""
 echo "### Jukebox"
 echo "jukebox_squeezelite_mac: \"$JUKEBOX_MAC\""
