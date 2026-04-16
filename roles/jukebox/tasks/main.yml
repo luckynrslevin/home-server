@@ -28,16 +28,6 @@
 #       be detected by the squeezelite container. However, after the first reboot
 #       it is working properly.
 
-# Sets `asound_conf_stat` and may write /etc/asound.conf if the host's
-# default ALSA card is not card 0 (typical on VMs with virtio-snd).
-# The squeezelite quadlet template bind-mounts /etc/asound.conf when it
-# exists — without this, the player crashes with
-# "playback open error: No such file or directory" and the whole pod
-# is torn down before LMS can create prefs/server.prefs.
-- name: Install audio prerequisites on os level
-  ansible.builtin.import_role:
-    name: os-audio
-
 - name: Enable linger for rootless user
   become: true
   ansible.builtin.command:
@@ -71,7 +61,7 @@
       - jukebox-server-config.volume
       - jukebox-server-playlist.volume
       - jukebox-server-music.volume
-      - jukebox-player.container.j2
+      - jukebox-player.container
       - jukebox.pod
       - jukebox.network
     podman_quadlet_volumes_files_to_stage:
