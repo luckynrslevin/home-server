@@ -38,28 +38,16 @@ the preset matching your hardware in your host_vars.
 
 ## Secrets
 
-| Variable                  | Purpose                                                  |
-|---------------------------|----------------------------------------------------------|
-| `jukebox_security_secret` | Internal LMS API token, written to `prefs/server.prefs`. |
-
-Generate and vault:
-
-```bash
-openssl rand -hex 16 | ansible-vault encrypt_string \
-  --encrypt-vault-id default --stdin-name 'jukebox_security_secret'
-```
-
-Inspect a stored secret:
-
-```bash
-ansible -i inventory/hosts.yml homeserver -m debug -a "var=jukebox_security_secret"
-```
+None. All LMS configuration (admin password, skin, language, library
+paths, plugins) is done through the web UI on first visit — whatever
+you choose there is persisted in the `jukebox-server-config` volume
+and therefore captured by the backup role.
 
 ## Firewall ports
 
-- **9100/tcp** — Web UI (Material Skin).
+- **9100/tcp** — Web UI.
 
-(Optional, commented out in [tasks/main.yml](tasks/main.yml#L88-L91):
+(Optional, commented out in [tasks/main.yml](tasks/main.yml):
 `9090/tcp` for external Squeezebox-protocol clients,
 `3483/tcp+udp` for player ↔ server — not needed when both run in the
 same pod.)
@@ -70,9 +58,10 @@ same pod.)
 
 ## Volumes
 
-- `jukebox-server-config` — LMS prefs + Material Skin plugin.
+- `jukebox-server-config` — LMS prefs, installed plugins (e.g. Material
+  Skin when you enable it via the UI), library database.
 - `jukebox-server-music` — your music library.
-- `jukebox-server-playlist` — playlists.
+- `jukebox-server-playlist` — playlists saved from LMS.
 
 ## Deployment
 
@@ -80,13 +69,12 @@ same pod.)
 ansible-playbook playbooks/jukebox.yml --limit homeserver
 ```
 
-## Post-install behaviour
-
-[postinstall.yml](tasks/postinstall.yml) downloads the latest
-[Material Skin](https://github.com/CDrummond/lms-material) release
-from GitHub, unzips it into the config volume, and restarts the pod
-so LMS picks it up. Reruns are no-ops once the plugin is present —
-re-deploy the role to refresh it.
+The role stages `favorites.opml` into the config volume so LMS starts
+with your curated radio favourites, pre-pulls both container images
+to avoid first-deploy systemd timeouts, and then starts the pod.
+Everything else (enabling Material Skin, setting the admin password,
+language, library paths, etc.) is done interactively in the LMS web
+UI on first access and persisted in the config volume.
 
 ## Tips and troubleshooting
 

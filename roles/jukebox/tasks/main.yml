@@ -95,17 +95,8 @@
             mode: "0700"
           - src: prefs/favorites.opml
             mode: "0600"
-    # NOTE: prefs/server.prefs is created by Lyrion Music Server itself on
-    # first startup, so we cannot patch it via the Galaxy role's
-    # podman_quadlet_volumes_config_patches mechanism (it patches
-    # immediately after starting the container, before LMS has written the
-    # file). Instead, postinstall.yml waits for the file to appear and
-    # patches it from there. See issue #1.
     podman_quadlet_firewall_ports:
       - "9100/tcp" # For access to  web interface
       # - "9090/tcp" # only required for external clients (e.g. smart phone)
       # - "3483/tcp" # player and server communicate over
       # - "3483/udp" # pod related network
-
-- name: Run post-install configuration
-  ansible.builtin.import_tasks: postinstall.yml
