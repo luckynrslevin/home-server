@@ -41,6 +41,7 @@
           - 7000/tcp
           - 3689/tcp
           - 5000/tcp
+          - 5353/udp           # mDNS / Bonjour — required for AirPlay discovery
           - 32768-60999/tcp
           - 32768-60999/udp
           - 6000-6009/udp
