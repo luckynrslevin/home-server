@@ -61,7 +61,7 @@
       - jukebox-server-config.volume
       - jukebox-server-playlist.volume
       - jukebox-server-music.volume
-      - jukebox-player.container
+      - jukebox-player.container.j2
       - jukebox.pod
       - jukebox.network
     podman_quadlet_volumes_files_to_stage:

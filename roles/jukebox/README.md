@@ -18,8 +18,14 @@ host plays music from its own library through its sound card.
 
 ## Variables
 
-None. Configuration lives entirely in the staged `server.prefs`
-patches and the deployed Material Skin plugin.
+| Variable                       | Default     | Purpose                                                                                  |
+|--------------------------------|-------------|------------------------------------------------------------------------------------------|
+| `jukebox_squeezelite_preset`   | `default`   | Squeezelite preset matching your DAC (e.g. `topping-D10s`, `x20`, `aune-s6`, `default`). |
+
+The squeezelite container ships a catalogue of presets for specific
+DACs. `default` falls back to ALSA's default device, which is fine
+for built-in audio but won't work in a VM without a real DAC. Set
+the preset matching your hardware in your host_vars.
 
 ## Secrets
 

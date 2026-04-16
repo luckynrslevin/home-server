@@ -1,0 +1,8 @@
+---
+# Squeezelite preset selecting the audio output device. The
+# giof71/squeezelite image ships a catalogue of presets matching
+# specific DACs (e.g. "topping-D10s", "x20", "aune-s6"). Override
+# per-host in inventory to match your hardware. The "default" preset
+# uses ALSA's default device — fine for hosts with built-in audio,
+# wrong for VMs without a real DAC.
+jukebox_squeezelite_preset: "default"
