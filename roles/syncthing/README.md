@@ -14,37 +14,17 @@ between your devices. Web UI on port 8384.
 
 ## Variables
 
-| Variable                     | Default                                                            | Purpose                                                              |
-|------------------------------|--------------------------------------------------------------------|----------------------------------------------------------------------|
-| `syncthing_gui_port`         | `8384`                                                             | Web UI HTTPS port.                                                   |
-| `syncthing_listen_port`      | `22000`                                                            | Sync protocol port (peer-to-peer).                                   |
-| `syncthing_discovery_port`   | `21027`                                                            | Local discovery (UDP broadcast).                                     |
-| `syncthing_restore_config`   | `false`                                                            | If `true`, restore device identity from backup files (see below).    |
-| `syncthing_config_path`      | `{{ inventory_dir }}/host_vars/{{ inventory_hostname }}/syncthing` | Where the role looks for restore files.                              |
+| Variable                     | Default | Purpose                                  |
+|------------------------------|---------|------------------------------------------|
+| `syncthing_gui_port`         | `8384`  | Web UI HTTPS port.                       |
+| `syncthing_listen_port`      | `22000` | Sync protocol port (peer-to-peer).       |
+| `syncthing_discovery_port`   | `21027` | Local discovery (UDP broadcast).         |
 
 ## Secrets
 
-**Fresh install: none.** Syncthing generates its own device identity
-on first start; set the admin password via the web UI on first
-visit at `https://<server-ip>:8384`.
-
-Two secrets become relevant only when you [restore a previous
-identity](#restoring-a-previous-syncthing-identity):
-
-| Variable                       | Purpose                                                                          |
-|--------------------------------|----------------------------------------------------------------------------------|
-| `syncthing_gui_password_hash`  | Bcrypt hash rendered into `config.xml.j2` under `<password>`.                    |
-| `syncthing_api_key`            | API key rendered into `config.xml.j2` under `<apikey>`.                          |
-
-Copy both values out of the `config.xml` from the installation
-you're restoring (the role re-renders that file from your saved
-`config.xml.j2` template, which needs these substitutions). To
-inspect a stored value:
-
-```bash
-ansible -i inventory/hosts.yml homeserver -m debug -a "var=syncthing_gui_password_hash"
-ansible -i inventory/hosts.yml homeserver -m debug -a "var=syncthing_api_key"
-```
+None. Syncthing generates its own device identity and API key on
+first start; set the admin password via the web UI on first visit
+at `https://<server-ip>:8384`.
 
 ## Firewall ports
 
@@ -73,34 +53,33 @@ ansible-playbook playbooks/syncthing.yml --limit homeserver
 
 ## Restoring a previous Syncthing identity
 
-To preserve a host's device ID, GUI auth, and API key across
-re-installs, keep an identity bundle under
-`inventory/host_vars/<hostname>/syncthing/` in your **private** repo:
+Use the standard volume-restore flow — same as every other role.
+The [backup role](../backup/README.md) tars
+`systemd-syncthing-config` nightly (≈35 MB); that archive contains
+the full `config.xml`, `cert.pem`, `key.pem` and the sync index
+database, which is everything needed to come back as the same
+Syncthing device.
 
+```bash
+# 1. Deploy the role (creates an empty config volume)
+ansible-playbook playbooks/syncthing.yml --limit homeserver
+
+# 2. Stop the container so the volume is safe to overwrite
+sudo -u syncthg XDG_RUNTIME_DIR=/run/user/1003 \
+    systemctl --user stop syncthing
+
+# 3. Overwrite the config volume with the backup tarball
+sudo -u syncthg podman volume rm systemd-syncthing-config
+sudo -u syncthg podman volume create systemd-syncthing-config
+gunzip -c /mnt/backup/tar/systemd-syncthing-config/<snapshot>.tar.gz \
+    | sudo -u syncthg podman volume import systemd-syncthing-config -
+
+# 4. Start the container — same device ID, same GUI password, same API key
+sudo -u syncthg XDG_RUNTIME_DIR=/run/user/1003 \
+    systemctl --user start syncthing
 ```
-config.xml.j2     # Jinja template of the previous config.xml with
-                  # {{ syncthing_gui_password_hash }} and
-                  # {{ syncthing_api_key }} placeholders in place of
-                  # the literal <password> and <apikey> values
-cert.pem          # device certificate (plain file)
-key.pem           # device private key (plain file)
-```
 
-Then in the same host's `main.yml`:
-
-```yaml
-syncthing_restore_config: true
-syncthing_gui_password_hash: !vault | ...   # matches config.xml.j2
-syncthing_api_key: !vault | ...             # matches config.xml.j2
-```
-
-Re-run the playbook. The post-install task:
-1. Stops the container.
-2. Renders `config.xml.j2` (substituting the two vaulted secrets) and
-   copies `cert.pem`/`key.pem` into the config volume.
-3. Fixes ownership via `podman unshare chown` (rootless UID mapping).
-4. Restarts the container — it now comes up with the previous
-   device ID and credentials.
-
-Fresh installs leave `syncthing_restore_config` at its `false` default
-and skip the block entirely.
+The synced data itself is mirrored nightly via rsync to the NAS
+`backup-syncthing` share — restore it back into
+`systemd-syncthing-data` the same way the backup role documents,
+via `podman unshare rsync`.

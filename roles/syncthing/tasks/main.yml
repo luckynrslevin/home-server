@@ -33,11 +33,10 @@
   ansible.builtin.set_fact:
     syncthing_role_path: "{{ role_path }}"
 
-# Deploy container using podman_quadlet.
-# When syncthing_restore_config is enabled, config backup files (config.xml,
-# cert.pem, key.pem) are staged into the config volume and SyncedDocs
-# directory is created in the data volume. The role handles UID/GID mapping
-# via 'podman unshare chown' for rootless containers.
+# Deploy container using podman_quadlet. Syncthing generates its own
+# device identity on first start. To preserve a previous identity
+# across reinstalls, restore the systemd-syncthing-config volume from
+# a backup tarball — see roles/backup/README.md.
 - name: Deploy container using podman_quadlet
   ansible.builtin.include_role:
     name: luckynrslevin.podman_quadlet
@@ -54,7 +53,3 @@
       - "{{ syncthing_listen_port }}/tcp"
       - "{{ syncthing_listen_port }}/udp"
       - "{{ syncthing_discovery_port }}/udp"
-
-
-- name: Run post-install configuration
-  ansible.builtin.import_tasks: postinstall.yml
