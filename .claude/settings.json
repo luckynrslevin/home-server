@@ -13,7 +13,26 @@
       "Bash(cp *)",
       "Bash(ssh ans-test *)",
       "Bash(ansible-lint *)",
-      "Bash(ansible-playbook *)"
+      "Bash(ansible-playbook *)",
+      "Bash(gh issue:*)",
+      "Bash(ssh -i '~/.ssh/ds' ds@192.168.1.231 'sudo su - jukebox -c '\\\\''podman exec jukebox-server ls -la /config/prefs/ 2>&1 | grep -iE \"player|squeeze\"'\\\\'':*)",
+      "Bash(ssh -i '~/.ssh/ds' ds@192.168.1.231 'cd /tmp && sudo -u jukebox podman run --rm --entrypoint env docker.io/giof71/squeezelite:latest 2>&1 | grep -iE '\\\\''name|mac|squeezelite'\\\\'' | head -10:*)",
+      "Bash(openssl rand:*)",
+      "Bash(ssh -i '~/.ssh/ds' ds@192.168.1.231 'echo === STOP POD ===:*)",
+      "Bash(ssh -i '~/.ssh/ds' ds@192.168.1.231 'cd /tmp:*)",
+      "Bash(ssh -i '~/.ssh/ds' ds@192.168.1.231 'echo === RENDERED PLAYER QUADLET ===:*)",
+      "Bash(ssh -i '~/.ssh/ds' ds@192.168.1.231 'echo === BLOCK DEVICES ===:*)",
+      "Bash(ssh -i '~/.ssh/ds' ds@192.168.1.231 'sudo mkdir -p /mnt/usb-debmac:*)",
+      "Bash(ssh -i '~/.ssh/ds' ds@192.168.1.231 'echo === Musik TOP-LEVEL ===:*)",
+      "Bash(ssh -i '~/.ssh/ds' ds@192.168.1.231 'echo === SIZES ===:*)",
+      "Bash(ssh -i '~/.ssh/ds' ds@192.168.1.231 'df -h /home 2>&1:*)",
+      "Bash(ssh -i '~/.ssh/ds' ds@192.168.1.231 'echo === SYNCTHING USER ===:*)",
+      "Bash(ssh -i '~/.ssh/ds' ds@192.168.1.231 'echo === HEALTHCHECK CONFIG IN CONTAINER ===:*)",
+      "Bash(ssh -i '~/.ssh/ds' ds@192.168.1.231 'echo === RENDERED HEALTHCHECK ===:*)",
+      "Bash(echo === Is syncthing_restore_config ever set true? ===)",
+      "Read(//home/ds/github/home-server-private/**)",
+      "Bash(ssh -i ~/.ssh/ds ds@192.168.1.231 \"cd /tmp && sudo -u syncthg podman ps --format '{{.Names}}  {{.Status}}' && echo === && sudo -u syncthg podman inspect syncthing --format 'health={{.State.Health.Status}} streak={{.State.Health.FailingStreak}}'\")",
+      "Bash(grep -n \"backup-deploy\\\\|backup.yml\" setup.sh docs/Quickstart.md roles/*/README.md)"
     ]
   }
 }

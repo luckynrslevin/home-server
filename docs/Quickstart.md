@@ -325,7 +325,7 @@ The backup role writes to NFS shares on a NAS. Configure
 your host vars, then:
 
 ```bash
-ansible-playbook playbooks/backup-deploy.yml --limit homeserver
+ansible-playbook playbooks/backup.yml --limit homeserver
 ```
 
 The backup runs at the time configured by `backup_time` (default:

@@ -129,7 +129,7 @@ Used for: entephoto Postgres (`entephoto-postgres` / `ente_db`).
 ## Deployment
 
 ```bash
-ansible-playbook playbooks/backup-deploy.yml --limit homeserver
+ansible-playbook playbooks/backup.yml --limit homeserver
 ```
 
 ## Restore
