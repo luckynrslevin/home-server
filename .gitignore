@@ -7,6 +7,9 @@ vault.pw
 # Private inventory and secrets (use *.example files as templates)
 inventory/hosts.yml
 inventory/host_vars/homeserver.yml
+# Local symlinks into the private repo
+inventory/host_vars/homeserver
+inventory/host_vars/homeserver-test
 
 # Syncthing personal config (device IDs, private key)
 roles/syncthing/files/volumes/syncthing-config/config/key.pem

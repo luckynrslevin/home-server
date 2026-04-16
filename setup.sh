@@ -392,14 +392,33 @@ echo "##########################################################################
 ok "Generated inventory/host_vars/homeserver/main.yml (with vault-encrypted secrets)"
 
 # --- Generate dashboard config ---
-cat > inventory/host_vars/homeserver/dashboard-config.yaml << EOF
-services:
+# Only include services that were actually selected for deployment, so
+# the dashboard doesn't display stale "Stopped" rows for un-deployed
+# services.
+is_selected() {
+    local needle=$1
+    for s in "${SELECTED_SERVICES[@]}"; do
+        [[ "$s" == "$needle" ]] && return 0
+    done
+    return 1
+}
+
+{
+echo "services:"
+
+if is_selected shairportsync; then
+cat << EOF
   - name: Shairport-sync
     user: root
     service: shairport-sync
     rootful: true
     volumes: []
 
+EOF
+fi
+
+if is_selected pihole; then
+cat << EOF
   - name: Pi-hole
     user: pihole
     uid: 1005
@@ -411,6 +430,11 @@ services:
       - systemd-pihole-etc
       - systemd-pihole-dnsmasq
 
+EOF
+fi
+
+if is_selected samba; then
+cat << EOF
   - name: Samba
     user: samba
     uid: 1010
@@ -418,6 +442,11 @@ services:
     volumes:
       - systemd-samba-data
 
+EOF
+fi
+
+if is_selected syncthing; then
+cat << EOF
   - name: Syncthing
     user: syncthg
     uid: 1003
@@ -428,6 +457,11 @@ services:
     volumes:
       - systemd-syncthing
 
+EOF
+fi
+
+if is_selected jukebox; then
+cat << EOF
   - name: Jukebox
     user: jukebox
     uid: 1006
@@ -440,6 +474,11 @@ services:
       - jukebox-server-music
       - jukebox-server-playlist
 
+EOF
+fi
+
+if is_selected entephoto; then
+cat << EOF
   - name: Ente Photos
     user: entephoto
     uid: 1008
@@ -453,7 +492,10 @@ services:
       - entephoto-postgres-data
       - entephoto-minio-data
       - entephoto-museum-config
+
 EOF
+fi
+} > inventory/host_vars/homeserver/dashboard-config.yaml
 
 ok "Generated inventory/host_vars/homeserver/dashboard-config.yaml"
 
@@ -494,6 +536,16 @@ DEPLOY_EXIT=$?
 if [[ $DEPLOY_EXIT -ne 0 ]]; then
     warn "Some services may have failed. Check the output above."
     echo "Re-run with: cd $INSTALL_DIR && ansible-playbook playbooks/site.yml --limit homeserver"
+fi
+
+# Rootless containers can take a moment to start after the playbook
+# finishes (linger user manager + image pulls). Refresh the dashboard
+# after a short delay so the first page view reflects real state instead
+# of the post-install "all stopped" snapshot.
+if is_selected dashboard; then
+    info "Refreshing dashboard..."
+    sleep 30
+    sudo systemctl start home-server-dashboard.service 2>/dev/null || true
 fi
 
 # ============================================================================
