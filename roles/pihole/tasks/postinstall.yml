@@ -3,16 +3,28 @@
 # Manages adlists and gravity database updates.
 # Can be re-run independently to update adlists without redeploying the container.
 
-# Configure Pi-hole adlists (v6 uses /etc/pihole/adlists.list, not SQLite)
-- name: Add adlists to Pi-hole # noqa: no-changed-when
+# Configure Pi-hole adlists.
+# Pi-hole v6 keeps adlists in the SQLite `adlist` table inside
+# /etc/pihole/gravity.db — the legacy /etc/pihole/adlists.list flat file
+# is no longer read by FTL. Insert each address with INSERT OR IGNORE so
+# repeat runs are no-ops and re-runs don't reset enabled/comment.
+- name: Add adlists to Pi-hole gravity.db # noqa: no-changed-when
   become: true
-  ansible.builtin.shell: |
-    su - pihole -c 'podman exec pihole sh -c "
-      {% for adlist in pihole_adlists %}
-      grep -qxF \"{{ adlist.address }}\" /etc/pihole/adlists.list 2>/dev/null || echo \"{{ adlist.address }}\" >> /etc/pihole/adlists.list
-      {% endfor %}
-    "'
-  register: pihole_adlists_result
+  ansible.builtin.command:
+    argv:
+      - sudo
+      - -u
+      - pihole
+      - --
+      - podman
+      - exec
+      - pihole
+      - pihole-FTL
+      - sqlite3
+      - /etc/pihole/gravity.db
+      - "INSERT OR IGNORE INTO adlist (address, enabled, comment) VALUES ('{{ item.address | replace(\"'\", \"''\") }}', 1, '{{ (item.comment | default('')) | replace(\"'\", \"''\") }}');"
+  loop: "{{ pihole_adlists }}"
+  changed_when: false
 
 - name: Fix listsCache permissions for rootless container
   become: true
