@@ -11,6 +11,7 @@
 - name: Add adlists to Pi-hole gravity.db # noqa: no-changed-when
   become: true
   ansible.builtin.command:
+    chdir: /tmp
     argv:
       - sudo
       - -u
