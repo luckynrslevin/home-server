@@ -297,12 +297,18 @@ info "Generating secrets (this takes a moment)..."
 PIHOLE_PW=$(openssl rand -base64 24)
 SYNCTHING_PW=$(openssl rand -base64 24)
 SYNCTHING_KEY=$(openssl rand -hex 16)
-JUKEBOX_SECRET=$(openssl rand -hex 16)
 ENTEPHOTO_DB_PW=$(openssl rand -base64 24)
 ENTEPHOTO_MINIO_PW=$(openssl rand -base64 24)
 ENTEPHOTO_ENC_KEY=$(openssl rand -base64 32)
 ENTEPHOTO_HASH_KEY=$(openssl rand -base64 64)
 ENTEPHOTO_JWT=$(openssl rand -hex 32)
+
+# Generate a stable, locally-administered unicast MAC for the
+# squeezelite player. First octet 0x02 sets the locally-administered
+# bit (b1=1) and clears the multicast bit (b0=0). LMS uses the MAC as
+# the player's identity, so a stable value keeps the player recognized
+# across redeploys and clean re-installs.
+JUKEBOX_MAC="02:$(openssl rand -hex 5 | sed 's/\(..\)/\1:/g;s/:$//')"
 
 # Build the host_vars file
 {
@@ -364,7 +370,7 @@ echo ""
 vault_encrypt "$SYNCTHING_KEY" "syncthing_api_key"
 echo ""
 echo "### Jukebox"
-vault_encrypt "$JUKEBOX_SECRET" "jukebox_security_secret"
+echo "jukebox_squeezelite_mac: \"$JUKEBOX_MAC\""
 echo ""
 echo "### Ente Photos"
 vault_encrypt "$ENTEPHOTO_DB_PW" "entephoto_db_password"

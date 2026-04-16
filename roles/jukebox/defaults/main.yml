@@ -6,3 +6,15 @@
 # uses ALSA's default device — fine for hosts with built-in audio,
 # wrong for VMs without a real DAC.
 jukebox_squeezelite_preset: "default"
+
+# Player name shown in the LMS UI. Defaulting it per-host keeps names
+# unique on a LAN without manual configuration, similar to what
+# shairportsync_airplay_name does for AirPlay.
+jukebox_squeezelite_name: "LMS-Player-{{ ansible_facts['hostname'] }}"
+
+# Stable MAC address for the squeezelite player. LMS uses the MAC as
+# the player's identity — so without a fixed value, every redeploy
+# shows up as a new player. Generated once per host at install time
+# by setup.sh and stored in host_vars. Empty string leaves it up to
+# the container entrypoint (random MAC, new identity on every start).
+jukebox_squeezelite_mac: ""

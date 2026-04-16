@@ -19,5 +19,9 @@ Volume=/etc/asound.conf:/etc/asound.conf:ro
 GroupAdd=keep-groups
 
 Environment=PRESET={{ jukebox_squeezelite_preset }}
+Environment=SQUEEZELITE_NAME={{ jukebox_squeezelite_name }}
+{% if jukebox_squeezelite_mac %}
+Environment=SQUEEZELITE_MAC_ADDRESS={{ jukebox_squeezelite_mac }}
+{% endif %}
 #Environment=STARTUP_DELAY_SEC=10000
 #Environment=SQUEEZELITE_LOG_CATEGORY_ALL=debug
