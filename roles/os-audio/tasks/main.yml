@@ -14,6 +14,44 @@
       - alsa-utils
     state: present
 
+# Detect which ALSA card actually has a playback PCM. On some systems
+# (especially VMs with virtio-snd), card 0 is capture-only and card 1 is
+# playback. Without an override, ALSA-aware containers (shairport-sync)
+# pick card 0 and fail with "output_device_error_2".
+- name: Detect lowest ALSA card with a playback device
+  ansible.builtin.shell: |
+    set -o pipefail
+    awk -F'[: -]+' '/playback/ {print $1+0; exit}' /proc/asound/pcm
+  register: alsa_playback_card_result
+  changed_when: false
+  failed_when: false
+
+- name: Set ALSA playback card fact
+  ansible.builtin.set_fact:
+    alsa_playback_card: "{{ alsa_playback_card_result.stdout | default('') | trim }}"
+
+# Only write an override when the playback card is NOT the default (card 0).
+# Hosts where card 0 already has playback get no /etc/asound.conf, leaving
+# any user-managed config untouched.
+- name: Override ALSA default card when playback is not on card 0
+  become: true
+  ansible.builtin.copy:
+    dest: /etc/asound.conf
+    content: |
+      defaults.pcm.card {{ alsa_playback_card }}
+      defaults.ctl.card {{ alsa_playback_card }}
+    mode: "0644"
+  when:
+    - alsa_playback_card != ""
+    - alsa_playback_card != "0"
+
+# Re-stat after the optional write so callers (shairportsync) know whether
+# to bind-mount the file into their container.
+- name: Check whether /etc/asound.conf exists
+  ansible.builtin.stat:
+    path: /etc/asound.conf
+  register: asound_conf_stat
+
 # Ensure the line 'blacklist snd_hda_intel' is present in /etc/modprobe.d/blacklist.conf
 - name: Ensure the line 'blacklist snd_hda_intel' is present in /etc/modprobe.d/blacklist.conf
   become: true

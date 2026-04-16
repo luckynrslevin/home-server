@@ -18,6 +18,11 @@ Exec=-a {{ shairportsync_airplay_name }}
 
 # ALSA access
 AddDevice={{ shairportsync_audio_device }}
+{% if asound_conf_stat is defined and asound_conf_stat.stat.exists %}
+# Host has an /etc/asound.conf override (e.g. VM with playback on card != 0).
+# Mount it so the container's ALSA picks the correct default card.
+Volume=/etc/asound.conf:/etc/asound.conf:ro
+{% endif %}
 GroupAdd=keep-groups
 
 [Service]
