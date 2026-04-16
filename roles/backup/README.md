@@ -32,21 +32,99 @@ None.
 
 None. Backup traffic is outbound NFS on the LAN.
 
-## What gets backed up
+## Backup methods
 
-Per service, the script picks the cheapest correct method:
+The script implements three methods. Each service's volumes are
+assigned the right one based on size, mutability, and whether the
+data is a database.
 
-| Service     | Volume(s)                                                       | Method                  |
-|-------------|-----------------------------------------------------------------|-------------------------|
-| caddy       | `caddy-data`, `caddy-config`, `caddy-etc`                       | `podman volume export`  |
-| pihole      | `systemd-pihole-etc`, `systemd-pihole-dnsmasq`                  | `podman volume export`  |
-| samba       | `systemd-samba-data`                                            | `rsync`                 |
-| syncthing   | `systemd-syncthing-config` / `systemd-syncthing-data`           | tar config, rsync data  |
-| jukebox     | `jukebox-server-config`, `jukebox-server-playlist`, `…-music`   | tar config + rsync data |
-| entephoto   | `entephoto-postgres-data`, `…-minio-data`, `…-museum-config`    | `pg_dump` + `rsync`     |
+### 1. `tar` — `podman volume export | gzip`
 
-Retention: last **7 days** kept on the NAS; older snapshots rotated
-out by the script.
+Used for **small, mostly-config volumes** where keeping a daily
+history is cheap and useful.
+
+- The container is stopped first (so the on-disk state is consistent).
+- `podman volume export <vol>` streams the volume contents as tar,
+  piped through `gzip`, and saved as
+  `<vol>-YYYYMMDD-HHMMSS.tar.gz` on the NAS.
+- **Retention:** the last 7 daily snapshots are kept; older ones
+  are deleted.
+- **Restore:** re-create the empty volume (re-run the role's
+  playbook), then
+  ```bash
+  gunzip -c <snapshot>.tar.gz | sudo -u <user> podman volume import <vol> -
+  ```
+
+Used for: pihole (`systemd-pihole-etc`, `systemd-pihole-dnsmasq`),
+syncthing config (`systemd-syncthing-config`), jukebox config + playlist
+(`jukebox-server-config`, `jukebox-server-playlist`),
+entephoto museum config (`entephoto-museum-config`).
+
+### 2. `rsync` — mirror to a dedicated NFS share
+
+Used for **large data volumes** where a full daily tarball would be
+wasteful and history isn't needed (the data is the data).
+
+- The container is stopped first.
+- `podman volume inspect` gives the mount path on the host.
+- `rsync -rltD --delete --no-owner --no-group --numeric-ids`
+  mirrors the volume's contents into a dedicated share on the NAS
+  (`backup-photos`, `backup-syncthing`, `backup-xchange`,
+  `backup-music`).
+- Ownership is **not** preserved — NFS `all_squash` would reject
+  chowns anyway, and rootless container UIDs differ between hosts.
+  On restore, ownership is re-applied with `podman unshare chown`.
+- **No retention / no history** — the share always reflects the
+  latest mirror. Pair with NAS-side snapshots (Btrfs, ZFS, Synology
+  Snapshot Replication) if you want point-in-time recovery.
+- **Restore:**
+  ```bash
+  rsync -a --no-owner --no-group --numeric-ids \
+      /mnt/backup/<share>/ <volume mount path>/
+  sudo -u <user> podman unshare chown -R 0:0 <volume mount path>
+  ```
+
+Used for: samba (`systemd-samba-data` → `xchange`), syncthing data
+(`systemd-syncthing-data` → `syncthing`), jukebox music
+(`jukebox-server-music` → `music`), entephoto MinIO
+(`entephoto-minio-data` → `photos`).
+
+### 3. `pgdump` — logical PostgreSQL dump
+
+Used for **PostgreSQL databases**, where the right unit of backup
+is a SQL dump, not the on-disk files.
+
+- Runs **with the container up** (`pg_dump` is a consistent logical
+  snapshot, no need to stop the database).
+- `podman exec <container> pg_dump -U <user> <db>` is piped through
+  `gzip` and saved as `<container>-YYYYMMDD-HHMMSS.sql.gz`.
+- **Retention:** last 7 daily snapshots; older ones deleted.
+- **Restore:**
+  ```bash
+  gunzip -c <snapshot>.sql.gz \
+      | sudo -u <user> podman exec -i <container> psql -U <user> <db>
+  ```
+
+Used for: entephoto Postgres (`entephoto-postgres` / `ente_db`).
+
+## What gets backed up per service
+
+| Service   | Volume / DB                       | Method  |
+|-----------|-----------------------------------|---------|
+| pihole    | `systemd-pihole-etc`              | tar     |
+| pihole    | `systemd-pihole-dnsmasq`          | tar     |
+| samba     | `systemd-samba-data`              | rsync   |
+| syncthing | `systemd-syncthing-config`        | tar     |
+| syncthing | `systemd-syncthing-data`          | rsync   |
+| jukebox   | `jukebox-server-config`           | tar     |
+| jukebox   | `jukebox-server-playlist`         | tar     |
+| jukebox   | `jukebox-server-music`            | rsync   |
+| entephoto | `ente_db` (Postgres)              | pgdump  |
+| entephoto | `entephoto-museum-config`         | tar     |
+| entephoto | `entephoto-minio-data`            | rsync   |
+
+> Caddy volumes are not currently backed up — they hold derivable
+> state (TLS certs, Caddy cache).
 
 ## Deployment
 
@@ -56,15 +134,10 @@ ansible-playbook playbooks/backup-deploy.yml --limit homeserver
 
 ## Restore
 
-1. Re-run the service's playbook to recreate the container and empty
-   volume:
-   ```bash
-   ansible-playbook playbooks/syncthing.yml --limit homeserver
-   ```
-2. Import the backup tarball:
-   ```bash
-   sudo -u syncthg podman volume import systemd-syncthing-config \
-       /mnt/nas-backup/syncthing-config-YYYY-MM-DD.tar
-   ```
-3. For PostgreSQL (entephoto), restore by piping `pg_dump` output
-   into `psql` inside the running container.
+The exact command depends on the backup method — see the per-method
+"Restore" snippets above. The common shape is:
+
+1. Re-run the service's playbook to recreate the container and an
+   empty volume.
+2. Restore the data using the method matching how it was backed up
+   (`podman volume import`, `rsync`, or `psql`).
