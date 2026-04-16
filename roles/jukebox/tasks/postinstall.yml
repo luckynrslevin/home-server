@@ -1,7 +1,57 @@
 ---
 # Post-install configuration for Jukebox (Lyrion Music Server)
-# Installs the Material Skin plugin if not already present.
-# Can be re-run independently to update the plugin without redeploying the container.
+# - Patches prefs/server.prefs once LMS has created it.
+# - Installs the Material Skin plugin if not already present.
+# Can be re-run independently to update without redeploying the container.
+
+# ---------------------------------------------------------------------------
+# Patch server.prefs after LMS creates it.
+#
+# We cannot use the Galaxy role's podman_quadlet_volumes_config_patches
+# mechanism here: that runs synchronously right after the container is
+# started, but LMS writes prefs/server.prefs lazily on first startup (a
+# few seconds later). The patcher then fails with rc=1 ("File does not
+# exist"). See https://github.com/luckynrslevin/home-server/issues/1.
+# ---------------------------------------------------------------------------
+
+- name: Get jukebox-server-config volume mountpoint # noqa: no-changed-when
+  become: true
+  ansible.builtin.shell: >
+    su - jukebox -c
+    'podman volume inspect jukebox-server-config --format={% raw %}{{.Mountpoint}}{% endraw %}'
+  register: jukebox_config_mount
+  changed_when: false
+
+- name: Wait for LMS to create prefs/server.prefs
+  become: true
+  ansible.builtin.wait_for:
+    path: "{{ jukebox_config_mount.stdout }}/prefs/server.prefs"
+    state: present
+    timeout: 120
+    sleep: 2
+
+- name: Patch prefs/server.prefs # noqa: no-changed-when
+  become: true
+  ansible.builtin.script:
+    cmd: >-
+      {{ role_path }}/../luckynrslevin.podman_quadlet/files/patch_structured_config.py
+      --file "{{ jukebox_config_mount.stdout }}/prefs/server.prefs"
+      --format yaml
+      --key "{{ item.key }}"
+      --value "{{ item.value }}"
+    executable: python3
+  loop:
+    - { key: securitySecret, value: "{{ jukebox_security_secret }}" }
+    - { key: language,       value: DE }
+    - { key: skin,           value: material }
+    - { key: protectSettings, value: 1 }
+    - { key: playlistdir,    value: /playlist }
+    - { key: wizardDone,     value: 1 }
+  loop_control:
+    label: "{{ item.key }}"
+  no_log: true
+  changed_when: false
+
 
 # Install Material Skin plugin if not already present.
 # Must be done from inside the container to preserve correct SELinux labels
