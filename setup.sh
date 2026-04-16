@@ -228,11 +228,10 @@ SERVICES=(
     [shairportsync]="Shairport-sync AirPlay audio receiver (needs audio device)"
     [jukebox]="Lyrion Music Server + Squeezelite player"
     [entephoto]="Ente Photos (self-hosted photo storage)"
-    [wireguard]="WireGuard VPN server"
 )
 
 # Recommended order for deployment
-SERVICE_ORDER=(caddy dashboard pihole syncthing samba shairportsync jukebox entephoto wireguard)
+SERVICE_ORDER=(caddy dashboard pihole syncthing samba shairportsync jukebox entephoto)
 SELECTED_SERVICES=()
 
 for svc in "${SERVICE_ORDER[@]}"; do
@@ -304,7 +303,6 @@ ENTEPHOTO_MINIO_PW=$(openssl rand -base64 24)
 ENTEPHOTO_ENC_KEY=$(openssl rand -base64 32)
 ENTEPHOTO_HASH_KEY=$(openssl rand -base64 64)
 ENTEPHOTO_JWT=$(openssl rand -hex 32)
-WIREGUARD_PRIVKEY=$(openssl rand -base64 32)
 
 # Build the host_vars file
 {
@@ -332,9 +330,6 @@ my_linux_users:
   syncthg:
     uid: 1003
     gid: 1003
-  wireguard:
-    uid: 1004
-    gid: 1004
   pihole:
     uid: 1005
     gid: 1005
@@ -383,9 +378,6 @@ echo ""
 vault_encrypt "$ENTEPHOTO_JWT" "entephoto_jwt_secret"
 echo ""
 echo "entephoto_admin_user_ids: []"
-echo ""
-echo "### WireGuard"
-vault_encrypt "$WIREGUARD_PRIVKEY" "wireguard_srv_privkey"
 echo "##################################################################################################"
 } > inventory/host_vars/homeserver/main.yml
 

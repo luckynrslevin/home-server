@@ -354,4 +354,3 @@ ports, deployment notes, and troubleshooting:
 - [samba](../roles/samba/README.md) — SMB file share
 - [shairportsync](../roles/shairportsync/README.md) — AirPlay receiver (incl. audio debugging)
 - [syncthing](../roles/syncthing/README.md) — file sync
-- [wireguard](../roles/wireguard/README.md) — VPN server
