@@ -8,6 +8,33 @@
 # /etc/pihole/gravity.db — the legacy /etc/pihole/adlists.list flat file
 # is no longer read by FTL. Insert each address with INSERT OR IGNORE so
 # repeat runs are no-ops and re-runs don't reset enabled/comment.
+#
+# On a fresh container, pihole-FTL builds the gravity.db schema during
+# startup. Wait until the `adlist` table exists before INSERTing — without
+# this, the role races FTL on first install and the inserts fail with
+# "no such table: adlist".
+- name: Wait for Pi-hole gravity.db schema to be initialized # noqa: no-changed-when
+  become: true
+  ansible.builtin.command:
+    chdir: /tmp
+    argv:
+      - sudo
+      - -u
+      - pihole
+      - --
+      - podman
+      - exec
+      - pihole
+      - pihole-FTL
+      - sqlite3
+      - /etc/pihole/gravity.db
+      - "SELECT 1 FROM sqlite_master WHERE type='table' AND name='adlist';"
+  register: pihole_adlist_schema
+  until: pihole_adlist_schema.stdout is search('1')
+  retries: 30
+  delay: 2
+  changed_when: false
+
 - name: Add adlists to Pi-hole gravity.db # noqa: no-changed-when
   become: true
   ansible.builtin.command:
