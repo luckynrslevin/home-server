@@ -21,9 +21,10 @@ pihole_hostname: "pihole.lan"
 pihole_local_network: "192.168.x.0/24"
 pihole_local_router: "192.168.x.1"
 
+# Extra adlists inserted into gravity.db in addition to Pi-hole's own
+# built-in default (StevenBlack unified hosts — auto-added by the
+# container on first run). Override per host in inventory.
 pihole_adlists:
-  - address: "https://raw.githubusercontent.com/StevenBlack/hosts/master/hosts"
-    comment: "StevenBlack unified hosts"
   - address: "https://raw.githubusercontent.com/Turtlecute33/Toolz/master/src/d3host.txt"
     comment: "https://adblock.turtlecute.org/"
 
