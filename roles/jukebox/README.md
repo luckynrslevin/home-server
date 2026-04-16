@@ -4,6 +4,15 @@
 Server) plus a `squeezelite` player in the same Podman pod, so the
 host plays music from its own library through its sound card.
 
+> **Bare-metal only.** The `squeezelite` player needs real audio
+> hardware (typically a USB DAC) and permissive device ownership to
+> open ALSA. It does **not** work inside a VM with virtio-snd — the
+> rootless user namespace strips the host's `audio` group, and ALSA
+> then only exposes the `null` sink inside the container, so the
+> player connects to LMS as "no player". On VMs, leave `jukebox` out
+> of `deploy_services` (use [shairportsync](../shairportsync/README.md)
+> for audio testing instead).
+
 ## Container images
 
 | Container       | Image                                  |
