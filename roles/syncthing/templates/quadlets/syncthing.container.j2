@@ -16,8 +16,11 @@ HostName={{ ansible_host_name }}
 Volume=syncthing-config.volume:/var/syncthing
 Volume=syncthing-data.volume:/data
 
-# Healthcheck
-HealthCmd=/bin/sh -c "curl -fkLsS -m 2 127.0.0.1:8384/rest/noauth/health | grep -o OK || exit 1"
+# Healthcheck — podman wraps HealthCmd in [CMD-SHELL, ...] which already
+# runs under /bin/sh -c. An explicit /bin/sh -c "..." wrapper here gets
+# its double quotes eaten by quadlet parsing, producing
+# "syntax error: unterminated quoted string" at every interval.
+HealthCmd=curl -fkLsS -m 2 127.0.0.1:8384/rest/noauth/health | grep -o OK || exit 1
 HealthInterval=1m
 HealthTimeout=10s
 HealthRetries=3
