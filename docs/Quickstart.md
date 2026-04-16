@@ -339,77 +339,19 @@ then import the backup volume with `podman volume import`.
 
 ---
 
-## Tips and tricks
+## Per-service documentation
 
-### Shairport-sync (AirPlay)
+Each role has its own README with variables, secrets, firewall
+ports, deployment notes, and troubleshooting:
 
-#### Debugging audio devices
-
-If your AirPlay device appears but can't connect or produces no sound,
-check the audio setup on your server:
-
-```bash
-# List sound cards visible to the system
-cat /proc/asound/cards
-
-# List PCM devices — look for "playback" entries
-cat /proc/asound/pcm
-
-# Test playback directly (plays a sine tone for 1 second)
-# Install alsa-utils if not present:
-sudo dnf install -y alsa-utils
-speaker-test -t sine -f 440 -l 1 -D default
-
-# Check if the container can see the audio devices
-sudo podman exec shairport-sync sh -c 'cat /proc/asound/cards'
-sudo podman exec shairport-sync sh -c 'cat /proc/asound/pcm'
-```
-
-#### Wrong default audio device
-
-On some systems (especially VMs), the default ALSA device is a
-capture-only card (microphone) while the playback device is on a
-different card. Symptoms: shairport-sync starts but AirPlay connections
-fail immediately.
-
-Check with `cat /proc/asound/pcm` — if you see `capture` on card 0
-and `playback` on card 1, create an ALSA override:
-
-```bash
-sudo tee /etc/asound.conf > /dev/null << 'EOF'
-defaults.pcm.card 1
-defaults.ctl.card 1
-EOF
-```
-
-Then add a bind mount to the shairport-sync container quadlet file
-(`/etc/containers/systemd/shairport-sync/shairport-sync.container`):
-
-```ini
-Volume=/etc/asound.conf:/etc/asound.conf:ro
-```
-
-Restart the service:
-
-```bash
-sudo systemctl daemon-reload
-sudo systemctl restart shairport-sync
-```
-
-#### AirPlay device not visible
-
-If the AirPlay device doesn't appear on your Apple devices:
-
-- Verify the server is on the **same LAN subnet** as your Apple devices
-  (no NAT between them)
-- Check that the firewall ports are open:
-  ```bash
-  sudo firewall-cmd --list-ports
-  ```
-  Needs at least: `7000/tcp`, `319-320/udp`, `3689/tcp`, `5000/tcp`
-- Restart the container to re-register with Avahi/Bonjour:
-  ```bash
-  sudo systemctl restart shairport-sync
-  ```
-- If using a VM, ensure **bridged networking** is configured (not NAT
-  or host-only)
+- [backup](../roles/backup/README.md) — nightly NFS backup of every service's volumes
+- [caddy](../roles/caddy/README.md) — front-door web server
+- [dashboard](../roles/dashboard/README.md) — generated status page
+- [entephoto](../roles/entephoto/README.md) — Ente Photos (Postgres + MinIO + Museum + Web)
+- [jukebox](../roles/jukebox/README.md) — Lyrion Music Server + Squeezelite
+- [os-audio](../roles/os-audio/README.md) — ALSA prerequisites (used by shairportsync, jukebox)
+- [pihole](../roles/pihole/README.md) — Pi-hole DNS ad-blocker
+- [samba](../roles/samba/README.md) — SMB file share
+- [shairportsync](../roles/shairportsync/README.md) — AirPlay receiver (incl. audio debugging)
+- [syncthing](../roles/syncthing/README.md) — file sync
+- [wireguard](../roles/wireguard/README.md) — VPN server
