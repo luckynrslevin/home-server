@@ -30,11 +30,24 @@
     timeout: 120
     sleep: 2
 
+# Resolve the Galaxy role's patcher script on the controller. Depending
+# on how the collection was installed, the role may live in
+# <repo>/roles/, <repo>/.ansible/roles/, or ~/.ansible/roles/. The
+# first_found lookup tolerates all of them.
+- name: Locate patch_structured_config.py on the controller
+  ansible.builtin.set_fact:
+    jukebox_patch_script: "{{ lookup('ansible.builtin.first_found', _candidates) }}"
+  vars:
+    _candidates:
+      - "{{ playbook_dir }}/../roles/luckynrslevin.podman_quadlet/files/patch_structured_config.py"
+      - "{{ playbook_dir }}/../.ansible/roles/luckynrslevin.podman_quadlet/files/patch_structured_config.py"
+      - "~/.ansible/roles/luckynrslevin.podman_quadlet/files/patch_structured_config.py"
+
 - name: Patch prefs/server.prefs # noqa: no-changed-when
   become: true
   ansible.builtin.script:
     cmd: >-
-      {{ role_path }}/../luckynrslevin.podman_quadlet/files/patch_structured_config.py
+      {{ jukebox_patch_script }}
       --file "{{ jukebox_config_mount.stdout }}/prefs/server.prefs"
       --format yaml
       --key "{{ item.key }}"
