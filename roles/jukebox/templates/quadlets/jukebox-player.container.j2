@@ -9,7 +9,12 @@ AutoUpdate=registry
 
 Pod=jukebox.pod
 
-# ALSA access (adjust if needed)
+# ALSA access — AddDevice passes the device node into the container,
+# but SELinux blocks the rootless process from opening it.
+# SecurityLabelDisable=true is the minimal override (equivalent to
+# --security-opt label=disable). Without this, squeezelite sees the
+# device nodes but gets "Permission denied" when opening them.
+SecurityLabelDisable=true
 AddDevice=/dev/snd
 {% if asound_conf_stat is defined and asound_conf_stat.stat.exists %}
 # Host has an /etc/asound.conf override (e.g. VM with playback on
