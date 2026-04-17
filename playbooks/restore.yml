@@ -1,0 +1,453 @@
+---
+# Restore all service volumes from NAS backup.
+#
+# Usage:
+#   ansible-playbook playbooks/restore.yml --limit homeserver
+#
+# Restore a single service:
+#   ansible-playbook playbooks/restore.yml --limit homeserver --tags pihole
+#   ansible-playbook playbooks/restore.yml --limit homeserver --tags syncthing
+#   ansible-playbook playbooks/restore.yml --limit homeserver --tags jukebox
+#   ansible-playbook playbooks/restore.yml --limit homeserver --tags samba
+#   ansible-playbook playbooks/restore.yml --limit homeserver --tags entephoto
+#
+# Prerequisites:
+#   - Services must be deployed first (playbooks/site.yml) so users,
+#     volumes, and quadlets exist.
+#   - NAS must be reachable (backup_nas_hostname / backup_nas_ip from
+#     host_vars).
+#   - Backup tarballs / rsync mirrors must exist on the NAS.
+#
+# What it does per service:
+#   1. Mounts NAS backup shares (read-only).
+#   2. Finds the latest backup snapshot.
+#   3. Stops the service.
+#   4. Removes and recreates volumes.
+#   5. Imports tar backups / rsyncs data / restores pg_dump.
+#   6. Starts the service.
+#   7. Unmounts NAS shares.
+#
+# IMPORTANT for Ente Photos:
+#   The Postgres restore requires stopping museum + web while keeping
+#   postgres up, then DROP + CREATE database before loading the dump.
+
+- name: Restore service volumes from NAS backup
+  hosts: homeservers
+  become: true
+  gather_facts: true
+
+  vars:
+    nas_host: "{{ backup_nas_hostname }}"
+    nas_volume: "{{ backup_nas_volume }}"
+    nas_tar_mount: /mnt/restore/tar
+    nas_xchange_mount: /mnt/restore/xchange
+    nas_syncthing_mount: /mnt/restore/syncthing
+    nas_music_mount: /mnt/restore/music
+    nas_photos_mount: /mnt/restore/photos
+    nfs_opts: "ro,noatime,vers=4"
+
+  tasks:
+    # ==================================================================
+    # NAS mount/unmount helpers
+    # ==================================================================
+    - name: Ensure NAS hostname resolves
+      ansible.builtin.lineinfile:
+        path: /etc/hosts
+        regexp: '\s{{ nas_host }}$'
+        line: "{{ backup_nas_ip }} {{ nas_host }}"
+        state: present
+      tags: [always]
+
+    # ------------------------------------------------------------------
+    # Pi-hole
+    # ------------------------------------------------------------------
+    - name: "PIHOLE: restore"
+      tags: [pihole]
+      block:
+        - name: "PIHOLE: mount NAS tar share"
+          ansible.builtin.file:
+            path: "{{ nas_tar_mount }}"
+            state: directory
+        - ansible.posix.mount:
+            path: "{{ nas_tar_mount }}"
+            src: "{{ nas_host }}:{{ nas_volume }}/backup-tar"
+            fstype: nfs
+            opts: "{{ nfs_opts }}"
+            state: ephemeral
+
+        - name: "PIHOLE: find latest backup"
+          ansible.builtin.shell: >
+            ls -t {{ nas_tar_mount }}/systemd-pihole-etc/*.tar.gz | head -1
+          register: pihole_etc_latest
+          changed_when: false
+        - ansible.builtin.shell: >
+            ls -t {{ nas_tar_mount }}/systemd-pihole-dnsmasq/*.tar.gz | head -1
+          register: pihole_dnsmasq_latest
+          changed_when: false
+
+        - name: "PIHOLE: stop container"
+          ansible.builtin.command:
+            cmd: >
+              sudo -u pihole XDG_RUNTIME_DIR=/run/user/{{ my_linux_users.pihole.uid }}
+              DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/{{ my_linux_users.pihole.uid }}/bus
+              systemctl --user stop pihole
+          changed_when: false
+          failed_when: false
+
+        - name: "PIHOLE: restore systemd-pihole-etc"
+          ansible.builtin.shell: |
+            cd /tmp
+            sudo -u pihole podman volume rm systemd-pihole-etc || true
+            sudo -u pihole podman volume create systemd-pihole-etc
+            gunzip -c "{{ pihole_etc_latest.stdout }}" | sudo -u pihole podman volume import systemd-pihole-etc -
+
+        - name: "PIHOLE: restore systemd-pihole-dnsmasq"
+          ansible.builtin.shell: |
+            cd /tmp
+            sudo -u pihole podman volume rm systemd-pihole-dnsmasq || true
+            sudo -u pihole podman volume create systemd-pihole-dnsmasq
+            gunzip -c "{{ pihole_dnsmasq_latest.stdout }}" | sudo -u pihole podman volume import systemd-pihole-dnsmasq -
+
+        - name: "PIHOLE: start container"
+          ansible.builtin.command:
+            cmd: >
+              sudo -u pihole XDG_RUNTIME_DIR=/run/user/{{ my_linux_users.pihole.uid }}
+              DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/{{ my_linux_users.pihole.uid }}/bus
+              systemctl --user start pihole
+          changed_when: false
+
+        - name: "PIHOLE: unmount NAS"
+          ansible.posix.mount:
+            path: "{{ nas_tar_mount }}"
+            state: unmounted
+
+    # ------------------------------------------------------------------
+    # Samba
+    # ------------------------------------------------------------------
+    - name: "SAMBA: restore"
+      tags: [samba]
+      block:
+        - name: "SAMBA: mount NAS xchange share"
+          ansible.builtin.file:
+            path: "{{ nas_xchange_mount }}"
+            state: directory
+        - ansible.posix.mount:
+            path: "{{ nas_xchange_mount }}"
+            src: "{{ nas_host }}:{{ nas_volume }}/backup-xchange"
+            fstype: nfs
+            opts: "{{ nfs_opts }}"
+            state: ephemeral
+
+        - name: "SAMBA: stop container"
+          ansible.builtin.command:
+            cmd: >
+              sudo -u samba XDG_RUNTIME_DIR=/run/user/{{ my_linux_users.samba.uid }}
+              DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/{{ my_linux_users.samba.uid }}/bus
+              systemctl --user stop samba
+          changed_when: false
+          failed_when: false
+
+        - name: "SAMBA: rsync from NAS mirror"
+          ansible.builtin.shell: |
+            cd /tmp
+            MP=$(sudo -u samba podman volume inspect systemd-samba-data --format='{{ '{{' }}.Mountpoint{{ '}}' }}')
+            sudo -u samba podman unshare rsync -a --no-owner --no-group --numeric-ids \
+                "{{ nas_xchange_mount }}/" "$MP/"
+
+        - name: "SAMBA: start container"
+          ansible.builtin.command:
+            cmd: >
+              sudo -u samba XDG_RUNTIME_DIR=/run/user/{{ my_linux_users.samba.uid }}
+              DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/{{ my_linux_users.samba.uid }}/bus
+              systemctl --user start samba
+          changed_when: false
+
+        - name: "SAMBA: unmount NAS"
+          ansible.posix.mount:
+            path: "{{ nas_xchange_mount }}"
+            state: unmounted
+
+    # ------------------------------------------------------------------
+    # Syncthing
+    # ------------------------------------------------------------------
+    - name: "SYNCTHING: restore"
+      tags: [syncthing]
+      block:
+        - name: "SYNCTHING: mount NAS shares"
+          ansible.builtin.file:
+            path: "{{ item }}"
+            state: directory
+          loop:
+            - "{{ nas_tar_mount }}"
+            - "{{ nas_syncthing_mount }}"
+        - ansible.posix.mount:
+            path: "{{ nas_tar_mount }}"
+            src: "{{ nas_host }}:{{ nas_volume }}/backup-tar"
+            fstype: nfs
+            opts: "{{ nfs_opts }}"
+            state: ephemeral
+        - ansible.posix.mount:
+            path: "{{ nas_syncthing_mount }}"
+            src: "{{ nas_host }}:{{ nas_volume }}/backup-syncthing"
+            fstype: nfs
+            opts: "{{ nfs_opts }}"
+            state: ephemeral
+
+        - name: "SYNCTHING: find latest config backup"
+          ansible.builtin.shell: >
+            ls -t {{ nas_tar_mount }}/systemd-syncthing-config/*.tar.gz | head -1
+          register: syncthing_config_latest
+          changed_when: false
+
+        - name: "SYNCTHING: stop container"
+          ansible.builtin.command:
+            cmd: >
+              sudo -u syncthg XDG_RUNTIME_DIR=/run/user/{{ my_linux_users.syncthg.uid }}
+              DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/{{ my_linux_users.syncthg.uid }}/bus
+              systemctl --user stop syncthing
+          changed_when: false
+          failed_when: false
+
+        - name: "SYNCTHING: restore config volume"
+          ansible.builtin.shell: |
+            cd /tmp
+            sudo -u syncthg podman volume rm systemd-syncthing-config || true
+            sudo -u syncthg podman volume create systemd-syncthing-config
+            gunzip -c "{{ syncthing_config_latest.stdout }}" | sudo -u syncthg podman volume import systemd-syncthing-config -
+
+        - name: "SYNCTHING: rsync data from NAS mirror"
+          ansible.builtin.shell: |
+            cd /tmp
+            MP=$(sudo -u syncthg podman volume inspect systemd-syncthing-data --format='{{ '{{' }}.Mountpoint{{ '}}' }}')
+            sudo -u syncthg podman unshare rsync -a --delete --no-owner --no-group --numeric-ids \
+                "{{ nas_syncthing_mount }}/" "$MP/"
+
+        - name: "SYNCTHING: start container"
+          ansible.builtin.command:
+            cmd: >
+              sudo -u syncthg XDG_RUNTIME_DIR=/run/user/{{ my_linux_users.syncthg.uid }}
+              DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/{{ my_linux_users.syncthg.uid }}/bus
+              systemctl --user start syncthing
+          changed_when: false
+
+        - name: "SYNCTHING: unmount NAS"
+          ansible.posix.mount:
+            path: "{{ item }}"
+            state: unmounted
+          loop:
+            - "{{ nas_syncthing_mount }}"
+            - "{{ nas_tar_mount }}"
+
+    # ------------------------------------------------------------------
+    # Jukebox (config + playlist only; music via --tags jukebox-music)
+    # ------------------------------------------------------------------
+    - name: "JUKEBOX: restore config + playlist"
+      tags: [jukebox]
+      block:
+        - name: "JUKEBOX: mount NAS tar share"
+          ansible.builtin.file:
+            path: "{{ nas_tar_mount }}"
+            state: directory
+        - ansible.posix.mount:
+            path: "{{ nas_tar_mount }}"
+            src: "{{ nas_host }}:{{ nas_volume }}/backup-tar"
+            fstype: nfs
+            opts: "{{ nfs_opts }}"
+            state: ephemeral
+
+        - name: "JUKEBOX: find latest backups"
+          ansible.builtin.shell: >
+            ls -t {{ nas_tar_mount }}/jukebox-server-config/*.tar.gz | head -1
+          register: jukebox_config_latest
+          changed_when: false
+        - ansible.builtin.shell: >
+            ls -t {{ nas_tar_mount }}/jukebox-server-playlist/*.tar.gz | head -1
+          register: jukebox_playlist_latest
+          changed_when: false
+
+        - name: "JUKEBOX: stop pod"
+          ansible.builtin.command:
+            cmd: >
+              sudo -u jukebox XDG_RUNTIME_DIR=/run/user/{{ my_linux_users.jukebox.uid }}
+              DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/{{ my_linux_users.jukebox.uid }}/bus
+              systemctl --user stop jukebox-pod
+          changed_when: false
+          failed_when: false
+
+        - name: "JUKEBOX: restore config volume"
+          ansible.builtin.shell: |
+            cd /tmp
+            sudo -u jukebox podman volume rm jukebox-server-config || true
+            sudo -u jukebox podman volume create jukebox-server-config
+            gunzip -c "{{ jukebox_config_latest.stdout }}" | sudo -u jukebox podman volume import jukebox-server-config -
+
+        - name: "JUKEBOX: restore playlist volume"
+          ansible.builtin.shell: |
+            cd /tmp
+            sudo -u jukebox podman volume rm jukebox-server-playlist || true
+            sudo -u jukebox podman volume create jukebox-server-playlist
+            gunzip -c "{{ jukebox_playlist_latest.stdout }}" | sudo -u jukebox podman volume import jukebox-server-playlist -
+
+        - name: "JUKEBOX: start pod"
+          ansible.builtin.command:
+            cmd: >
+              sudo -u jukebox XDG_RUNTIME_DIR=/run/user/{{ my_linux_users.jukebox.uid }}
+              DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/{{ my_linux_users.jukebox.uid }}/bus
+              systemctl --user start jukebox-pod
+          changed_when: false
+
+        - name: "JUKEBOX: unmount NAS"
+          ansible.posix.mount:
+            path: "{{ nas_tar_mount }}"
+            state: unmounted
+
+    # ------------------------------------------------------------------
+    # Jukebox music (large rsync — separate tag so you can skip it)
+    # ------------------------------------------------------------------
+    - name: "JUKEBOX-MUSIC: restore music library from NAS mirror"
+      tags: [jukebox-music, never]
+      block:
+        - name: "JUKEBOX-MUSIC: mount NAS music share"
+          ansible.builtin.file:
+            path: "{{ nas_music_mount }}"
+            state: directory
+        - ansible.posix.mount:
+            path: "{{ nas_music_mount }}"
+            src: "{{ nas_host }}:{{ nas_volume }}/backup-music"
+            fstype: nfs
+            opts: "{{ nfs_opts }}"
+            state: ephemeral
+
+        - name: "JUKEBOX-MUSIC: rsync music into volume"
+          ansible.builtin.shell: |
+            cd /tmp
+            MP=$(sudo -u jukebox podman volume inspect jukebox-server-music --format='{{ '{{' }}.Mountpoint{{ '}}' }}')
+            sudo -u jukebox podman unshare rsync -a --no-owner --no-group --numeric-ids \
+                "{{ nas_music_mount }}/" "$MP/"
+
+        - name: "JUKEBOX-MUSIC: unmount NAS"
+          ansible.posix.mount:
+            path: "{{ nas_music_mount }}"
+            state: unmounted
+
+    # ------------------------------------------------------------------
+    # Ente Photos (three-part restore)
+    # ------------------------------------------------------------------
+    - name: "ENTEPHOTO: restore"
+      tags: [entephoto]
+      block:
+        - name: "ENTEPHOTO: mount NAS shares"
+          ansible.builtin.file:
+            path: "{{ item }}"
+            state: directory
+          loop:
+            - "{{ nas_tar_mount }}"
+            - "{{ nas_photos_mount }}"
+        - ansible.posix.mount:
+            path: "{{ nas_tar_mount }}"
+            src: "{{ nas_host }}:{{ nas_volume }}/backup-tar"
+            fstype: nfs
+            opts: "{{ nfs_opts }}"
+            state: ephemeral
+        - ansible.posix.mount:
+            path: "{{ nas_photos_mount }}"
+            src: "{{ nas_host }}:{{ nas_volume }}/backup-photos"
+            fstype: nfs
+            opts: "{{ nfs_opts }}"
+            state: ephemeral
+
+        - name: "ENTEPHOTO: find latest backups"
+          ansible.builtin.shell: >
+            ls -t {{ nas_tar_mount }}/entephoto-museum-config/*.tar.gz | head -1
+          register: entephoto_config_latest
+          changed_when: false
+        - ansible.builtin.shell: >
+            ls -t {{ nas_tar_mount }}/pgdump-entephoto-postgres/*.sql.gz | head -1
+          register: entephoto_pgdump_latest
+          changed_when: false
+
+        - name: "ENTEPHOTO: stop pod"
+          ansible.builtin.command:
+            cmd: >
+              sudo -u entephoto XDG_RUNTIME_DIR=/run/user/{{ my_linux_users.entephoto.uid }}
+              DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/{{ my_linux_users.entephoto.uid }}/bus
+              systemctl --user stop entephoto-pod
+          changed_when: false
+          failed_when: false
+
+        - name: "ENTEPHOTO: restore museum-config volume"
+          ansible.builtin.shell: |
+            cd /tmp
+            sudo -u entephoto podman volume rm entephoto-museum-config || true
+            sudo -u entephoto podman volume create entephoto-museum-config
+            gunzip -c "{{ entephoto_config_latest.stdout }}" | sudo -u entephoto podman volume import entephoto-museum-config -
+
+        - name: "ENTEPHOTO: rsync minio-data from NAS mirror"
+          ansible.builtin.shell: |
+            cd /tmp
+            MP=$(sudo -u entephoto podman volume inspect entephoto-minio-data --format='{{ '{{' }}.Mountpoint{{ '}}' }}')
+            sudo -u entephoto podman unshare rsync -a --delete --no-owner --no-group --numeric-ids \
+                "{{ nas_photos_mount }}/" "$MP/"
+
+        - name: "ENTEPHOTO: start pod (postgres needs to be up for DB restore)"
+          ansible.builtin.command:
+            cmd: >
+              sudo -u entephoto XDG_RUNTIME_DIR=/run/user/{{ my_linux_users.entephoto.uid }}
+              DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/{{ my_linux_users.entephoto.uid }}/bus
+              systemctl --user start entephoto-pod
+          changed_when: false
+
+        - name: "ENTEPHOTO: wait for postgres to be ready"
+          ansible.builtin.shell: >
+            cd /tmp && sudo -u entephoto podman exec entephoto-postgres
+            pg_isready -U pguser -d ente_db
+          register: pg_ready
+          until: pg_ready.rc == 0
+          retries: 30
+          delay: 2
+          changed_when: false
+
+        - name: "ENTEPHOTO: stop museum + web (they hold DB connections)"
+          ansible.builtin.command:
+            cmd: >
+              sudo -u entephoto XDG_RUNTIME_DIR=/run/user/{{ my_linux_users.entephoto.uid }}
+              DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/{{ my_linux_users.entephoto.uid }}/bus
+              systemctl --user stop {{ item }}
+          loop:
+            - entephoto-museum
+            - entephoto-web
+          changed_when: false
+          failed_when: false
+
+        - name: "ENTEPHOTO: drop and recreate database"
+          ansible.builtin.shell: |
+            cd /tmp
+            sudo -u entephoto podman exec entephoto-postgres \
+                psql -U pguser -d postgres -c "DROP DATABASE IF EXISTS ente_db;"
+            sudo -u entephoto podman exec entephoto-postgres \
+                psql -U pguser -d postgres -c "CREATE DATABASE ente_db OWNER pguser;"
+
+        - name: "ENTEPHOTO: restore pg_dump"
+          ansible.builtin.shell: |
+            gunzip -c "{{ entephoto_pgdump_latest.stdout }}" | \
+                sudo -u entephoto podman exec -i entephoto-postgres \
+                psql -U pguser -d ente_db
+
+        - name: "ENTEPHOTO: start museum + web"
+          ansible.builtin.command:
+            cmd: >
+              sudo -u entephoto XDG_RUNTIME_DIR=/run/user/{{ my_linux_users.entephoto.uid }}
+              DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/{{ my_linux_users.entephoto.uid }}/bus
+              systemctl --user start {{ item }}
+          loop:
+            - entephoto-museum
+            - entephoto-web
+          changed_when: false
+
+        - name: "ENTEPHOTO: unmount NAS"
+          ansible.posix.mount:
+            path: "{{ item }}"
+            state: unmounted
+          loop:
+            - "{{ nas_photos_mount }}"
+            - "{{ nas_tar_mount }}"
