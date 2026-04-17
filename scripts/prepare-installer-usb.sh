@@ -268,31 +268,70 @@ info "Patching GRUB config..."
 cp "$GRUB_CFG" "${GRUB_CFG}.orig"
 
 # --- Determine kickstart source ---
+KS_LABEL="KSUSB"
+
 if [[ -n "$KS_CFG" ]]; then
-    # Embedded mode: copy ks.cfg onto the EFI partition and point GRUB
-    # at it using the installer media's own LABEL (same partition).
+    # Embedded mode: create a small third partition on the stick with
+    # label KSUSB and copy ks.cfg there. The ISO dd writes a fixed
+    # partition table; we append a new partition in the free space
+    # after the ISO data.
     if [[ ! -f "$KS_CFG" ]]; then
         umount "$MNT"; rmdir "$MNT"
         die "Kickstart file not found: $KS_CFG"
     fi
-    cp "$KS_CFG" "$MNT/ks.cfg"
-    info "Copied $(basename "$KS_CFG") onto EFI partition."
 
-    # Use the inst.stage2 LABEL (the installer media itself) to
-    # reference ks.cfg — no second stick needed.
-    if [[ -n "$STAGE2_LABEL" ]]; then
-        KS_REF="hd:LABEL=${STAGE2_LABEL}:/ks.cfg"
-    else
-        # Fallback: assume the EFI partition is the first thing found.
-        KS_REF="hd:LABEL=KSUSB:/ks.cfg"
-        warn "Could not detect inst.stage2 LABEL; falling back to LABEL=KSUSB."
+    info "Creating kickstart partition on ${USB_DEV}..."
+
+    # Find the end of the last existing partition (in sectors).
+    SECTOR_SIZE=$(blockdev --getss "$USB_DEV")
+    LAST_END=$(sfdisk -d "$USB_DEV" 2>/dev/null \
+        | grep -oP 'start=\s*\K[0-9]+|size=\s*\K[0-9]+' \
+        | paste - - | awk '{if ($1+$2 > max) max=$1+$2} END{print max}')
+
+    if [[ -z "$LAST_END" ]] || [[ "$LAST_END" -eq 0 ]]; then
+        umount "$MNT"; rmdir "$MNT"
+        die "Could not determine end of existing partitions on ${USB_DEV}."
     fi
+
+    TOTAL_SECTORS=$(blockdev --getsz "$USB_DEV")
+    # Use 200 MB for the kickstart partition (way more than needed,
+    # but trivial on a multi-GB stick).
+    KS_SIZE_SECTORS=$((200 * 1024 * 1024 / SECTOR_SIZE))
+    KS_START=$((LAST_END + 2048))  # align to 1 MiB boundary
+
+    if (( KS_START + KS_SIZE_SECTORS > TOTAL_SECTORS )); then
+        umount "$MNT"; rmdir "$MNT"
+        die "Not enough free space on ${USB_DEV} for the kickstart partition."
+    fi
+
+    # Append the new partition via sfdisk.
+    echo "${KS_START},${KS_SIZE_SECTORS},L" | sfdisk --append "$USB_DEV" 2>/dev/null \
+        || { umount "$MNT"; rmdir "$MNT"; die "sfdisk --append failed."; }
+
+    partprobe "$USB_DEV" 2>/dev/null || true
+    sleep 2
+
+    # Find the new partition (highest-numbered partition on the device).
+    KS_PART=$(lsblk -lnpo NAME "$USB_DEV" | grep -v "^${USB_DEV}$" | tail -1)
+    [[ -n "$KS_PART" ]] || { umount "$MNT"; rmdir "$MNT"; die "New partition not found."; }
+
+    info "Formatting ${KS_PART} as FAT32 with label ${KS_LABEL}..."
+    mkfs.vfat -n "$KS_LABEL" "$KS_PART"
+
+    KS_MNT=$(mktemp -d /tmp/installer-ks.XXXX)
+    mount -t vfat "$KS_PART" "$KS_MNT"
+    cp "$KS_CFG" "$KS_MNT/ks.cfg"
+    info "Copied $(basename "$KS_CFG") to ${KS_PART} (label=${KS_LABEL})."
+    umount "$KS_MNT"
+    rmdir "$KS_MNT"
+
+    KS_REF="hd:LABEL=${KS_LABEL}:/ks.cfg"
     info "GRUB will load kickstart from: ${KS_REF}"
 else
     # External mode: expect a second stick labelled KSUSB.
-    KS_REF="hd:LABEL=KSUSB:/ks.cfg"
-    info "No kickstart file provided — GRUB will look for hd:LABEL=KSUSB:/ks.cfg"
-    info "(Plug in a second stick labelled KSUSB with ks.cfg at its root.)"
+    KS_REF="hd:LABEL=${KS_LABEL}:/ks.cfg"
+    info "No kickstart file provided — GRUB will look for hd:LABEL=${KS_LABEL}:/ks.cfg"
+    info "(Plug in a second stick labelled ${KS_LABEL} with ks.cfg at its root.)"
 fi
 
 # Add inst.ks= to the kernel command line (all linuxefi/linux lines
@@ -326,11 +365,14 @@ sync
 
 info "Done! USB installer is ready at ${USB_DEV}."
 echo
+echo "Partition layout:"
+lsblk -o NAME,SIZE,FSTYPE,LABEL "$USB_DEV"
+echo
 echo "Next steps:"
 if [[ -n "$KS_CFG" ]]; then
     echo "  1. Plug this stick into the target machine (single-stick mode)."
 else
-    echo "  1. Plug this stick + a KSUSB stick into the target machine."
+    echo "  1. Plug this stick + a ${KS_LABEL} stick into the target machine."
 fi
 echo "  2. Boot from the USB stick."
 echo "  3. GRUB auto-boots after 5 s → Anaconda reads ks.cfg → unattended install."
