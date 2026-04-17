@@ -437,6 +437,7 @@
 
         - name: "ENTEPHOTO: restore pg_dump"
           ansible.builtin.shell: |
+            cd /tmp
             gunzip -c "{{ entephoto_pgdump_latest.stdout }}" | \
                 sudo -u entephoto podman exec -i entephoto-postgres \
                 psql -U pguser -d ente_db
