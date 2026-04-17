@@ -108,6 +108,14 @@
             sudo -u pihole podman volume create systemd-pihole-dnsmasq
             gunzip -c "{{ pihole_dnsmasq_latest.stdout }}" | sudo -u pihole podman volume import systemd-pihole-dnsmasq -
 
+        - name: "PIHOLE: fix listsCache ownership (tar export preserves root UIDs for etag files)"
+          ansible.builtin.shell: |
+            cd /tmp
+            su - pihole -c 'podman unshare rm -rf \
+                $(podman volume inspect systemd-pihole-etc --format={% raw %}{{.Mountpoint}}{% endraw %})/listsCache'
+          changed_when: false
+          failed_when: false
+
         - name: "PIHOLE: start container"
           ansible.builtin.command:
             cmd: >
