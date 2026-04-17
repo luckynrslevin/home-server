@@ -354,6 +354,10 @@ fi
 sed -i 's/^set timeout=.*/set timeout=5/' "$GRUB_CFG"
 info "Set GRUB timeout to 5 seconds."
 
+# Default to "Install Fedora" (entry 0), not "Test this media" (entry 1).
+sed -i 's/^set default=.*/set default="0"/' "$GRUB_CFG"
+info "Set default boot entry to 'Install Fedora'."
+
 # --- Show the patched entry for verification ---
 echo
 echo -e "${BOLD}--- Patched boot entry ---${NC}"
