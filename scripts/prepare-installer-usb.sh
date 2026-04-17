@@ -3,15 +3,19 @@
 # Prepare a bootable Fedora Server USB installer with kickstart auto-boot.
 #
 # Usage:
-#   sudo bash scripts/prepare-installer-usb.sh [fedora-iso] [ks-label]
+#   sudo bash scripts/prepare-installer-usb.sh [fedora-iso] [ks-cfg]
 #
 # Arguments:
 #   [fedora-iso]   Path to an already-downloaded ISO file. If omitted, the
 #                  script queries the Fedora releases API, lists available
 #                  Server DVD ISOs for this machine's architecture, lets
 #                  you choose, and downloads it.
-#   [ks-label]     Volume label of the USB stick holding ks.cfg.
-#                  Default: KSUSB
+#   [ks-cfg]       Path to a kickstart file. If provided, it is copied onto
+#                  the installer stick's EFI partition and GRUB is pointed
+#                  at it — single-stick operation, no second USB needed.
+#                  If omitted, GRUB points at hd:LABEL=KSUSB:/ks.cfg
+#                  (a second stick labelled KSUSB must be plugged in at
+#                  boot time).
 #
 # What it does:
 #   1. (Optional) Fetches available Fedora Server ISOs and downloads one.
@@ -51,7 +55,7 @@ die()  { warn "$*"; exit 1; }
 
 # --- Argument parsing ---
 ISO="${1:-}"
-KS_LABEL="${2:-KSUSB}"
+KS_CFG="${2:-}"
 
 [[ $EUID -eq 0 ]] || die "Run as root: sudo $0 $*"
 
@@ -87,7 +91,7 @@ for r in data:
         seen.add(key)
         idx += 1
         size = r.get("size")
-        size_mb = int(size) // 1024 // 1024 if size and str(size).isdigit() else "?"
+        size_mb = str(int(size) // 1024 // 1024) if size and str(size).isdigit() else "?"
         url = r["link"]
         name = url.rsplit("/", 1)[-1]
         print(f"CHOICE|{idx}) Fedora {ver:5s} {arch:8s} {size_mb:>6s} MB  {name}")
@@ -263,13 +267,41 @@ fi
 info "Patching GRUB config..."
 cp "$GRUB_CFG" "${GRUB_CFG}.orig"
 
+# --- Determine kickstart source ---
+if [[ -n "$KS_CFG" ]]; then
+    # Embedded mode: copy ks.cfg onto the EFI partition and point GRUB
+    # at it using the installer media's own LABEL (same partition).
+    if [[ ! -f "$KS_CFG" ]]; then
+        umount "$MNT"; rmdir "$MNT"
+        die "Kickstart file not found: $KS_CFG"
+    fi
+    cp "$KS_CFG" "$MNT/ks.cfg"
+    info "Copied $(basename "$KS_CFG") onto EFI partition."
+
+    # Use the inst.stage2 LABEL (the installer media itself) to
+    # reference ks.cfg — no second stick needed.
+    if [[ -n "$STAGE2_LABEL" ]]; then
+        KS_REF="hd:LABEL=${STAGE2_LABEL}:/ks.cfg"
+    else
+        # Fallback: assume the EFI partition is the first thing found.
+        KS_REF="hd:LABEL=KSUSB:/ks.cfg"
+        warn "Could not detect inst.stage2 LABEL; falling back to LABEL=KSUSB."
+    fi
+    info "GRUB will load kickstart from: ${KS_REF}"
+else
+    # External mode: expect a second stick labelled KSUSB.
+    KS_REF="hd:LABEL=KSUSB:/ks.cfg"
+    info "No kickstart file provided — GRUB will look for hd:LABEL=KSUSB:/ks.cfg"
+    info "(Plug in a second stick labelled KSUSB with ks.cfg at its root.)"
+fi
+
 # Add inst.ks= to the kernel command line (all linuxefi/linux lines
 # that already have inst.stage2). Idempotent — won't add twice.
 if ! grep -q "inst.ks=" "$GRUB_CFG"; then
     sed -i \
-        '/inst\.stage2=/s|$| inst.ks=hd:LABEL='"$KS_LABEL"':/ks.cfg|' \
+        '/inst\.stage2=/s|$| inst.ks='"$KS_REF"'|' \
         "$GRUB_CFG"
-    info "Added inst.ks=hd:LABEL=${KS_LABEL}:/ks.cfg to kernel command line."
+    info "Added inst.ks=${KS_REF} to kernel command line."
 else
     info "inst.ks= already present in grub.cfg — skipping."
 fi
@@ -295,7 +327,11 @@ sync
 info "Done! USB installer is ready at ${USB_DEV}."
 echo
 echo "Next steps:"
-echo "  1. Plug this stick + the ${KS_LABEL} stick into the target machine."
-echo "  2. Boot from ${USB_DEV}."
+if [[ -n "$KS_CFG" ]]; then
+    echo "  1. Plug this stick into the target machine (single-stick mode)."
+else
+    echo "  1. Plug this stick + a KSUSB stick into the target machine."
+fi
+echo "  2. Boot from the USB stick."
 echo "  3. GRUB auto-boots after 5 s → Anaconda reads ks.cfg → unattended install."
 echo "  4. Machine reboots into fresh Fedora when done."
