@@ -272,14 +272,16 @@ KS_LABEL="KSUSB"
 
 if [[ -n "$KS_CFG" ]]; then
     # Embedded mode: create a small third partition on the stick with
-    # label KSUSB and copy ks.cfg there. The ISO dd writes a fixed
-    # partition table; we append a new partition in the free space
-    # after the ISO data.
+    # label KSUSB and copy ks.cfg there. sfdisk requires no partition
+    # on the device to be mounted, so unmount the EFI partition first,
+    # create the new partition, then remount EFI to finish GRUB patching.
     if [[ ! -f "$KS_CFG" ]]; then
         umount "$MNT"; rmdir "$MNT"
         die "Kickstart file not found: $KS_CFG"
     fi
 
+    # Unmount EFI before touching the partition table.
+    umount "$MNT"
     info "Creating kickstart partition on ${USB_DEV}..."
 
     # Find the end of the last existing partition (in sectors).
@@ -289,7 +291,7 @@ if [[ -n "$KS_CFG" ]]; then
         | paste - - | awk '{if ($1+$2 > max) max=$1+$2} END{print max}')
 
     if [[ -z "$LAST_END" ]] || [[ "$LAST_END" -eq 0 ]]; then
-        umount "$MNT"; rmdir "$MNT"
+        rmdir "$MNT"
         die "Could not determine end of existing partitions on ${USB_DEV}."
     fi
 
@@ -300,20 +302,20 @@ if [[ -n "$KS_CFG" ]]; then
     KS_START=$((LAST_END + 2048))  # align to 1 MiB boundary
 
     if (( KS_START + KS_SIZE_SECTORS > TOTAL_SECTORS )); then
-        umount "$MNT"; rmdir "$MNT"
+        rmdir "$MNT"
         die "Not enough free space on ${USB_DEV} for the kickstart partition."
     fi
 
     # Append the new partition via sfdisk.
-    echo "${KS_START},${KS_SIZE_SECTORS},L" | sfdisk --append "$USB_DEV" 2>/dev/null \
-        || { umount "$MNT"; rmdir "$MNT"; die "sfdisk --append failed."; }
+    echo "${KS_START},${KS_SIZE_SECTORS},L" | sfdisk --append "$USB_DEV" \
+        || { rmdir "$MNT"; die "sfdisk --append failed."; }
 
     partprobe "$USB_DEV" 2>/dev/null || true
     sleep 2
 
     # Find the new partition (highest-numbered partition on the device).
     KS_PART=$(lsblk -lnpo NAME "$USB_DEV" | grep -v "^${USB_DEV}$" | tail -1)
-    [[ -n "$KS_PART" ]] || { umount "$MNT"; rmdir "$MNT"; die "New partition not found."; }
+    [[ -n "$KS_PART" ]] || { rmdir "$MNT"; die "New partition not found."; }
 
     info "Formatting ${KS_PART} as FAT32 with label ${KS_LABEL}..."
     mkfs.vfat -n "$KS_LABEL" "$KS_PART"
@@ -324,6 +326,9 @@ if [[ -n "$KS_CFG" ]]; then
     info "Copied $(basename "$KS_CFG") to ${KS_PART} (label=${KS_LABEL})."
     umount "$KS_MNT"
     rmdir "$KS_MNT"
+
+    # Remount EFI to finish GRUB patching.
+    mount -t vfat "$EFI_PART" "$MNT"
 
     KS_REF="hd:LABEL=${KS_LABEL}:/ks.cfg"
     info "GRUB will load kickstart from: ${KS_REF}"
