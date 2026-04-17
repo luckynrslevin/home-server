@@ -3,26 +3,31 @@
 # Prepare a bootable Fedora Server USB installer with kickstart auto-boot.
 #
 # Usage:
-#   sudo bash scripts/prepare-installer-usb.sh <fedora-iso> [ks-label]
+#   sudo bash scripts/prepare-installer-usb.sh [fedora-iso] [ks-label]
 #
 # Arguments:
-#   <fedora-iso>   Path to the Fedora Server ISO file.
+#   [fedora-iso]   Path to an already-downloaded ISO file. If omitted, the
+#                  script queries the Fedora releases API, lists available
+#                  Server DVD ISOs for this machine's architecture, lets
+#                  you choose, and downloads it.
 #   [ks-label]     Volume label of the USB stick holding ks.cfg.
 #                  Default: KSUSB
 #
 # What it does:
-#   1. Finds the USB block device (must be exactly one plugged in).
-#   2. Confirms with the user before wiping.
-#   3. Flashes the ISO with dd.
-#   4. Mounts the EFI partition on the freshly-flashed stick.
-#   5. Patches grub.cfg to:
+#   1. (Optional) Fetches available Fedora Server ISOs and downloads one.
+#   2. Finds the USB block device (must be exactly one plugged in).
+#   3. Confirms with the user before wiping.
+#   4. Flashes the ISO with dd.
+#   5. Mounts the EFI partition on the freshly-flashed stick.
+#   6. Patches grub.cfg to:
 #      - Auto-boot with inst.ks=hd:LABEL=<ks-label>:/ks.cfg
 #      - Set a 5-second timeout (no keyboard needed)
-#   6. Unmounts and syncs — ready to boot.
+#   7. Unmounts and syncs — ready to boot.
 #
 # Requirements:
 #   - Run as root (dd needs raw device access).
 #   - Exactly one USB block device plugged in (the target).
+#   - curl, python3, lsblk, dd, partprobe available.
 #   - A second USB stick labelled <ks-label> with ks.cfg at its root
 #     (plug it in at boot time alongside this one).
 #
@@ -48,16 +53,97 @@ die()  { warn "$*"; exit 1; }
 ISO="${1:-}"
 KS_LABEL="${2:-KSUSB}"
 
+[[ $EUID -eq 0 ]] || die "Run as root: sudo $0 $*"
+
+# ============================================================================
+# Step 1: If no ISO provided, fetch the list and let the user choose
+# ============================================================================
 if [[ -z "$ISO" ]]; then
-    echo "Usage: sudo $0 <fedora-iso> [ks-label]"
-    echo "  ks-label defaults to KSUSB"
-    exit 1
+    info "No ISO specified. Querying Fedora releases..."
+
+    RELEASES_JSON=$(curl -fsSL https://getfedora.org/releases.json) \
+        || die "Failed to fetch release data from getfedora.org."
+
+    # Filter for stable Server DVD ISOs for aarch64 and x86_64.
+    # Excludes Beta / test releases.
+    FILTER_SCRIPT='
+import json, sys
+data = json.load(sys.stdin)
+seen = set()
+idx = 0
+for r in data:
+    ver = r.get("version", "")
+    arch = r.get("arch", "")
+    if (r.get("subvariant") == "Server"
+        and arch in ("aarch64", "x86_64")
+        and r.get("variant") == "Server"
+        and r.get("link", "").endswith(".iso")
+        and "dvd" in r.get("link", "").lower()
+        and "Beta" not in ver
+        and "/test/" not in r.get("link", "")):
+        key = ver + r["link"]
+        if key in seen:
+            continue
+        seen.add(key)
+        idx += 1
+        size = r.get("size")
+        size_mb = int(size) // 1024 // 1024 if size and str(size).isdigit() else "?"
+        url = r["link"]
+        name = url.rsplit("/", 1)[-1]
+        print(f"CHOICE|{idx}) Fedora {ver:5s} {arch:8s} {size_mb:>6s} MB  {name}")
+        print(f"URL|{url}")
+'
+    PARSED=$(echo "$RELEASES_JSON" | python3 -c "$FILTER_SCRIPT") \
+        || die "Failed to parse release data."
+
+    CHOICES=$(echo "$PARSED" | grep "^CHOICE|" | cut -d'|' -f2-)
+    mapfile -t URLS < <(echo "$PARSED" | grep "^URL|" | cut -d'|' -f2-)
+
+    if [[ -z "$CHOICES" ]]; then
+        die "No stable Fedora Server DVD ISOs found."
+    fi
+
+    echo
+    echo -e "${BOLD}Available Fedora Server DVD ISOs:${NC}"
+    echo
+    echo "$CHOICES"
+    echo
+
+    echo -ne "${BOLD}Select ISO number [1]: ${NC}"
+    read -r selection
+    selection="${selection:-1}"
+
+    # Validate
+    if ! [[ "$selection" =~ ^[0-9]+$ ]] || (( selection < 1 || selection > ${#URLS[@]} )); then
+        die "Invalid selection: $selection"
+    fi
+
+    DOWNLOAD_URL="${URLS[$((selection - 1))]}"
+    ISO_FILENAME="${DOWNLOAD_URL##*/}"
+    ISO="/var/tmp/${ISO_FILENAME}"
+
+    if [[ -f "$ISO" ]]; then
+        info "ISO already downloaded: ${ISO}"
+        echo -ne "${BOLD}Re-download? [y/N]: ${NC}"
+        read -r redownload
+        if [[ "$redownload" =~ ^[Yy]$ ]]; then
+            rm -f "$ISO"
+        fi
+    fi
+
+    if [[ ! -f "$ISO" ]]; then
+        info "Downloading ${ISO_FILENAME}..."
+        curl -fL -o "$ISO" "$DOWNLOAD_URL" \
+            || die "Download failed."
+        info "Downloaded to ${ISO}"
+    fi
 fi
 
-[[ $EUID -eq 0 ]] || die "Run as root: sudo $0 $*"
-[[ -f "$ISO" ]]    || die "ISO file not found: $ISO"
+[[ -f "$ISO" ]] || die "ISO file not found: $ISO"
 
-# --- Find the USB device ---
+# ============================================================================
+# Step 2: Find the USB device
+# ============================================================================
 # List all block devices on the usb transport, excluding partitions.
 mapfile -t USB_DEVS < <(lsblk -dnpo NAME,TRAN | awk '$2 == "usb" {print $1}')
 
@@ -81,7 +167,9 @@ echo "  Size:   $USB_SIZE"
 echo "  Model:  $USB_MODEL"
 echo
 
-# --- Confirm ---
+# ============================================================================
+# Step 3: Confirm
+# ============================================================================
 warn "ALL DATA ON ${USB_DEV} WILL BE DESTROYED."
 echo -ne "${BOLD}Type 'yes' to continue: ${NC}"
 read -r confirm
@@ -93,7 +181,9 @@ for part in "${USB_DEV}"*; do
     mountpoint -q "$part" 2>/dev/null && umount "$part" 2>/dev/null || true
 done
 
-# --- Flash the ISO ---
+# ============================================================================
+# Step 4: Flash the ISO
+# ============================================================================
 ISO_SIZE=$(stat -c%s "$ISO")
 ISO_SIZE_MB=$((ISO_SIZE / 1024 / 1024))
 info "Flashing ${ISO_SIZE_MB} MB ISO to ${USB_DEV}..."
@@ -106,7 +196,9 @@ info "Waiting for partitions to appear..."
 partprobe "$USB_DEV" 2>/dev/null || true
 sleep 3
 
-# --- Find and mount the EFI partition ---
+# ============================================================================
+# Step 5: Find and mount the EFI partition
+# ============================================================================
 # Fedora ISOs typically have an EFI System Partition with a FAT filesystem.
 EFI_PART=""
 for part in "${USB_DEV}"*[0-9]; do
@@ -137,7 +229,9 @@ MNT=$(mktemp -d /tmp/installer-efi.XXXX)
 info "Mounting EFI partition ${EFI_PART} at ${MNT}..."
 mount -t vfat "$EFI_PART" "$MNT"
 
-# --- Find grub.cfg ---
+# ============================================================================
+# Step 6: Patch grub.cfg
+# ============================================================================
 GRUB_CFG=""
 for candidate in \
     "$MNT/EFI/BOOT/grub.cfg" \
@@ -159,20 +253,18 @@ fi
 
 info "Found GRUB config: ${GRUB_CFG}"
 
-# --- Extract the inst.stage2 LABEL from existing config ---
-# We need it so the kernel can find the installer media.
+# Extract the inst.stage2 LABEL from existing config (for reference).
 STAGE2_LABEL=$(grep -oP 'inst\.stage2=hd:LABEL=\K[^ ]+' "$GRUB_CFG" | head -1 || true)
 if [[ -z "$STAGE2_LABEL" ]]; then
     warn "Could not auto-detect inst.stage2 LABEL from grub.cfg."
     warn "Proceeding anyway — the existing inst.stage2 line will be preserved."
 fi
 
-# --- Patch grub.cfg ---
 info "Patching GRUB config..."
 cp "$GRUB_CFG" "${GRUB_CFG}.orig"
 
-# 1. Add inst.ks= to the kernel command line (all linuxefi/linux lines
-#    that already have inst.stage2). Idempotent — won't add twice.
+# Add inst.ks= to the kernel command line (all linuxefi/linux lines
+# that already have inst.stage2). Idempotent — won't add twice.
 if ! grep -q "inst.ks=" "$GRUB_CFG"; then
     sed -i \
         '/inst\.stage2=/s|$| inst.ks=hd:LABEL='"$KS_LABEL"':/ks.cfg|' \
@@ -182,7 +274,7 @@ else
     info "inst.ks= already present in grub.cfg — skipping."
 fi
 
-# 2. Set timeout to 5 seconds for auto-boot.
+# Set timeout to 5 seconds for auto-boot.
 sed -i 's/^set timeout=.*/set timeout=5/' "$GRUB_CFG"
 info "Set GRUB timeout to 5 seconds."
 
@@ -193,7 +285,9 @@ grep -A3 'menuentry.*Install' "$GRUB_CFG" | head -8
 echo -e "${BOLD}--- End ---${NC}"
 echo
 
-# --- Cleanup ---
+# ============================================================================
+# Step 7: Cleanup
+# ============================================================================
 umount "$MNT"
 rmdir "$MNT"
 sync
