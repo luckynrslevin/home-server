@@ -1,0 +1,8 @@
+---
+- name: Install Paperless-NGX document management
+  hosts: homeservers
+  become: true
+  gather_facts: true
+
+  roles:
+    - paperless-ngx

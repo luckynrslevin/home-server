@@ -25,4 +25,5 @@
     - { role: shairportsync, when: "'shairportsync' in (deploy_services | default([]))" }
     - { role: jukebox,       when: "'jukebox' in (deploy_services | default([]))" }
     - { role: entephoto,     when: "'entephoto' in (deploy_services | default([]))" }
+    - { role: paperless-ngx, when: "'paperless-ngx' in (deploy_services | default([]))" }
     - { role: backup,        when: "'backup' in (deploy_services | default([]))" }

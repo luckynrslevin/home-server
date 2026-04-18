@@ -228,10 +228,11 @@ SERVICES=(
     [shairportsync]="Shairport-sync AirPlay audio receiver (needs audio device)"
     [jukebox]="Lyrion Music Server + Squeezelite player"
     [entephoto]="Ente Photos (self-hosted photo storage)"
+    [paperless-ngx]="Paperless-NGX document management (OCR + search)"
 )
 
 # Recommended order for deployment
-SERVICE_ORDER=(caddy dashboard pihole syncthing samba shairportsync jukebox entephoto)
+SERVICE_ORDER=(caddy dashboard pihole syncthing samba shairportsync jukebox entephoto paperless-ngx)
 SELECTED_SERVICES=()
 
 for svc in "${SERVICE_ORDER[@]}"; do
@@ -300,6 +301,9 @@ ENTEPHOTO_MINIO_PW=$(openssl rand -base64 24)
 ENTEPHOTO_ENC_KEY=$(openssl rand -base64 32)
 ENTEPHOTO_HASH_KEY=$(openssl rand -base64 64)
 ENTEPHOTO_JWT=$(openssl rand -hex 32)
+PAPERLESS_SECRET_KEY=$(openssl rand -hex 32)
+PAPERLESS_DB_PW=$(openssl rand -base64 24)
+PAPERLESS_ADMIN_PW=$(openssl rand -base64 24)
 
 # Generate a stable, locally-administered unicast MAC for the
 # squeezelite player. First octet 0x02 sets the locally-administered
@@ -343,6 +347,9 @@ my_linux_users:
   entephoto:
     uid: 1008
     gid: 1008
+  paperless:
+    uid: 1007
+    gid: 1007
   samba:
     uid: 1010
     gid: 1010
@@ -377,6 +384,13 @@ echo ""
 vault_encrypt "$ENTEPHOTO_JWT" "entephoto_jwt_secret"
 echo ""
 echo "entephoto_admin_user_ids: []"
+echo ""
+echo "### Paperless-NGX"
+vault_encrypt "$PAPERLESS_SECRET_KEY" "paperless_secret_key"
+echo ""
+vault_encrypt "$PAPERLESS_DB_PW" "paperless_db_password"
+echo ""
+vault_encrypt "$PAPERLESS_ADMIN_PW" "paperless_admin_password"
 echo "##################################################################################################"
 } > inventory/host_vars/homeserver/main.yml
 
@@ -483,6 +497,23 @@ cat << EOF
       - entephoto-postgres-data
       - entephoto-minio-data
       - entephoto-museum-config
+
+EOF
+fi
+
+if is_selected paperless-ngx; then
+cat << EOF
+  - name: Paperless-NGX
+    user: paperless
+    uid: 1007
+    service: paperless-ngx-pod
+    urls:
+      - label: Web UI
+        url: http://${SERVER_IP}:8000
+    volumes:
+      - paperless-db-data
+      - paperless-media
+      - paperless-data
 
 EOF
 fi

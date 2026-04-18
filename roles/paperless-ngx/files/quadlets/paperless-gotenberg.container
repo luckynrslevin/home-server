@@ -1,0 +1,13 @@
+[Unit]
+Description=paperless-ngx gotenberg document converter
+PartOf=paperless-ngx-pod.service
+
+[Container]
+ContainerName=%N
+Image=docker.io/gotenberg/gotenberg:8
+AutoUpdate=registry
+
+Pod=paperless-ngx.pod
+
+# Disable Chromium routes (not needed for paperless-ngx, saves memory)
+Exec=gotenberg --chromium-disable-javascript=true --chromium-allow-list=file:///tmp/.*

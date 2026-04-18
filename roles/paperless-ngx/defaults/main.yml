@@ -1,0 +1,27 @@
+---
+# Paperless-ngx admin account created on first startup.
+# After initial setup, change the password via the web UI.
+paperless_admin_user: "admin"
+
+# Timezone for document timestamps and scheduler.
+paperless_time_zone: "Europe/Berlin"
+
+# OCR language(s). Use ISO 639-2 3-letter codes, '+' separated.
+# Common: deu (German), eng (English), fra (French).
+paperless_ocr_language: "deu+eng"
+
+# Enable Gotenberg for Office document conversion (docx, xlsx, pptx → PDF).
+paperless_enable_gotenberg: true
+
+# Backup manifest — consumed by the backup role and restore playbook.
+backup_manifest:
+  service_user: paperless
+  service_unit: paperless-ngx-pod
+  volumes:
+    - { name: paperless-redis-data, method: tar }
+    - { name: paperless-data, method: tar }
+    - { name: paperless-export, method: tar }
+    - { name: paperless-media, method: rsync, nas_share: paperless-media }
+  databases:
+    - { container: paperless-db, db_user: paperless, db_name: paperless, method: pgdump }
+  post_restore_tasks: restore.yml

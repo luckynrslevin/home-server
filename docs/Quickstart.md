@@ -354,3 +354,4 @@ ports, deployment notes, and troubleshooting:
 - [samba](../roles/samba/README.md) — SMB file share
 - [shairportsync](../roles/shairportsync/README.md) — AirPlay receiver (incl. audio debugging)
 - [syncthing](../roles/syncthing/README.md) — file sync
+- [paperless-ngx](../roles/paperless-ngx/README.md) — document management (OCR + search)
