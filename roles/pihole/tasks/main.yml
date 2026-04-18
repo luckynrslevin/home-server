@@ -45,6 +45,18 @@
   changed_when: false
   when: pihole_enable_unbound | bool
 
+# Deploy the Unbound config file to the pihole user's home.
+# Bind-mounted into the container as a read-only drop-in.
+- name: Deploy Unbound configuration
+  become: true
+  ansible.builtin.template:
+    src: "{{ pihole_role_path }}/templates/volumes/unbound-config/unbound.conf.j2"
+    dest: /home/pihole/unbound-pihole.conf
+    owner: "{{ my_linux_users.pihole.uid }}"
+    group: "{{ my_linux_users.pihole.gid }}"
+    mode: "0644"
+  when: pihole_enable_unbound | bool
+
 - name: Deploy pihole container using podman_quadlet
   ansible.builtin.include_role:
     name: luckynrslevin.podman_quadlet
@@ -54,10 +66,7 @@
     podman_quadlet_files_templates_src_path: "{{ pihole_role_path }}"
     podman_quadlet_file_names: >-
       {{ ['pihole.container.j2', 'pihole-etc.volume', 'pihole-dnsmasq.volume']
-         + (['unbound.container.j2', 'unbound-config.volume'] if pihole_enable_unbound | bool else []) }}
-    podman_quadlet_volumes_files_to_stage: >-
-      {{ [{'name': 'unbound-config', 'files': [{'src': 'unbound.conf.j2', 'mode': '0644'}]}]
-         if pihole_enable_unbound | bool else omit }}
+         + (['unbound.container.j2'] if pihole_enable_unbound | bool else []) }}
     podman_quadlet_firewall_ports:
       - "{{ pihole_web_port_https }}/tcp"
     podman_quadlet_firewall_port_forwards:
@@ -67,6 +76,18 @@
       - port: 53
         proto: udp
         toport: 1053
+
+# Start and enable Unbound (it's a separate systemd unit, not part of
+# the pihole app unit, so the Galaxy role's restart doesn't cover it).
+- name: Enable and start Unbound # noqa: no-changed-when
+  become: true
+  ansible.builtin.command:
+    cmd: >
+      sudo -u pihole XDG_RUNTIME_DIR=/run/user/{{ my_linux_users.pihole.uid }}
+      DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/{{ my_linux_users.pihole.uid }}/bus
+      systemctl --user start unbound
+  changed_when: false
+  when: pihole_enable_unbound | bool
 
 # Configure the host itself to use Pi-hole for DNS via systemd-resolved
 # The firewall port forward (53→1053) only applies to external traffic,

@@ -32,16 +32,19 @@
       "Bash(scp *)",
       "Bash(ssh eddie *)",
       "Bash(ssh ans-test *)",
+      "Bash(ssh -i ~/.ssh/ds ds@192.168.65.2 *)",
       "Bash(ssh-keygen *)",
       "Bash(ansible *)",
       "Bash(ansible-playbook *)",
       "Bash(ansible-galaxy *)",
       "Bash(ansible-lint *)",
       "Bash(gh *)",
-      "Bash(sudo resolvectl *)"
+      "Bash(sudo resolvectl *)",
+      "Bash(ssh -i '~/.ssh/ds' ds@192.168.65.2 'cd /tmp:*)"
     ],
     "additionalDirectories": [
-      "/tmp"
+      "/tmp",
+      "/home/ds/github/home-server/roles/pihole/templates/volumes"
     ]
   }
 }

@@ -9,12 +9,13 @@ Image=docker.io/klutchell/unbound:latest
 AutoUpdate=registry
 Network=host
 
-Volume=unbound-config.volume:/opt/unbound/etc/unbound
-
-HealthCmd=drill @127.0.0.1 -p {{ pihole_unbound_port }} cloudflare.com || exit 1
-HealthInterval=1m
-HealthStartPeriod=30s
-HealthRetries=3
+# Mount our config and override the entrypoint to use it.
+# The klutchell image's default entrypoint runs unbound with its
+# own config (which binds port 53). We bypass it and run unbound
+# directly with our config that only binds port {{ pihole_unbound_port }}.
+Volume=/home/pihole/unbound-pihole.conf:/etc/unbound/pihole.conf:ro,Z
+Entrypoint=unbound
+Exec=-d -c /etc/unbound/pihole.conf
 
 [Service]
 Restart=on-failure
