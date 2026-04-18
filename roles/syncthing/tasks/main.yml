@@ -53,3 +53,10 @@
       - "{{ syncthing_listen_port }}/tcp"
       - "{{ syncthing_listen_port }}/udp"
       - "{{ syncthing_discovery_port }}/udp"
+
+- name: Register backup manifest
+  ansible.builtin.set_fact:
+    _backup_manifests: >-
+      {{ _backup_manifests | default([]) +
+         [backup_manifest | combine({'_role_name': role_name})] }}
+  when: backup_manifest is defined

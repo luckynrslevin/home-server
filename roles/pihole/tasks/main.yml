@@ -90,3 +90,10 @@
 
 - name: Run post-install configuration
   ansible.builtin.import_tasks: postinstall.yml
+
+- name: Register backup manifest
+  ansible.builtin.set_fact:
+    _backup_manifests: >-
+      {{ _backup_manifests | default([]) +
+         [backup_manifest | combine({'_role_name': role_name})] }}
+  when: backup_manifest is defined

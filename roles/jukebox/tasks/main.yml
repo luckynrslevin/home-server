@@ -100,3 +100,10 @@
       # - "9090/tcp" # only required for external clients (e.g. smart phone)
       # - "3483/tcp" # player and server communicate over
       # - "3483/udp" # pod related network
+
+- name: Register backup manifest
+  ansible.builtin.set_fact:
+    _backup_manifests: >-
+      {{ _backup_manifests | default([]) +
+         [backup_manifest | combine({'_role_name': role_name})] }}
+  when: backup_manifest is defined
