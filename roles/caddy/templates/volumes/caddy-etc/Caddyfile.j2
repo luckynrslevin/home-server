@@ -18,7 +18,7 @@
 {% for svc in caddy_reverse_proxy_services %}
 {{ svc.subdomain }}.{{ caddy_domain }} {
 	tls internal
-	reverse_proxy {{ svc.proto | default('http') }}://localhost:{{ svc.port }} {
+	reverse_proxy {{ svc.proto | default('http') }}://host.containers.internal:{{ svc.port }} {
 {% if (svc.proto | default('http')) == 'https' %}
 		transport http {
 			tls_insecure_skip_verify

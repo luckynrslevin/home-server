@@ -38,7 +38,8 @@
       "Bash(ansible-galaxy *)",
       "Bash(ansible-lint *)",
       "Bash(gh *)",
-      "Bash(sudo resolvectl *)"
+      "Bash(sudo resolvectl *)",
+      "Bash(ssh -i '~/.ssh/ds' ds@192.168.65.2 'echo === PIHOLE CONTAINER ===:*)"
     ],
     "additionalDirectories": [
       "/tmp"
