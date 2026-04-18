@@ -1,0 +1,13 @@
+[Unit]
+Description=paperless-ngx document management
+After=network-online.target
+Wants=network-online.target
+
+[Pod]
+PodName=paperless-ngx
+Network=paperless-ngx.network
+
+PublishPort=8000:8000/tcp
+
+[Install]
+WantedBy=default.target

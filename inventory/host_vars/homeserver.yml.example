@@ -80,3 +80,16 @@ entephoto_hash_key: !vault |
 entephoto_jwt_secret: !vault |
           <your vault-encrypted secret here>
 ##################################################################################################
+
+##################################################################################################
+### Paperless-NGX configuration
+### Generate: openssl rand -hex 32 | ansible-vault encrypt_string --stdin-name 'paperless_secret_key'
+### Generate: openssl rand -base64 24 | ansible-vault encrypt_string --stdin-name 'paperless_db_password'
+### Generate: openssl rand -base64 24 | ansible-vault encrypt_string --stdin-name 'paperless_admin_password'
+paperless_secret_key: !vault |
+          <your vault-encrypted key here>
+paperless_db_password: !vault |
+          <your vault-encrypted password here>
+paperless_admin_password: !vault |
+          <your vault-encrypted password here>
+##################################################################################################

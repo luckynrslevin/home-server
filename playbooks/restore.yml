@@ -43,6 +43,7 @@
       - syncthing
       - jukebox
       - entephoto
+      - paperless-ngx
 
   pre_tasks:
     # Load each role's defaults so backup_manifest vars are available.
@@ -119,6 +120,14 @@
         svc: "{{ _restore_manifests | selectattr('_role_name', 'equalto', 'entephoto') | first }}"
       when: _restore_manifests | selectattr('_role_name', 'equalto', 'entephoto') | list | length > 0
       tags: [entephoto]
+
+    - name: Restore paperless-ngx
+      ansible.builtin.include_tasks:
+        file: tasks/restore_generic.yml
+      vars:
+        svc: "{{ _restore_manifests | selectattr('_role_name', 'equalto', 'paperless-ngx') | first }}"
+      when: _restore_manifests | selectattr('_role_name', 'equalto', 'paperless-ngx') | list | length > 0
+      tags: [paperless-ngx]
 
     # ==================================================================
     # Opt-in: jukebox music (128 GB rsync — tagged [never])

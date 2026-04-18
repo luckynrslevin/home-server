@@ -1,0 +1,21 @@
+[Unit]
+Description=paperless-ngx postgres database
+PartOf=paperless-ngx-pod.service
+
+[Container]
+ContainerName=%N
+Image=docker.io/library/postgres:16
+AutoUpdate=registry
+
+Pod=paperless-ngx.pod
+
+Volume=paperless-db-data.volume:/var/lib/postgresql/data
+
+Environment=POSTGRES_DB=paperless
+Environment=POSTGRES_USER=paperless
+Environment=POSTGRES_PASSWORD={{ paperless_db_password }}
+
+HealthCmd=pg_isready -U paperless -d paperless
+HealthInterval=30s
+HealthStartPeriod=60s
+HealthRetries=5

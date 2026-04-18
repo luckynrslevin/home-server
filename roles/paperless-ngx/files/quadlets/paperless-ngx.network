@@ -1,0 +1,5 @@
+[Unit]
+Description=paperless-ngx pod network
+
+[Network]
+NetworkName=paperless-ngx
