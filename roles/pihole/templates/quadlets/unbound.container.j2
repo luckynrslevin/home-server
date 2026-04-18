@@ -1,0 +1,24 @@
+[Unit]
+Description=Unbound recursive DNS resolver (Pi-hole upstream)
+After=network-online.target
+Wants=network-online.target
+
+[Container]
+ContainerName=%N
+Image=docker.io/klutchell/unbound:latest
+AutoUpdate=registry
+Network=host
+
+Volume=unbound-config.volume:/opt/unbound/etc/unbound
+
+HealthCmd=drill @127.0.0.1 -p {{ pihole_unbound_port }} cloudflare.com || exit 1
+HealthInterval=1m
+HealthStartPeriod=30s
+HealthRetries=3
+
+[Service]
+Restart=on-failure
+TimeoutStartSec=300
+
+[Install]
+WantedBy=multi-user.target default.target

@@ -39,6 +39,12 @@
   ansible.builtin.shell: "su - pihole -c 'podman pull {{ pihole_image }}'"
   changed_when: false
 
+- name: Pre-pull Unbound image # noqa: no-changed-when
+  become: true
+  ansible.builtin.shell: "su - pihole -c 'podman pull docker.io/klutchell/unbound:latest'"
+  changed_when: false
+  when: pihole_enable_unbound | bool
+
 - name: Deploy pihole container using podman_quadlet
   ansible.builtin.include_role:
     name: luckynrslevin.podman_quadlet
@@ -46,10 +52,12 @@
     podman_quadlet_app_name: "pihole"
     podman_quadlet_rootless_user_name: pihole
     podman_quadlet_files_templates_src_path: "{{ pihole_role_path }}"
-    podman_quadlet_file_names:
-      - pihole.container.j2
-      - pihole-etc.volume
-      - pihole-dnsmasq.volume
+    podman_quadlet_file_names: >-
+      {{ ['pihole.container.j2', 'pihole-etc.volume', 'pihole-dnsmasq.volume']
+         + (['unbound.container.j2', 'unbound-config.volume'] if pihole_enable_unbound | bool else []) }}
+    podman_quadlet_volumes_files_to_stage: >-
+      {{ [{'name': 'unbound-config', 'files': [{'src': 'unbound.conf.j2', 'mode': '0644'}]}]
+         if pihole_enable_unbound | bool else omit }}
     podman_quadlet_firewall_ports:
       - "{{ pihole_web_port_https }}/tcp"
     podman_quadlet_firewall_port_forwards:

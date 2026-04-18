@@ -4,10 +4,19 @@
 Runs as a rootless container; the host's `systemd-resolved` is
 reconfigured to use it.
 
-## Container image
+Optionally includes [Unbound](https://www.nlnetlabs.nl/projects/unbound/about/)
+as a recursive DNS resolver — replacing third-party upstreams (Quad9,
+Cloudflare) with local recursive resolution from the DNS root servers.
+Enabled by default (`pihole_enable_unbound: true`).
 
-`ghcr.io/pi-hole/pihole:latest` (override via `pihole_image`). GHCR
-mirror is the default to avoid Docker Hub anonymous pull rate limits.
+## Container images
+
+| Container | Image |
+|-----------|-------|
+| pihole | `ghcr.io/pi-hole/pihole:latest` (override via `pihole_image`) |
+| unbound | `docker.io/klutchell/unbound:latest` (when `pihole_enable_unbound` is true) |
+
+GHCR mirror for Pi-hole avoids Docker Hub anonymous pull rate limits.
 
 ## Service user
 
@@ -19,7 +28,9 @@ mirror is the default to avoid Docker Hub anonymous pull rate limits.
 |----------------------------|--------------------------------------|------------------------------------------------------------------------|
 | `pihole_web_port_https`    | `8443`                               | HTTPS port for the admin UI.                                           |
 | `pihole_image`             | `ghcr.io/pi-hole/pihole:latest`      | Container image.                                                       |
-| `pihole_dns_upstreams`     | `9.9.9.9;149.112.112.112` (Quad9)    | Upstreams (semicolon-separated).                                       |
+| `pihole_enable_unbound`    | `true`                               | Enable Unbound recursive resolver as Pi-hole's upstream.               |
+| `pihole_unbound_port`      | `5335`                               | Unbound listen port (localhost).                                       |
+| `pihole_dns_upstreams`     | `9.9.9.9;149.112.112.112` (Quad9)    | Upstreams (only used when Unbound is disabled).                        |
 | `pihole_container_dns`     | `9.9.9.9`                            | DNS used by the container itself, not by clients.                      |
 | `pihole_domain_name`       | `lan`                                | Local domain suffix for conditional forwarding.                        |
 | `pihole_hostname`          | `pihole.lan`                         | Container hostname.                                                    |

@@ -33,6 +33,16 @@ pihole_adlists:
 # Format: list of {ip, hostname} dicts. Override per-host in inventory.
 pihole_local_dns_records: []
 
+# Unbound recursive DNS resolver. When enabled, an Unbound container
+# runs alongside Pi-hole and replaces external DNS upstreams (Quad9,
+# Cloudflare, etc.) with local recursive resolution from the DNS root
+# servers. Full privacy — no third-party resolver sees your queries.
+pihole_enable_unbound: true
+
+# Unbound listen port (inside the container, reachable from Pi-hole
+# on localhost). Convention: 5335 to avoid conflict with Pi-hole on 53.
+pihole_unbound_port: 5335
+
 # Backup manifest — consumed by the backup role and restore playbook.
 backup_manifest:
   service_user: pihole
