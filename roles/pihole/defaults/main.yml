@@ -25,8 +25,6 @@ pihole_local_router: "192.168.x.1"
 # built-in default (StevenBlack unified hosts — auto-added by the
 # container on first run). Override per host in inventory.
 pihole_adlists:
-  - address: "https://cdn.jsdelivr.net/gh/hagezi/dns-blocklists@latest/wildcard/pro.txt"
-    comment: "Hagezi Multi Pro — ads, trackers, malware, phishing (~300K domains)"
   - address: "https://raw.githubusercontent.com/Turtlecute33/Toolz/master/src/d3host.txt"
     comment: "https://adblock.turtlecute.org/"
 
