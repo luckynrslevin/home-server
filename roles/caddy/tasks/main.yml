@@ -49,19 +49,19 @@
     podman_quadlet_rootless_user_name: webproxy
     podman_quadlet_files_templates_src_path: "{{ caddy_role_path }}"
     podman_quadlet_file_names:
-      - caddy.container
+      - caddy.container.j2
       - caddy-data.volume
       - caddy-config.volume
       - caddy-etc.volume
     podman_quadlet_volumes_files_to_stage:
       - name: caddy-etc
         files:
-          - src: Caddyfile
+          - src: Caddyfile.j2
             mode: "0644"
-    podman_quadlet_firewall_port_forwards:
-      - port: 80
-        proto: tcp
-        toport: "{{ caddy_listen_port }}"
+    podman_quadlet_firewall_port_forwards: >-
+      {{ [{'port': 80, 'proto': 'tcp', 'toport': caddy_listen_port}]
+         + ([{'port': 443, 'proto': 'tcp', 'toport': caddy_listen_port_https}]
+            if caddy_domain else []) }}
 
 - name: Reload Caddy configuration # noqa: no-changed-when
   become: true

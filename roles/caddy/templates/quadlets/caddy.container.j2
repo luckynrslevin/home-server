@@ -13,7 +13,10 @@ Volume=caddy-config.volume:/config
 Volume=caddy-etc.volume:/etc/caddy
 Volume=/var/www/dashboard:/srv/dashboard:ro
 
-PublishPort=9080:80/tcp
+PublishPort={{ caddy_listen_port }}:80/tcp
+{% if caddy_domain %}
+PublishPort={{ caddy_listen_port_https }}:443/tcp
+{% endif %}
 
 [Service]
 Restart=on-failure
