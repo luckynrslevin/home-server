@@ -19,12 +19,10 @@ server:
     access-control: 192.168.0.0/16 allow
     access-control: ::1/128 allow
 
-    # DNSSEC disabled — we bypass the image entrypoint (which manages
-    # root.key). Recursive resolution still works without DNSSEC; it
-    # just doesn't validate signatures. Can be re-enabled by running
-    # unbound-anchor separately and uncommenting auto-trust-anchor-file.
-    # auto-trust-anchor-file: /opt/unbound/etc/unbound/root.key
-    # root-hints: /opt/unbound/etc/unbound/root.hints
+    # Don't specify root-hints — unbound uses its compiled-in defaults.
+    # DNSSEC trust anchor managed externally (or disabled).
+    # The klutchell image's entrypoint normally handles this but we
+    # bypass it; recursive resolution works without DNSSEC validation.
 
     # Performance
     num-threads: 2
@@ -49,6 +47,13 @@ server:
     harden-algo-downgrade: yes
     harden-large-queries: yes
     harden-referral-path: no
+
+    # Disable chroot (image paths break under chroot)
+    chroot: ""
+
+    # Disable DNSSEC validator (no root.key available when bypassing
+    # the image entrypoint). Recursive resolution works without it.
+    module-config: "iterator"
 
     # Logging
     verbosity: 0
