@@ -1,0 +1,17 @@
+[Unit]
+Description=nextcloud redis cache
+PartOf=nextcloud-pod.service
+
+[Container]
+ContainerName=%N
+Image=docker.io/library/redis:7-alpine
+AutoUpdate=registry
+
+Pod=nextcloud.pod
+
+Volume=nextcloud-redis-data.volume:/data
+
+HealthCmd=redis-cli ping
+HealthInterval=30s
+HealthStartPeriod=30s
+HealthRetries=3

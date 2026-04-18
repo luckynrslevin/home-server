@@ -1,0 +1,46 @@
+[Unit]
+Description=nextcloud web application
+PartOf=nextcloud-pod.service
+After=nextcloud-db.service
+After=nextcloud-redis.service
+
+[Container]
+ContainerName=%N
+Image=docker.io/library/nextcloud:latest
+AutoUpdate=registry
+
+Pod=nextcloud.pod
+
+Volume=nextcloud-config.volume:/var/www/html
+Volume=nextcloud-data.volume:/var/www/html/data
+
+# Database
+Environment=POSTGRES_HOST=localhost
+Environment=POSTGRES_DB=nextcloud
+Environment=POSTGRES_USER=nextcloud
+Environment=POSTGRES_PASSWORD={{ nextcloud_db_password }}
+
+# Redis
+Environment=REDIS_HOST=localhost
+
+# Admin account (created on first startup only)
+Environment=NEXTCLOUD_ADMIN_USER={{ nextcloud_admin_user }}
+Environment=NEXTCLOUD_ADMIN_PASSWORD={{ nextcloud_admin_password }}
+
+# Trusted domains
+Environment=NEXTCLOUD_TRUSTED_DOMAINS={{ nextcloud_trusted_domains }}
+
+# Upload limits
+Environment=PHP_UPLOAD_LIMIT={{ nextcloud_max_upload_size }}
+
+# Timezone
+Environment=TZ={{ nextcloud_time_zone }}
+
+HealthCmd=curl -fs http://localhost/status.php | grep -q '"installed":true' || exit 1
+HealthInterval=1m
+HealthStartPeriod=300s
+HealthRetries=3
+
+[Service]
+# First startup can take several minutes (DB migrations + install)
+TimeoutStartSec=600

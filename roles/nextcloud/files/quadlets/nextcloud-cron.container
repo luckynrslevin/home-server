@@ -1,0 +1,16 @@
+[Unit]
+Description=nextcloud background jobs (cron)
+PartOf=nextcloud-pod.service
+After=nextcloud.service
+
+[Container]
+ContainerName=%N
+Image=docker.io/library/nextcloud:latest
+AutoUpdate=registry
+
+Pod=nextcloud.pod
+
+Volume=nextcloud-config.volume:/var/www/html
+Volume=nextcloud-data.volume:/var/www/html/data
+
+Entrypoint=/cron.sh

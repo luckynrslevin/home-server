@@ -45,6 +45,7 @@
       - entephoto
       - paperless-ngx
       - jellyfin
+      - nextcloud
 
   pre_tasks:
     # Load each role's defaults so backup_manifest vars are available.
@@ -137,6 +138,14 @@
         svc: "{{ _restore_manifests | selectattr('_role_name', 'equalto', 'jellyfin') | first }}"
       when: _restore_manifests | selectattr('_role_name', 'equalto', 'jellyfin') | list | length > 0
       tags: [jellyfin]
+
+    - name: Restore nextcloud
+      ansible.builtin.include_tasks:
+        file: tasks/restore_generic.yml
+      vars:
+        svc: "{{ _restore_manifests | selectattr('_role_name', 'equalto', 'nextcloud') | first }}"
+      when: _restore_manifests | selectattr('_role_name', 'equalto', 'nextcloud') | list | length > 0
+      tags: [nextcloud]
 
     # ==================================================================
     # Opt-in: jukebox music (128 GB rsync — tagged [never])

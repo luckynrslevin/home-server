@@ -1,0 +1,21 @@
+[Unit]
+Description=nextcloud postgres database
+PartOf=nextcloud-pod.service
+
+[Container]
+ContainerName=%N
+Image=docker.io/library/postgres:16
+AutoUpdate=registry
+
+Pod=nextcloud.pod
+
+Volume=nextcloud-db-data.volume:/var/lib/postgresql/data
+
+Environment=POSTGRES_DB=nextcloud
+Environment=POSTGRES_USER=nextcloud
+Environment=POSTGRES_PASSWORD={{ nextcloud_db_password }}
+
+HealthCmd=pg_isready -U nextcloud -d nextcloud
+HealthInterval=30s
+HealthStartPeriod=60s
+HealthRetries=5

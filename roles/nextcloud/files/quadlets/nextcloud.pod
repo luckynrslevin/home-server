@@ -1,0 +1,13 @@
+[Unit]
+Description=Nextcloud personal cloud
+After=network-online.target
+Wants=network-online.target
+
+[Pod]
+PodName=nextcloud
+Network=nextcloud.network
+
+PublishPort=8080:80/tcp
+
+[Install]
+WantedBy=default.target
