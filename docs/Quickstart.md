@@ -355,3 +355,4 @@ ports, deployment notes, and troubleshooting:
 - [shairportsync](../roles/shairportsync/README.md) — AirPlay receiver (incl. audio debugging)
 - [syncthing](../roles/syncthing/README.md) — file sync
 - [paperless-ngx](../roles/paperless-ngx/README.md) — document management (OCR + search)
+- [jellyfin](../roles/jellyfin/README.md) — media server (movies, TV, music)

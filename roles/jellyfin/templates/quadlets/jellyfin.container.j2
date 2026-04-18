@@ -1,0 +1,35 @@
+[Unit]
+Description=Jellyfin media server
+After=network-online.target
+Wants=network-online.target
+
+[Container]
+ContainerName=%N
+Image=docker.io/jellyfin/jellyfin:latest
+AutoUpdate=registry
+Network=host
+
+Volume=jellyfin-config.volume:/config
+Volume=jellyfin-cache.volume:/cache
+Volume=jellyfin-media.volume:/media
+
+Environment=TZ={{ jellyfin_time_zone }}
+
+{% if jellyfin_enable_hw_transcoding %}
+# Hardware transcoding via VAAPI. SecurityLabelDisable is required
+# because SELinux blocks rootless access to /dev/dri.
+AddDevice=/dev/dri
+SecurityLabelDisable=true
+{% endif %}
+
+HealthCmd=curl -fs http://localhost:8096/health || exit 1
+HealthInterval=30s
+HealthStartPeriod=60s
+HealthRetries=3
+
+[Service]
+Restart=on-failure
+TimeoutStartSec=900
+
+[Install]
+WantedBy=multi-user.target default.target
