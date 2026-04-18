@@ -1,0 +1,63 @@
+---
+# Ente Photos post-restore hook: three-phase Postgres restore.
+#
+# At this point the generic flow has already:
+#   - restored museum-config (tar) and minio-data (rsync)
+#   - started entephoto-pod (all containers in the pod are up)
+#
+# We now need to:
+#   1. Wait for Postgres to become ready
+#   2. Stop museum + web (they hold DB connections that block DROP)
+#   3. DROP + CREATE the database
+#   4. Load the pg_dump
+#   5. Restart museum + web
+
+- name: "ENTEPHOTO: wait for postgres to be ready"
+  ansible.builtin.shell: >
+    cd /tmp && sudo -u entephoto podman exec entephoto-postgres
+    pg_isready -U pguser -d ente_db
+  register: pg_ready
+  until: pg_ready.rc == 0
+  retries: 30
+  delay: 2
+  changed_when: false
+
+- name: "ENTEPHOTO: stop museum + web (they hold DB connections)"
+  ansible.builtin.command:
+    cmd: >
+      sudo -u entephoto
+      XDG_RUNTIME_DIR=/run/user/{{ my_linux_users.entephoto.uid }}
+      DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/{{ my_linux_users.entephoto.uid }}/bus
+      systemctl --user stop {{ item }}
+  loop:
+    - entephoto-museum
+    - entephoto-web
+  changed_when: false
+  failed_when: false
+
+- name: "ENTEPHOTO: drop and recreate database"
+  ansible.builtin.shell: |
+    cd /tmp
+    sudo -u entephoto podman exec entephoto-postgres \
+        psql -U pguser -d postgres -c "DROP DATABASE IF EXISTS ente_db;"
+    sudo -u entephoto podman exec entephoto-postgres \
+        psql -U pguser -d postgres -c "CREATE DATABASE ente_db OWNER pguser;"
+
+- name: "ENTEPHOTO: restore pg_dump"
+  ansible.builtin.shell: |
+    cd /tmp
+    gunzip -c "{{ _pgdump_latest.results[0].stdout }}" | \
+        sudo -u entephoto podman exec -i entephoto-postgres \
+        psql -U pguser -d ente_db
+
+- name: "ENTEPHOTO: start museum + web"
+  ansible.builtin.command:
+    cmd: >
+      sudo -u entephoto
+      XDG_RUNTIME_DIR=/run/user/{{ my_linux_users.entephoto.uid }}
+      DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/{{ my_linux_users.entephoto.uid }}/bus
+      systemctl --user start {{ item }}
+  loop:
+    - entephoto-museum
+    - entephoto-web
+  changed_when: false

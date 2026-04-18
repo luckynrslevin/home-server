@@ -7,3 +7,10 @@ samba_timezone: "UTC"
 samba_workgroup: "WORKGROUP"
 samba_server_string: "Samba Server"
 samba_netbios_name: "HOMESERVER"
+
+# Backup manifest — consumed by the backup role and restore playbook.
+backup_manifest:
+  service_user: samba
+  service_unit: samba
+  volumes:
+    - { name: systemd-samba-data, method: rsync, nas_share: xchange }

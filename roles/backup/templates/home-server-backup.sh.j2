@@ -22,13 +22,13 @@ set -euo pipefail
 BACKUP_ROOT="/mnt/backup"
 NAS_HOST="{{ backup_nas_hostname }}"
 NAS_VOLUME="{{ backup_nas_volume }}"
-# Local mount name → Synology shared folder name
+# Local mount name → Synology shared folder name.
+# Derived from backup_manifest declarations in each role's defaults.
 declare -A NFS_SHARES=(
   [tar]=backup-tar
-  [photos]=backup-photos
-  [syncthing]=backup-syncthing
-  [xchange]=backup-xchange
-  [music]=backup-music
+{% for share in _backup_manifests | map(attribute='volumes') | flatten | selectattr('method', 'equalto', 'rsync') | map(attribute='nas_share') | unique | sort %}
+  [{{ share }}]=backup-{{ share }}
+{% endfor %}
 )
 MOUNT_OPTS="noatime,hard,_netdev,vers=4"
 RETENTION_DAYS=7
@@ -139,45 +139,28 @@ backup_pgdump() {
 
 # =======================================================================
 # Backup definitions per service
+# Generated from backup_manifest declarations in each role's defaults.
 # =======================================================================
+{% for svc in _backup_manifests %}
 
-# === Pi-hole ===
-log "--- Pi-hole ---"
-stop_service pihole {{ my_linux_users.pihole.uid }} pihole
-backup_tar_volume pihole {{ my_linux_users.pihole.uid }} systemd-pihole-etc
-backup_tar_volume pihole {{ my_linux_users.pihole.uid }} systemd-pihole-dnsmasq
-start_service pihole {{ my_linux_users.pihole.uid }} pihole
-
-# === Samba ===
-log "--- Samba ---"
-stop_service samba {{ my_linux_users.samba.uid }} samba
-backup_rsync_volume samba {{ my_linux_users.samba.uid }} systemd-samba-data xchange
-start_service samba {{ my_linux_users.samba.uid }} samba
-
-# === Syncthing ===
-log "--- Syncthing ---"
-stop_service syncthg {{ my_linux_users.syncthg.uid }} syncthing
-backup_tar_volume syncthg {{ my_linux_users.syncthg.uid }} systemd-syncthing-config
-backup_rsync_volume syncthg {{ my_linux_users.syncthg.uid }} systemd-syncthing-data syncthing
-start_service syncthg {{ my_linux_users.syncthg.uid }} syncthing
-
-# === Jukebox ===
-log "--- Jukebox ---"
-stop_service jukebox {{ my_linux_users.jukebox.uid }} jukebox-pod
-backup_tar_volume jukebox {{ my_linux_users.jukebox.uid }} jukebox-server-config
-backup_tar_volume jukebox {{ my_linux_users.jukebox.uid }} jukebox-server-playlist
-backup_rsync_volume jukebox {{ my_linux_users.jukebox.uid }} jukebox-server-music music
-start_service jukebox {{ my_linux_users.jukebox.uid }} jukebox-pod
-
-# === Ente Photos ===
-log "--- Ente Photos ---"
+# === {{ svc._role_name | capitalize }} ===
+log "--- {{ svc._role_name | capitalize }} ---"
+{% if svc.databases is defined %}
+{% for db in svc.databases %}
 # pg_dump runs while service is up (consistent logical snapshot)
-backup_pgdump entephoto entephoto-postgres pguser ente_db
-# Stop pod for volume backups
-stop_service entephoto {{ my_linux_users.entephoto.uid }} entephoto-pod
-backup_tar_volume entephoto {{ my_linux_users.entephoto.uid }} entephoto-museum-config
-backup_rsync_volume entephoto {{ my_linux_users.entephoto.uid }} entephoto-minio-data photos
-start_service entephoto {{ my_linux_users.entephoto.uid }} entephoto-pod
+backup_pgdump {{ svc.service_user }} {{ db.container }} {{ db.db_user }} {{ db.db_name }}
+{% endfor %}
+{% endif %}
+stop_service {{ svc.service_user }} {{ my_linux_users[svc.service_user].uid }} {{ svc.service_unit }}
+{% for vol in svc.volumes %}
+{% if vol.method == 'tar' %}
+backup_tar_volume {{ svc.service_user }} {{ my_linux_users[svc.service_user].uid }} {{ vol.name }}
+{% elif vol.method == 'rsync' %}
+backup_rsync_volume {{ svc.service_user }} {{ my_linux_users[svc.service_user].uid }} {{ vol.name }} {{ vol.nas_share }}
+{% endif %}
+{% endfor %}
+start_service {{ svc.service_user }} {{ my_linux_users[svc.service_user].uid }} {{ svc.service_unit }}
+{% endfor %}
 
 # =======================================================================
 log "=== Backup finished ($ERRORS errors) ==="

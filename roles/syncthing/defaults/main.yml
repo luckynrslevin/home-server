@@ -1,3 +1,11 @@
 syncthing_gui_port: 8384
 syncthing_listen_port: 22000
 syncthing_discovery_port: 21027
+
+# Backup manifest — consumed by the backup role and restore playbook.
+backup_manifest:
+  service_user: syncthg
+  service_unit: syncthing
+  volumes:
+    - { name: systemd-syncthing-config, method: tar }
+    - { name: systemd-syncthing-data, method: rsync, nas_share: syncthing }

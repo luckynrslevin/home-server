@@ -6,3 +6,14 @@ entephoto_minio_root_user: enteadmin
 #   podman exec entephoto-postgres psql -U pguser ente_db -c "SELECT user_id FROM users;")
 # Admins can manage subscriptions and storage for all users.
 entephoto_admin_user_ids: []
+
+# Backup manifest — consumed by the backup role and restore playbook.
+backup_manifest:
+  service_user: entephoto
+  service_unit: entephoto-pod
+  volumes:
+    - { name: entephoto-museum-config, method: tar }
+    - { name: entephoto-minio-data, method: rsync, nas_share: photos }
+  databases:
+    - { container: entephoto-postgres, db_user: pguser, db_name: ente_db, method: pgdump }
+  post_restore_tasks: restore.yml

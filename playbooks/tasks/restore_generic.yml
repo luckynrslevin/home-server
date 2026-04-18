@@ -1,0 +1,133 @@
+---
+# Generic restore for one service, parameterised by {{ svc }}.
+#
+# Expected svc keys:
+#   service_user   — Linux username (key into my_linux_users for UID)
+#   service_unit   — systemd --user unit to stop/start
+#   volumes[]      — list of {name, method, nas_share?, restore_opt_in?}
+#   databases[]    — optional list of {container, db_user, db_name, method}
+#   post_restore_tasks — optional role-relative path for post-restore hook
+#   _role_name     — injected by the aggregation set_fact
+
+# --- Mount NAS shares ---
+- name: "{{ svc._role_name | upper }}: mount NAS tar share"
+  block:
+    - ansible.builtin.file:
+        path: "{{ restore_root }}/tar"
+        state: directory
+    - ansible.posix.mount:
+        path: "{{ restore_root }}/tar"
+        src: "{{ nas_host }}:{{ nas_volume }}/backup-tar"
+        fstype: nfs
+        opts: "{{ nfs_opts }}"
+        state: ephemeral
+
+- name: "{{ svc._role_name | upper }}: mount NAS rsync shares"
+  block:
+    - ansible.builtin.file:
+        path: "{{ restore_root }}/{{ item.nas_share }}"
+        state: directory
+      loop: "{{ svc.volumes | selectattr('method', 'equalto', 'rsync') | list }}"
+      loop_control:
+        label: "{{ item.nas_share }}"
+    - ansible.posix.mount:
+        path: "{{ restore_root }}/{{ item.nas_share }}"
+        src: "{{ nas_host }}:{{ nas_volume }}/backup-{{ item.nas_share }}"
+        fstype: nfs
+        opts: "{{ nfs_opts }}"
+        state: ephemeral
+      loop: "{{ svc.volumes | selectattr('method', 'equalto', 'rsync') | list }}"
+      loop_control:
+        label: "{{ item.nas_share }}"
+  when: svc.volumes | selectattr('method', 'equalto', 'rsync') | list | length > 0
+
+# --- Find latest tar backups ---
+- name: "{{ svc._role_name | upper }}: find latest tar backups"
+  ansible.builtin.shell: >
+    ls -t {{ restore_root }}/tar/{{ item.name }}/*.tar.gz | head -1
+  register: _tar_latest
+  loop: "{{ svc.volumes | selectattr('method', 'equalto', 'tar') | list }}"
+  loop_control:
+    label: "{{ item.name }}"
+  changed_when: false
+
+# --- Find latest pgdump backups ---
+- name: "{{ svc._role_name | upper }}: find latest pgdump backups"
+  ansible.builtin.shell: >
+    ls -t {{ restore_root }}/tar/pgdump-{{ item.container }}/*.sql.gz | head -1
+  register: _pgdump_latest
+  loop: "{{ svc.databases | default([]) }}"
+  loop_control:
+    label: "{{ item.container }}"
+  changed_when: false
+
+# --- Stop the service ---
+- name: "{{ svc._role_name | upper }}: stop service"
+  ansible.builtin.command:
+    cmd: >
+      sudo -u {{ svc.service_user }}
+      XDG_RUNTIME_DIR=/run/user/{{ my_linux_users[svc.service_user].uid }}
+      DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/{{ my_linux_users[svc.service_user].uid }}/bus
+      systemctl --user stop {{ svc.service_unit }}
+  changed_when: false
+  failed_when: false
+
+# --- Restore tar volumes ---
+- name: "{{ svc._role_name | upper }}: restore tar volume {{ item.item.name }}"
+  ansible.builtin.shell: |
+    cd /tmp
+    sudo -u {{ svc.service_user }} podman volume rm {{ item.item.name }} || true
+    sudo -u {{ svc.service_user }} podman volume create {{ item.item.name }}
+    gunzip -c "{{ item.stdout }}" | \
+        sudo -u {{ svc.service_user }} podman volume import {{ item.item.name }} -
+  loop: "{{ _tar_latest.results | default([]) }}"
+  loop_control:
+    label: "{{ item.item.name }}"
+
+# --- Restore rsync volumes (skip opt-in ones) ---
+- name: "{{ svc._role_name | upper }}: rsync restore {{ item.name }}"
+  ansible.builtin.shell: |
+    cd /tmp
+    MP=$(sudo -u {{ svc.service_user }} podman volume inspect {{ item.name }} \
+        --format='{% raw %}{{.Mountpoint}}{% endraw %}')
+    sudo -u {{ svc.service_user }} podman unshare rsync -a --delete \
+        --no-owner --no-group --numeric-ids \
+        "{{ restore_root }}/{{ item.nas_share }}/" "$MP/"
+  loop: >-
+    {{ svc.volumes
+       | selectattr('method', 'equalto', 'rsync')
+       | rejectattr('restore_opt_in', 'defined')
+       | list }}
+  loop_control:
+    label: "{{ item.name }}"
+
+# --- Start the service ---
+- name: "{{ svc._role_name | upper }}: start service"
+  ansible.builtin.command:
+    cmd: >
+      sudo -u {{ svc.service_user }}
+      XDG_RUNTIME_DIR=/run/user/{{ my_linux_users[svc.service_user].uid }}
+      DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/{{ my_linux_users[svc.service_user].uid }}/bus
+      systemctl --user start {{ svc.service_unit }}
+  changed_when: false
+
+# --- Run post-restore hook if defined ---
+- name: "{{ svc._role_name | upper }}: run post-restore tasks"
+  ansible.builtin.include_tasks:
+    file: "{{ playbook_dir }}/../roles/{{ svc._role_name }}/tasks/{{ svc.post_restore_tasks }}"
+  when: svc.post_restore_tasks is defined
+
+# --- Unmount NAS shares ---
+- name: "{{ svc._role_name | upper }}: unmount NAS rsync shares"
+  ansible.posix.mount:
+    path: "{{ restore_root }}/{{ item.nas_share }}"
+    state: unmounted
+  loop: "{{ svc.volumes | selectattr('method', 'equalto', 'rsync') | list }}"
+  loop_control:
+    label: "{{ item.nas_share }}"
+  when: svc.volumes | selectattr('method', 'equalto', 'rsync') | list | length > 0
+
+- name: "{{ svc._role_name | upper }}: unmount NAS tar share"
+  ansible.posix.mount:
+    path: "{{ restore_root }}/tar"
+    state: unmounted

@@ -89,3 +89,10 @@
         "'
   register: entephoto_bucket_create
   changed_when: "'Bucket created successfully' in entephoto_bucket_create.stdout"
+
+- name: Register backup manifest
+  ansible.builtin.set_fact:
+    _backup_manifests: >-
+      {{ _backup_manifests | default([]) +
+         [backup_manifest | combine({'_role_name': role_name})] }}
+  when: backup_manifest is defined

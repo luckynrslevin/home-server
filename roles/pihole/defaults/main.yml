@@ -32,3 +32,12 @@ pihole_adlists:
 # Stored in pihole.toml under dns.hosts via `pihole-FTL --config`.
 # Format: list of {ip, hostname} dicts. Override per-host in inventory.
 pihole_local_dns_records: []
+
+# Backup manifest — consumed by the backup role and restore playbook.
+backup_manifest:
+  service_user: pihole
+  service_unit: pihole
+  volumes:
+    - { name: systemd-pihole-etc, method: tar }
+    - { name: systemd-pihole-dnsmasq, method: tar }
+  post_restore_tasks: restore.yml
