@@ -11,7 +11,7 @@
 # This removes:
 #   - All rootless and rootful containers, volumes, images
 #   - Service users (shairport, syncthg, pihole, jukebox, entephoto,
-#     paperless, samba, webproxy)
+#     paperless, jellyfin, samba, webproxy)
 #   - Systemd units (dashboard, backup timers)
 #   - Deployed scripts and configs
 #   - Firewall rules added by the roles
@@ -37,7 +37,7 @@ if [[ $EUID -eq 0 ]]; then
     exit 1
 fi
 
-SERVICE_USERS=(shairport syncthg pihole jukebox entephoto paperless samba webproxy)
+SERVICE_USERS=(shairport syncthg pihole jukebox entephoto paperless jellyfin samba webproxy)
 
 # ---- Stop and remove containers ----
 info "Stopping containers and cleaning podman state..."

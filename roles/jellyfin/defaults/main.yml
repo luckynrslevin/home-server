@@ -1,0 +1,17 @@
+---
+# Enable hardware transcoding via VAAPI (/dev/dri).
+# Requires a GPU or iGPU with VAAPI support on the host.
+# When enabled, SecurityLabelDisable=true is set on the container
+# (SELinux blocks rootless device access otherwise).
+jellyfin_enable_hw_transcoding: false
+
+# Timezone for metadata and scheduled tasks.
+jellyfin_time_zone: "Europe/Berlin"
+
+# Backup manifest — consumed by the backup role and restore playbook.
+backup_manifest:
+  service_user: jellyfin
+  service_unit: jellyfin
+  volumes:
+    - { name: jellyfin-config, method: tar }
+    - { name: jellyfin-media, method: rsync, nas_share: jellyfin-media, restore_opt_in: true }

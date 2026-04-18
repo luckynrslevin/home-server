@@ -44,6 +44,7 @@
       - jukebox
       - entephoto
       - paperless-ngx
+      - jellyfin
 
   pre_tasks:
     # Load each role's defaults so backup_manifest vars are available.
@@ -128,6 +129,14 @@
         svc: "{{ _restore_manifests | selectattr('_role_name', 'equalto', 'paperless-ngx') | first }}"
       when: _restore_manifests | selectattr('_role_name', 'equalto', 'paperless-ngx') | list | length > 0
       tags: [paperless-ngx]
+
+    - name: Restore jellyfin
+      ansible.builtin.include_tasks:
+        file: tasks/restore_generic.yml
+      vars:
+        svc: "{{ _restore_manifests | selectattr('_role_name', 'equalto', 'jellyfin') | first }}"
+      when: _restore_manifests | selectattr('_role_name', 'equalto', 'jellyfin') | list | length > 0
+      tags: [jellyfin]
 
     # ==================================================================
     # Opt-in: jukebox music (128 GB rsync — tagged [never])

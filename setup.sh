@@ -229,10 +229,11 @@ SERVICES=(
     [jukebox]="Lyrion Music Server + Squeezelite player"
     [entephoto]="Ente Photos (self-hosted photo storage)"
     [paperless-ngx]="Paperless-NGX document management (OCR + search)"
+    [jellyfin]="Jellyfin media server (movies, TV, music)"
 )
 
 # Recommended order for deployment
-SERVICE_ORDER=(caddy dashboard pihole syncthing samba shairportsync jukebox entephoto paperless-ngx)
+SERVICE_ORDER=(caddy dashboard pihole syncthing samba shairportsync jukebox entephoto paperless-ngx jellyfin)
 SELECTED_SERVICES=()
 
 for svc in "${SERVICE_ORDER[@]}"; do
@@ -350,6 +351,9 @@ my_linux_users:
   paperless:
     uid: 1007
     gid: 1007
+  jellyfin:
+    uid: 1012
+    gid: 1012
   samba:
     uid: 1010
     gid: 1010
@@ -514,6 +518,22 @@ cat << EOF
       - paperless-db-data
       - paperless-media
       - paperless-data
+
+EOF
+fi
+
+if is_selected jellyfin; then
+cat << EOF
+  - name: Jellyfin
+    user: jellyfin
+    uid: 1012
+    service: jellyfin
+    urls:
+      - label: Web UI
+        url: http://${SERVER_IP}:8096
+    volumes:
+      - jellyfin-config
+      - jellyfin-media
 
 EOF
 fi
