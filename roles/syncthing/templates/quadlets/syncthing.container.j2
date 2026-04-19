@@ -7,7 +7,7 @@ After=local-fs.target
 [Container]
 ContainerName={{ podman_quadlet_app_name }}
 
-Image=ghcr.io/syncthing/syncthing:2
+Image={{ syncthing_image }}
 AutoUpdate=registry
 
 Network=host

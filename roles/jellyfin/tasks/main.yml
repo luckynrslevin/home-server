@@ -33,12 +33,6 @@
   ansible.builtin.set_fact:
     jellyfin_role_path: "{{ role_path }}"
 
-# Pre-pull the image to avoid systemd startup timeout on first deploy.
-- name: Pre-pull Jellyfin container image # noqa: no-changed-when
-  become: true
-  ansible.builtin.shell: "su - jellyfin -c 'podman pull docker.io/jellyfin/jellyfin:latest'"
-  changed_when: false
-
 - name: Deploy jellyfin container using podman_quadlet
   ansible.builtin.include_role:
     name: luckynrslevin.podman_quadlet

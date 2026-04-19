@@ -4,7 +4,7 @@ PartOf=jukebox-pod.service
 
 [Container]
 ContainerName=%N
-Image=docker.io/giof71/squeezelite
+Image={{ jukebox_player_image }}
 AutoUpdate=registry
 
 Pod=jukebox.pod

@@ -1,3 +1,6 @@
+# Container image
+samba_image: "ghcr.io/servercontainers/samba:latest"
+
 samba_smb_port: 1445
 samba_netbios_port: 1139
 samba_share_path: /home/samba/share

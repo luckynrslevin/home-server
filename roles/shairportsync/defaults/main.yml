@@ -1,3 +1,6 @@
+# Container image
+shairportsync_image: "docker.io/mikebrady/shairport-sync"
+
 # AirPlay device name (visible on iPhones, Macs, etc.)
 shairportsync_airplay_name: "{{ ansible_facts['hostname'] }}"
 

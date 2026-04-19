@@ -1,3 +1,6 @@
+# Container image
+caddy_image: "public.ecr.aws/docker/library/caddy:latest"
+
 # Caddy listen port (unprivileged, mapped via firewall from 80)
 caddy_listen_port: 9080
 
