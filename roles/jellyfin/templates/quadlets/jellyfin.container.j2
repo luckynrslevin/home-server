@@ -5,7 +5,7 @@ Wants=network-online.target
 
 [Container]
 ContainerName=%N
-Image=docker.io/jellyfin/jellyfin:latest
+Image={{ jellyfin_image }}
 AutoUpdate=registry
 Network=host
 

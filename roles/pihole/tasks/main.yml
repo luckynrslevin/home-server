@@ -34,6 +34,10 @@
 # Without this, the podman_quadlet restart step would stop pihole, then try
 # to pull the new image, then fail because pihole IS the host's DNS server
 # (lookup of ghcr.io / docker.io fails the moment pihole is down).
+# Pre-pull is critical for Pi-hole: restarting the container takes down
+# DNS, so the new image must already be local before the restart.
+# Other roles don't need this — their quadlet units pull on startup
+# within TimeoutStartSec.
 - name: Pre-pull Pi-hole image while old container still serves DNS # noqa: no-changed-when
   become: true
   ansible.builtin.shell: "su - pihole -c 'podman pull {{ pihole_image }}'"

@@ -1,4 +1,7 @@
 ---
+# Container image
+jellyfin_image: "ghcr.io/jellyfin/jellyfin:latest"
+
 # Enable hardware transcoding via VAAPI (/dev/dri).
 # Requires a GPU or iGPU with VAAPI support on the host.
 # When enabled, SecurityLabelDisable=true is set on the container

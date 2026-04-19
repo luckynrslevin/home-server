@@ -57,19 +57,6 @@
   ansible.builtin.set_fact:
     jukebox_role_path: "{{ role_path }}"
 
-# Pre-pull the images before the pod systemd units try to start. The
-# LMS image is several hundred MB and the first-time pull can easily
-# exceed the systemd unit's default start timeout, causing the pod
-# to fail; the player then crashes too under exit-policy=stop, and
-# the whole deploy never reaches a healthy state.
-- name: Pre-pull jukebox container images # noqa: no-changed-when
-  become: true
-  ansible.builtin.shell: "su - jukebox -c 'podman pull {{ item }}'"
-  loop:
-    - docker.io/lmscommunity/lyrionmusicserver
-    - docker.io/giof71/squeezelite
-  changed_when: false
-
 # Deploy lyrion music server and squeezelite player in rootless mode
 # TODO: Use squeezelite integrated to lyrion music server container
 - name: Deploy jukebox container using podman_quadlet
@@ -80,7 +67,7 @@
     podman_quadlet_rootless_user_name: jukebox
     podman_quadlet_files_templates_src_path: "{{ jukebox_role_path }}"
     podman_quadlet_file_names:
-      - jukebox-server.container
+      - jukebox-server.container.j2
       - jukebox-server-config.volume
       - jukebox-server-playlist.volume
       - jukebox-server-music.volume

@@ -4,7 +4,7 @@ PartOf=entephoto-pod.service
 
 [Container]
 ContainerName=%N
-Image=public.ecr.aws/docker/library/postgres:15
+Image={{ entephoto_postgres_image }}
 AutoUpdate=registry
 
 Pod=entephoto.pod

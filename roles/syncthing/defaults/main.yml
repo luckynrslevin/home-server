@@ -1,3 +1,6 @@
+# Container image
+syncthing_image: "ghcr.io/syncthing/syncthing:2"
+
 syncthing_gui_port: 8384
 syncthing_listen_port: 22000
 syncthing_discovery_port: 21027

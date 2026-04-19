@@ -4,7 +4,7 @@ PartOf=paperless-ngx-pod.service
 
 [Container]
 ContainerName=%N
-Image=docker.io/library/redis:7-alpine
+Image={{ paperless_redis_image }}
 AutoUpdate=registry
 
 Pod=paperless-ngx.pod

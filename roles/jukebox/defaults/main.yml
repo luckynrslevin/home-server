@@ -1,4 +1,8 @@
 ---
+# Container images
+jukebox_server_image: "docker.io/lmscommunity/lyrionmusicserver"
+jukebox_player_image: "docker.io/giof71/squeezelite"
+
 # Squeezelite preset selecting the audio output device. The
 # giof71/squeezelite image ships a catalogue of presets matching
 # specific DACs (e.g. "topping-D10s", "x20", "aune-s6"). Override
