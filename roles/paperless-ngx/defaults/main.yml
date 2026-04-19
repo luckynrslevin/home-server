@@ -1,7 +1,7 @@
 ---
 # Container images
-paperless_postgres_image: "docker.io/library/postgres:16"
-paperless_redis_image: "docker.io/library/redis:7-alpine"
+paperless_postgres_image: "public.ecr.aws/docker/library/postgres:16"
+paperless_redis_image: "public.ecr.aws/docker/library/redis:7-alpine"
 paperless_app_image: "ghcr.io/paperless-ngx/paperless-ngx:latest"
 paperless_gotenberg_image: "docker.io/gotenberg/gotenberg:8"
 
