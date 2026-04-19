@@ -30,19 +30,6 @@
   ansible.builtin.set_fact:
     pihole_role_path: "{{ role_path }}"
 
-# Pre-pull the Pi-hole image while the old container is still serving DNS.
-# Without this, the podman_quadlet restart step would stop pihole, then try
-# to pull the new image, then fail because pihole IS the host's DNS server
-# (lookup of ghcr.io / docker.io fails the moment pihole is down).
-# Pre-pull the Pi-hole image while the old container is still serving DNS.
-# Without this, the podman_quadlet restart step would stop pihole, then try
-# to pull the new image, then fail because pihole IS the host's DNS server
-# (lookup of ghcr.io / docker.io fails the moment pihole is down).
-- name: Pre-pull Pi-hole image while old container still serves DNS # noqa: no-changed-when
-  become: true
-  ansible.builtin.shell: "su - pihole -c 'podman pull {{ pihole_image }}'"
-  changed_when: false
-
 - name: Deploy pihole container using podman_quadlet
   ansible.builtin.include_role:
     name: luckynrslevin.podman_quadlet
