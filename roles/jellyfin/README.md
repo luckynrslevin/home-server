@@ -6,7 +6,7 @@ single rootless container with host networking (for DLNA discovery).
 
 ## Container image
 
-`docker.io/jellyfin/jellyfin:latest`
+`ghcr.io/jellyfin/jellyfin:latest`
 
 ## Service user
 
