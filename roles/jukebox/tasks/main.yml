@@ -57,6 +57,15 @@
   ansible.builtin.set_fact:
     jukebox_role_path: "{{ role_path }}"
 
+# Pre-pull images to avoid systemd startup timeout on first deploy.
+- name: Pre-pull jukebox container images # noqa: no-changed-when
+  become: true
+  ansible.builtin.shell: "su - jukebox -c 'podman pull {{ item }}'"
+  loop:
+    - "{{ jukebox_server_image }}"
+    - "{{ jukebox_player_image }}"
+  changed_when: false
+
 # Deploy lyrion music server and squeezelite player in rootless mode
 # TODO: Use squeezelite integrated to lyrion music server container
 - name: Deploy jukebox container using podman_quadlet

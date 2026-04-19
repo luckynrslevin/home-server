@@ -33,6 +33,18 @@
   ansible.builtin.set_fact:
     paperless_role_path: "{{ role_path }}"
 
+# Pre-pull images to avoid systemd startup timeout on first deploy.
+- name: Pre-pull paperless-ngx container images # noqa: no-changed-when
+  become: true
+  ansible.builtin.shell: "su - paperless -c 'podman pull {{ item }}'"
+  loop:
+    - "{{ paperless_postgres_image }}"
+    - "{{ paperless_redis_image }}"
+    - "{{ paperless_app_image }}"
+    - "{{ paperless_gotenberg_image }}"
+  changed_when: false
+  failed_when: false
+
 - name: Deploy paperless-ngx pod using podman_quadlet
   ansible.builtin.include_role:
     name: luckynrslevin.podman_quadlet
