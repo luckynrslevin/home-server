@@ -87,6 +87,49 @@ be your own public IP — not a third-party resolver like Quad9 (9.9.9.9)
 or Cloudflare (1.1.1.1). Seeing your own IP confirms Unbound is
 resolving recursively from the root servers.
 
+## Verifying ad blocking
+
+### Quick test
+
+Open [adblock.turtlecute.org](https://adblock.turtlecute.org/) in a
+browser that uses Pi-hole for DNS (disable DNS-over-HTTPS in browser
+settings first). The page tests requests against known ad/tracker
+domains and shows which ones are blocked.
+
+### Command-line test
+
+Query a known ad domain and confirm Pi-hole returns `0.0.0.0`:
+
+```bash
+nslookup ad.doubleclick.net <server-ip>
+```
+
+A legitimate domain should still resolve normally:
+
+```bash
+nslookup google.com <server-ip>
+```
+
+### Check gravity (adlists loaded)
+
+Verify all configured adlists are present in gravity:
+
+```bash
+sudo -u pihole podman exec pihole \
+  sqlite3 /etc/pihole/gravity.db "SELECT id, enabled, address FROM adlist;"
+```
+
+### Query log
+
+Check recent blocked queries via the Pi-hole API:
+
+```bash
+# Top blocked domains
+sudo -u pihole podman exec pihole pihole -t
+```
+
+Or use the admin UI at `https://<server-ip>:8443/admin` → Query Log.
+
 ## Firewall ports
 
 - **53/tcp** and **53/udp** (port-forwarded to `1053` for the
