@@ -1,13 +1,16 @@
 [Unit]
 Description=Unbound recursive DNS resolver (Pi-hole upstream)
-After=network-online.target
+After=network-online.target pihole.service
 Wants=network-online.target
+Requires=pihole.service
 
 [Container]
 ContainerName=%N
 Image=docker.io/klutchell/unbound:latest
 AutoUpdate=registry
-Network=host
+# Share Pi-hole's network namespace so both containers see the same
+# loopback — Pi-hole can reach Unbound at 127.0.0.1:{{ pihole_unbound_port }}.
+Network=container:pihole
 
 # SELinux blocks rootless bind-mount reads without this.
 # Same fix as jukebox/squeezelite. Container is still UID-confined.
