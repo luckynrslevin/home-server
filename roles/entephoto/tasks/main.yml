@@ -45,7 +45,7 @@
     podman_quadlet_rootless_user_name: entephoto
     podman_quadlet_files_templates_src_path: "{{ entephoto_role_path }}"
     podman_quadlet_file_names:
-      - entephoto.pod
+      - entephoto.pod.j2
       - entephoto.network
       - entephoto-postgres.container.j2
       - entephoto-minio.container.j2

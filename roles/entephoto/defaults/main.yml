@@ -14,6 +14,26 @@ entephoto_albums_url: "http://{{ ansible_facts['default_ipv4']['address'] }}:300
 # Override when proxying MinIO through a reverse proxy.
 entephoto_s3_endpoint: "{{ ansible_facts['default_ipv4']['address'] }}:3200"
 
+# When museum must reach MinIO via an HTTPS reverse proxy on the same host
+# (so presigned URLs work over HTTPS in the browser without mixed-content
+# errors), set these two variables. Leaving them empty keeps the direct-to-
+# MinIO behaviour.
+#
+#   entephoto_s3_host: hostname portion of entephoto_s3_endpoint — mapped
+#                      to host-gateway inside the pod so museum can resolve
+#                      it without the host's DNS server.
+#   entephoto_caddy_ca_cert_path: host path to the Caddy internal root CA
+#                      (see caddy_ca_cert_host_path). Mounted read-only and
+#                      pointed to via SSL_CERT_FILE so museum's Go runtime
+#                      trusts Caddy's self-signed TLS.
+entephoto_s3_host: ""
+entephoto_caddy_ca_cert_path: ""
+
+# Museum signs presigned URLs as http:// when are_local_buckets is true and
+# https:// when false. It must match the scheme of entephoto_s3_endpoint:
+# HTTP when museum talks directly to MinIO, HTTPS when proxying via Caddy.
+entephoto_s3_local_buckets: true
+
 # MinIO admin username (password comes from vault: entephoto_minio_password)
 entephoto_minio_root_user: enteadmin
 

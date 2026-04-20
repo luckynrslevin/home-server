@@ -62,6 +62,13 @@
       {{ [{'port': 80, 'proto': 'tcp', 'toport': caddy_listen_port}]
          + ([{'port': 443, 'proto': 'tcp', 'toport': caddy_listen_port_https}]
             if caddy_domain else []) }}
+    # Also open the HTTPS listen port directly (not only via 443→9443
+    # forward) so containers on this host can reach Caddy on
+    # <subdomain>.<caddy_domain>:{{ caddy_listen_port_https }} via the
+    # host-gateway. Firewall port-forwards only apply to external traffic,
+    # so pod-to-host traffic needs the port itself open.
+    podman_quadlet_firewall_ports: >-
+      {{ [caddy_listen_port_https ~ '/tcp'] if caddy_domain else [] }}
 
 - name: Reload Caddy configuration # noqa: no-changed-when
   become: true
@@ -69,3 +76,47 @@
     su - webproxy -c 'podman exec caddy caddy reload --config /etc/caddy/Caddyfile 2>&1'
   changed_when: false
   failed_when: false
+
+# --------------------------------------------------------------------------
+# Export Caddy's internal root CA certificate to a host path so other
+# containers (e.g. the Ente museum pod) can mount it and trust Caddy's
+# self-signed certs when talking to other services through Caddy.
+# --------------------------------------------------------------------------
+- name: Ensure Caddy CA cert host directory exists
+  become: true
+  ansible.builtin.file:
+    path: "{{ caddy_ca_cert_host_path | dirname }}"
+    state: directory
+    mode: "0755"
+  when: caddy_domain | length > 0
+
+- name: Wait for Caddy's internal root CA to be generated # noqa: no-changed-when
+  become: true
+  ansible.builtin.shell: >
+    su - webproxy -c 'podman exec caddy
+    test -f /data/caddy/pki/authorities/local/root.crt'
+  register: caddy_ca_ready
+  retries: 30
+  delay: 2
+  until: caddy_ca_ready.rc == 0
+  changed_when: false
+  when: caddy_domain | length > 0
+
+- name: Export Caddy internal root CA to host # noqa: no-changed-when
+  become: true
+  ansible.builtin.shell: >
+    set -o pipefail;
+    su - webproxy -c 'podman exec caddy
+    cat /data/caddy/pki/authorities/local/root.crt'
+    > {{ caddy_ca_cert_host_path | quote }}
+  args:
+    executable: /bin/bash
+  changed_when: false
+  when: caddy_domain | length > 0
+
+- name: Set permissions on exported Caddy CA cert
+  become: true
+  ansible.builtin.file:
+    path: "{{ caddy_ca_cert_host_path }}"
+    mode: "0644"
+  when: caddy_domain | length > 0

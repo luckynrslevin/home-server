@@ -7,6 +7,12 @@ caddy_listen_port: 9080
 # Caddy HTTPS listen port (unprivileged, mapped via firewall from 443)
 caddy_listen_port_https: 9443
 
+# Host path where Caddy's internal root CA certificate is exported after
+# startup. Containers on the same host can mount this file and set
+# SSL_CERT_FILE so they trust Caddy's self-signed TLS. Only exported when
+# caddy_domain is set (i.e. Caddy is issuing internal certs).
+caddy_ca_cert_host_path: "/etc/pki/caddy-internal/root.crt"
+
 # Domain name for the server. Used for subdomain-based reverse proxy
 # routing and self-signed TLS certificates. If empty, Caddy only
 # serves the dashboard on :80 (no reverse proxy, no HTTPS).
