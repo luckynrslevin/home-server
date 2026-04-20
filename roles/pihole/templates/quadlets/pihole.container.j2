@@ -14,7 +14,12 @@ Environment=TZ=Europe/Berlin
 Environment=ServerIP={{ ansible_host }}
 Environment=FTLCONF_dns_listeningMode=ALL
 
+{% if pihole_enable_unbound | default(false) | bool %}
+# Unbound recursive resolver on localhost — full privacy, no third-party DNS
+Environment=FTLCONF_dns_upstreams=127.0.0.1#{{ pihole_unbound_port }}
+{% else %}
 Environment=FTLCONF_dns_upstreams={{ pihole_dns_upstreams }}
+{% endif %}
 Environment=FTLCONF_webserver_api_password={{ pihole_api_password }}
 Environment=FTLCONF_dns_domain_name={{ pihole_domain_name }}
 Environment=FTLCONF_dns_revServers=true,{{ pihole_local_network }},{{ pihole_local_router }}#53,{{ pihole_domain_name }}

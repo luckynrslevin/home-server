@@ -1,0 +1,60 @@
+# Unbound recursive DNS resolver — complete config for Pi-hole upstream.
+# Replaces the klutchell/unbound image's default unbound.conf.
+#
+# Listens on port {{ pihole_unbound_port }} only (NOT port 53) to avoid
+# conflicting with Pi-hole.
+
+server:
+    interface: 0.0.0.0@{{ pihole_unbound_port }}
+    interface: ::0@{{ pihole_unbound_port }}
+    do-ip4: yes
+    do-ip6: yes
+    do-udp: yes
+    do-tcp: yes
+
+    # Access control
+    access-control: 127.0.0.0/8 allow
+    access-control: 10.0.0.0/8 allow
+    access-control: 172.16.0.0/12 allow
+    access-control: 192.168.0.0/16 allow
+    access-control: ::1/128 allow
+
+    # Don't specify root-hints — unbound uses its compiled-in defaults.
+    # DNSSEC trust anchor managed externally (or disabled).
+    # The klutchell image's entrypoint normally handles this but we
+    # bypass it; recursive resolution works without DNSSEC validation.
+
+    # Performance
+    num-threads: 2
+    prefetch: yes
+    prefetch-key: yes
+    serve-expired: yes
+    serve-expired-ttl: 86400
+    so-sndbuf: 0
+    so-rcvbuf: 0
+
+    # Privacy
+    hide-identity: yes
+    hide-version: yes
+    use-caps-for-id: yes
+    minimal-responses: yes
+    aggressive-nsec: yes
+
+    # Hardening
+    harden-glue: yes
+    harden-dnssec-stripped: yes
+    harden-below-nxdomain: yes
+    harden-algo-downgrade: yes
+    harden-large-queries: yes
+    harden-referral-path: no
+
+    # Disable chroot (image paths break under chroot)
+    chroot: ""
+
+    # Disable DNSSEC validator (no root.key available when bypassing
+    # the image entrypoint). Recursive resolution works without it.
+    module-config: "iterator"
+
+    # Logging
+    verbosity: 0
+    do-daemonize: no
