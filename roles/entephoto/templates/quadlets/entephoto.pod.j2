@@ -6,6 +6,14 @@ Wants=network-online.target
 [Pod]
 PodName=entephoto
 Network=entephoto.network
+{% if entephoto_s3_host %}
+# Resolve the S3 reverse-proxy hostname inside the pod to the host, so
+# museum reaches Caddy on the host without depending on the host's DNS.
+# Host entries must live on the pod (not individual pod-member containers);
+# Quadlet's [Pod] section has no HostAdd key, so pass it through as an extra
+# podman pod create argument.
+PodmanArgs=--add-host={{ entephoto_s3_host }}:host-gateway
+{% endif %}
 
 # Museum API
 PublishPort=8080:8080/tcp

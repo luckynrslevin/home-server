@@ -6,7 +6,7 @@ db:
     password: {{ entephoto_db_password }}
 
 s3:
-    are_local_buckets: true
+    are_local_buckets: {{ entephoto_s3_local_buckets | to_json }}
     use_path_style_urls: true
     b2-eu-cen:
         key: enteadmin

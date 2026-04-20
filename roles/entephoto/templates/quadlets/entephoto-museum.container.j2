@@ -11,5 +11,15 @@ AutoUpdate=registry
 Pod=entephoto.pod
 
 Volume=entephoto-museum-config.volume:/museum.yaml.d:ro
+{% if entephoto_caddy_ca_cert_path %}
+# Trust Caddy's internal root CA so museum can talk to MinIO via the
+# HTTPS reverse-proxy subdomain (needed when presigned URLs are HTTPS).
+# The matching host entry (entephoto_s3_host → host-gateway) lives on
+# the pod — AddHost on a pod-member container is rejected by Podman.
+Volume={{ entephoto_caddy_ca_cert_path }}:/etc/ssl/certs/caddy-root.crt:ro
+{% endif %}
 
 Environment=ENTE_CREDENTIALS_FILE=/museum.yaml.d/museum.yaml
+{% if entephoto_caddy_ca_cert_path %}
+Environment=SSL_CERT_FILE=/etc/ssl/certs/caddy-root.crt
+{% endif %}
