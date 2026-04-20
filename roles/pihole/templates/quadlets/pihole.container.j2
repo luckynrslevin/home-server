@@ -3,6 +3,9 @@ Description=Pi-hole
 After=network-online.target
 After=local-fs.target
 Wants=network-online.target
+{% if pihole_enable_unbound | default(false) | bool %}
+Wants=unbound.service
+{% endif %}
 
 [Container]
 Image={{ pihole_image }}
