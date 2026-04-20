@@ -1,4 +1,10 @@
 ---
+# Container images
+entephoto_postgres_image: "public.ecr.aws/docker/library/postgres:15"
+entephoto_minio_image: "quay.io/minio/minio:latest"
+entephoto_server_image: "ghcr.io/ente-io/server:latest"
+entephoto_web_image: "ghcr.io/ente-io/web:latest"
+
 # MinIO admin username (password comes from vault: entephoto_minio_password)
 entephoto_minio_root_user: enteadmin
 

@@ -1,4 +1,10 @@
 ---
+# Container images
+paperless_postgres_image: "public.ecr.aws/docker/library/postgres:16"
+paperless_redis_image: "public.ecr.aws/docker/library/redis:7-alpine"
+paperless_app_image: "ghcr.io/paperless-ngx/paperless-ngx:latest"
+paperless_gotenberg_image: "docker.io/gotenberg/gotenberg:8"
+
 # Paperless-ngx admin account created on first startup.
 # After initial setup, change the password via the web UI.
 paperless_admin_user: "admin"

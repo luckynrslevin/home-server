@@ -1,0 +1,56 @@
+---
+
+- name: Ensure rootless user group exists
+  ansible.builtin.group:
+    name: jellyfin
+    gid: "{{ my_linux_users.jellyfin.gid }}"
+    state: present
+
+- name: Ensure rootless user exists
+  ansible.builtin.user:
+    name: jellyfin
+    state: present
+    uid: "{{ my_linux_users.jellyfin.uid }}"
+    group: jellyfin
+    create_home: true
+
+- name: Enable linger for rootless user
+  become: true
+  ansible.builtin.command:
+    cmd: "loginctl enable-linger jellyfin"
+  changed_when: false
+
+- name: Enable podman auto-update timer for rootless user # noqa: no-changed-when
+  become: true
+  ansible.builtin.command:
+    cmd: >
+      sudo -u jellyfin XDG_RUNTIME_DIR=/run/user/{{ my_linux_users.jellyfin.uid }}
+      DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/{{ my_linux_users.jellyfin.uid }}/bus
+      systemctl --user enable --now podman-auto-update.timer
+  changed_when: false
+
+- name: Save current role path
+  ansible.builtin.set_fact:
+    jellyfin_role_path: "{{ role_path }}"
+
+- name: Deploy jellyfin container using podman_quadlet
+  ansible.builtin.include_role:
+    name: luckynrslevin.podman_quadlet
+  vars:
+    podman_quadlet_app_name: "jellyfin"
+    podman_quadlet_rootless_user_name: jellyfin
+    podman_quadlet_files_templates_src_path: "{{ jellyfin_role_path }}"
+    podman_quadlet_file_names:
+      - jellyfin.container.j2
+      - jellyfin-config.volume
+      - jellyfin-cache.volume
+      - jellyfin-media.volume
+    podman_quadlet_firewall_ports:
+      - "8096/tcp"
+
+- name: Register backup manifest
+  ansible.builtin.set_fact:
+    _backup_manifests: >-
+      {{ _backup_manifests | default([]) +
+         [backup_manifest | combine({'_role_name': role_name})] }}
+  when: backup_manifest is defined

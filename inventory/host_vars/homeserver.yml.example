@@ -93,3 +93,9 @@ paperless_db_password: !vault |
 paperless_admin_password: !vault |
           <your vault-encrypted password here>
 ##################################################################################################
+
+##################################################################################################
+### Jellyfin configuration
+### No secrets needed. Admin account created via web UI wizard.
+### Set jellyfin_enable_hw_transcoding: true if you have a GPU with VAAPI.
+##################################################################################################

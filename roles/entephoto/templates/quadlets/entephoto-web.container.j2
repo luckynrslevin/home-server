@@ -5,7 +5,7 @@ After=entephoto-museum.service
 
 [Container]
 ContainerName=%N
-Image=ghcr.io/ente-io/web:latest
+Image={{ entephoto_web_image }}
 AutoUpdate=registry
 
 Pod=entephoto.pod

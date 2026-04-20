@@ -4,7 +4,7 @@ PartOf=jukebox-pod.service
 
 [Container]
 ContainerName=%N
-Image=docker.io/lmscommunity/lyrionmusicserver
+Image={{ jukebox_server_image }}
 AutoUpdate=registry
 
 Pod=jukebox.pod

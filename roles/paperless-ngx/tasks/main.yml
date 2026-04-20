@@ -33,18 +33,6 @@
   ansible.builtin.set_fact:
     paperless_role_path: "{{ role_path }}"
 
-# Pre-pull images to avoid systemd startup timeout on first deploy.
-# The paperless-ngx image is ~1.5 GB.
-- name: Pre-pull paperless-ngx container images # noqa: no-changed-when
-  become: true
-  ansible.builtin.shell: "su - paperless -c 'podman pull {{ item }}'"
-  loop:
-    - docker.io/library/postgres:16
-    - docker.io/library/redis:7-alpine
-    - ghcr.io/paperless-ngx/paperless-ngx:latest
-    - docker.io/gotenberg/gotenberg:8
-  changed_when: false
-
 - name: Deploy paperless-ngx pod using podman_quadlet
   ansible.builtin.include_role:
     name: luckynrslevin.podman_quadlet
@@ -56,9 +44,9 @@
       - paperless-ngx.pod
       - paperless-ngx.network
       - paperless-db.container.j2
-      - paperless-redis.container
+      - paperless-redis.container.j2
       - paperless-ngx.container.j2
-      - paperless-gotenberg.container
+      - paperless-gotenberg.container.j2
       - paperless-db-data.volume
       - paperless-redis-data.volume
       - paperless-media.volume

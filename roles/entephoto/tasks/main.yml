@@ -49,7 +49,7 @@
       - entephoto.network
       - entephoto-postgres.container.j2
       - entephoto-minio.container.j2
-      - entephoto-museum.container
+      - entephoto-museum.container.j2
       - entephoto-web.container.j2
       - entephoto-postgres-data.volume
       - entephoto-minio-data.volume

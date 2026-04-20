@@ -4,7 +4,7 @@ After=network-online.target
 Wants=network-online.target
 
 [Container]
-Image=ghcr.io/servercontainers/samba:latest
+Image={{ samba_image }}
 ContainerName={{ podman_quadlet_app_name }}
 AutoUpdate=registry
 

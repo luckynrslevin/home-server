@@ -1,2 +1,26 @@
+# Container image
+caddy_image: "public.ecr.aws/docker/library/caddy:latest"
+
 # Caddy listen port (unprivileged, mapped via firewall from 80)
 caddy_listen_port: 9080
+
+# Caddy HTTPS listen port (unprivileged, mapped via firewall from 443)
+caddy_listen_port_https: 9443
+
+# Domain name for the server. Used for subdomain-based reverse proxy
+# routing and self-signed TLS certificates. If empty, Caddy only
+# serves the dashboard on :80 (no reverse proxy, no HTTPS).
+caddy_domain: ""
+
+# Reverse proxy service definitions. Each entry creates a subdomain
+# route: <subdomain>.<caddy_domain> → localhost:<port>.
+# Only used when caddy_domain is set.
+#
+# Example:
+#   caddy_reverse_proxy_services:
+#     - { subdomain: pihole, port: 8443, proto: https }
+#     - { subdomain: syncthing, port: 8384, proto: https }
+#     - { subdomain: jukebox, port: 9100 }
+#     - { subdomain: photos, port: 3000 }
+#     - { subdomain: paperless, port: 8000 }
+caddy_reverse_proxy_services: []
