@@ -1,14 +1,4 @@
 ---
 # Pi-hole post-restore hook.
-# The backup tarball preserves root-owned .etag files in listsCache.
-# After import into a rootless container, pihole -g can't overwrite
-# them, causing "List download failed: using previously cached list".
-# Wipe the whole listsCache dir so pihole -g recreates it fresh.
-
-- name: "PIHOLE: fix listsCache ownership after restore"
-  ansible.builtin.shell: |
-    cd /tmp
-    su - pihole -c 'podman unshare rm -rf \
-        $(podman volume inspect systemd-pihole-etc --format={% raw %}{{.Mountpoint}}{% endraw %})/listsCache'
-  changed_when: false
-  failed_when: false
+# SecurityLabelDisable=true in the Quadlet prevents SELinux MCS label
+# mismatches (#31), so no listsCache cleanup is needed after restore.

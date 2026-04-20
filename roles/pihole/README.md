@@ -168,9 +168,8 @@ so the host points at `127.0.0.1:1053` for DNS.
 2. Inserts each entry from `pihole_adlists` into the SQLite `adlist`
    table via `INSERT OR IGNORE` (Pi-hole v6 stopped reading the
    legacy `/etc/pihole/adlists.list` flat file).
-3. Clears `listsCache` so the rootless user can write to it.
-4. Runs `pihole -g` to download lists into `gravity`.
-5. If `pihole_local_dns_records` is set, writes them via
+3. Runs `pihole -g` to download lists into `gravity`.
+4. If `pihole_local_dns_records` is set, writes them via
    `pihole-FTL --config dns.hosts <json>`.
 
 ### Why `pihole_adlists` doesn't include StevenBlack

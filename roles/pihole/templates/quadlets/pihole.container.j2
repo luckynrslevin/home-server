@@ -33,7 +33,9 @@ PublishPort=8443:443/tcp
 
 DNS={{ pihole_container_dns }}
 
-#SecurityLabelDisable=true
+# SELinux MCS labels change on every container recreation, blocking
+# writes to volume files labeled by the previous instance (#31).
+SecurityLabelDisable=true
 
 HostName={{ pihole_hostname }}
 
