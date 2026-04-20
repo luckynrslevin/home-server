@@ -2,7 +2,7 @@
 Description=Unbound recursive DNS resolver (Pi-hole upstream)
 After=network-online.target pihole.service
 Wants=network-online.target
-Requires=pihole.service
+BindsTo=pihole.service
 
 [Container]
 ContainerName=%N
@@ -24,7 +24,7 @@ Entrypoint=unbound
 Exec=-d -c /etc/unbound/pihole.conf
 
 [Service]
-Restart=on-failure
+Restart=always
 TimeoutStartSec=300
 
 [Install]
