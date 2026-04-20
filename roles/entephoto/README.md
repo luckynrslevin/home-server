@@ -20,10 +20,14 @@ containers: PostgreSQL, MinIO (S3-compatible object storage), Museum
 
 ## Variables
 
-| Variable                    | Default     | Purpose                                                                                          |
-|-----------------------------|-------------|--------------------------------------------------------------------------------------------------|
-| `entephoto_minio_root_user` | `enteadmin` | MinIO admin username (paired with `entephoto_minio_password`).                                   |
-| `entephoto_admin_user_ids`  | `[]`        | Ente user IDs granted admin rights. Populate after first signup (see "Bootstrapping an admin").  |
+| Variable                    | Default                            | Purpose                                                                                          |
+|-----------------------------|-------------------------------------|--------------------------------------------------------------------------------------------------|
+| `entephoto_minio_root_user` | `enteadmin`                         | MinIO admin username (paired with `entephoto_minio_password`).                                   |
+| `entephoto_admin_user_ids`  | `[]`                                | Ente user IDs granted admin rights. Populate after first signup (see "Bootstrapping an admin").  |
+| `entephoto_api_url`         | `http://<server-ip>:8080`           | Museum API URL served to the browser. Override for reverse proxy.                                |
+| `entephoto_photos_url`      | `http://<server-ip>:3000`           | Photos web app URL served to the browser.                                                        |
+| `entephoto_albums_url`      | `http://<server-ip>:3002`           | Albums/public-albums URL served to the browser.                                                  |
+| `entephoto_s3_endpoint`     | `<server-ip>:3200`                  | MinIO S3 endpoint for presigned upload URLs. Override when proxying MinIO.                       |
 
 ## Secrets
 
@@ -77,6 +81,32 @@ ansible -i inventory/hosts.yml homeserver -m debug -a "var=entephoto_jwt_secret"
 - `entephoto-minio-data` — MinIO buckets.
 - `entephoto-museum-config` — staged `museum.yaml` (rendered from
   template with vaulted secrets).
+
+## Reverse proxy
+
+By default, all URLs use the server's IP address with direct port
+access. When serving Ente through a reverse proxy (e.g. Caddy with
+HTTPS subdomains), override the URL variables in your host_vars:
+
+```yaml
+entephoto_api_url: "https://entephoto-api.example.com"
+entephoto_photos_url: "https://entephoto.example.com"
+entephoto_albums_url: "https://entephoto-albums.example.com"
+entephoto_s3_endpoint: "entephoto-s3.example.com"
+```
+
+The reverse proxy must forward each subdomain to the corresponding
+local port:
+
+| Subdomain              | Backend              |
+|------------------------|----------------------|
+| `entephoto-api`        | `localhost:8080`     |
+| `entephoto`            | `localhost:3000`     |
+| `entephoto-albums`     | `localhost:3002`     |
+| `entephoto-s3`         | `localhost:3200`     |
+
+When using the `caddy` role, add matching entries to
+`caddy_reverse_proxy_services` in your host_vars.
 
 ## Deployment
 
