@@ -58,6 +58,35 @@ Inspect a stored password:
 ansible -i inventory/hosts.yml homeserver -m debug -a "var=pihole_api_password"
 ```
 
+## Unbound architecture
+
+When `pihole_enable_unbound: true` (default), an Unbound container runs
+alongside Pi-hole using `Network=container:pihole` — both containers
+share the same network namespace so Pi-hole reaches Unbound at
+`127.0.0.1:5335` on their shared loopback.
+
+```
+LAN client ──► port 53 (firewalld forward) ──► Pi-hole :1053
+                                                    │
+                                                    ▼
+                                              Unbound :5335
+                                                    │
+                                                    ▼
+                                           DNS root servers
+```
+
+No third-party resolver sees your full query stream. Authoritative
+servers each see only their piece (root sees TLD lookup, `.com` sees
+domain name, etc.).
+
+### Verifying Unbound works
+
+Use the [Mullvad DNS leak test](https://mullvad.net/en/check) or
+`curl -s https://am.i.mullvad.net/json`. The DNS server IP shown should
+be your own public IP — not a third-party resolver like Quad9 (9.9.9.9)
+or Cloudflare (1.1.1.1). Seeing your own IP confirms Unbound is
+resolving recursively from the root servers.
+
 ## Firewall ports
 
 - **53/tcp** and **53/udp** (port-forwarded to `1053` for the
