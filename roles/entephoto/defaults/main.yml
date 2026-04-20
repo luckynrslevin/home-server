@@ -5,6 +5,15 @@ entephoto_minio_image: "quay.io/minio/minio:latest"
 entephoto_server_image: "ghcr.io/ente-io/server:latest"
 entephoto_web_image: "ghcr.io/ente-io/web:latest"
 
+# URLs served to the browser. Override in host_vars when using a reverse proxy.
+entephoto_api_url: "http://{{ ansible_facts['default_ipv4']['address'] }}:8080"
+entephoto_photos_url: "http://{{ ansible_facts['default_ipv4']['address'] }}:3000"
+entephoto_albums_url: "http://{{ ansible_facts['default_ipv4']['address'] }}:3002"
+
+# MinIO S3 endpoint used for presigned upload URLs sent to browsers.
+# Override when proxying MinIO through a reverse proxy.
+entephoto_s3_endpoint: "{{ ansible_facts['default_ipv4']['address'] }}:3200"
+
 # MinIO admin username (password comes from vault: entephoto_minio_password)
 entephoto_minio_root_user: enteadmin
 
