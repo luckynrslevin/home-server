@@ -56,7 +56,7 @@
 
 - name: Update Pi-hole gravity # noqa: command-instead-of-shell
   become: true
-  ansible.builtin.shell: su - pihole -c 'podman exec pihole pihole -g'
+  ansible.builtin.shell: su - pihole -c 'podman exec --user pihole pihole pihole -g'
   changed_when: false
 
 # Local DNS records: write the full list via pihole-FTL --config dns.hosts.
