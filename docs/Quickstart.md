@@ -356,3 +356,4 @@ ports, deployment notes, and troubleshooting:
 - [syncthing](../roles/syncthing/README.md) — file sync
 - [paperless-ngx](../roles/paperless-ngx/README.md) — document management (OCR + search)
 - [jellyfin](../roles/jellyfin/README.md) — media server (movies, TV, music)
+- [nextcloud](../roles/nextcloud/README.md) — personal cloud (file sync, calendar, contacts)

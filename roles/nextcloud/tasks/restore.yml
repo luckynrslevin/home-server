@@ -1,0 +1,53 @@
+---
+# Nextcloud post-restore hook: Postgres database restore.
+# Same three-phase pattern as entephoto and paperless-ngx.
+
+- name: "NEXTCLOUD: wait for postgres to be ready"
+  ansible.builtin.shell: >
+    cd /tmp && sudo -u nextcloud podman exec nextcloud-db
+    pg_isready -U nextcloud -d nextcloud
+  register: pg_ready
+  until: pg_ready.rc == 0
+  retries: 30
+  delay: 2
+  changed_when: false
+
+- name: "NEXTCLOUD: stop app + cron containers (hold DB connections)"
+  ansible.builtin.command:
+    cmd: >
+      sudo -u nextcloud
+      XDG_RUNTIME_DIR=/run/user/{{ my_linux_users.nextcloud.uid }}
+      DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/{{ my_linux_users.nextcloud.uid }}/bus
+      systemctl --user stop {{ item }}
+  loop:
+    - nextcloud
+    - nextcloud-cron
+  changed_when: false
+  failed_when: false
+
+- name: "NEXTCLOUD: drop and recreate database"
+  ansible.builtin.shell: |
+    cd /tmp
+    sudo -u nextcloud podman exec nextcloud-db \
+        psql -U nextcloud -d postgres -c "DROP DATABASE IF EXISTS nextcloud;"
+    sudo -u nextcloud podman exec nextcloud-db \
+        psql -U nextcloud -d postgres -c "CREATE DATABASE nextcloud OWNER nextcloud;"
+
+- name: "NEXTCLOUD: restore pg_dump"
+  ansible.builtin.shell: |
+    cd /tmp
+    gunzip -c "{{ _pgdump_latest.results[0].stdout }}" | \
+        sudo -u nextcloud podman exec -i nextcloud-db \
+        psql -U nextcloud -d nextcloud
+
+- name: "NEXTCLOUD: start app + cron containers"
+  ansible.builtin.command:
+    cmd: >
+      sudo -u nextcloud
+      XDG_RUNTIME_DIR=/run/user/{{ my_linux_users.nextcloud.uid }}
+      DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/{{ my_linux_users.nextcloud.uid }}/bus
+      systemctl --user start {{ item }}
+  loop:
+    - nextcloud
+    - nextcloud-cron
+  changed_when: false

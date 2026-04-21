@@ -230,10 +230,11 @@ SERVICES=(
     [entephoto]="Ente Photos (self-hosted photo storage)"
     [paperless-ngx]="Paperless-NGX document management (OCR + search)"
     [jellyfin]="Jellyfin media server (movies, TV, music)"
+    [nextcloud]="Nextcloud personal cloud (file sync, calendar, contacts)"
 )
 
 # Recommended order for deployment
-SERVICE_ORDER=(caddy dashboard pihole syncthing samba shairportsync jukebox entephoto paperless-ngx jellyfin)
+SERVICE_ORDER=(caddy dashboard pihole syncthing samba shairportsync jukebox entephoto paperless-ngx jellyfin nextcloud)
 SELECTED_SERVICES=()
 
 for svc in "${SERVICE_ORDER[@]}"; do
@@ -305,6 +306,8 @@ ENTEPHOTO_JWT=$(openssl rand -hex 32)
 PAPERLESS_SECRET_KEY=$(openssl rand -hex 32)
 PAPERLESS_DB_PW=$(openssl rand -base64 24)
 PAPERLESS_ADMIN_PW=$(openssl rand -base64 24)
+NEXTCLOUD_DB_PW=$(openssl rand -base64 24)
+NEXTCLOUD_ADMIN_PW=$(openssl rand -base64 24)
 
 # Generate a stable, locally-administered unicast MAC for the
 # squeezelite player. First octet 0x02 sets the locally-administered
@@ -354,6 +357,9 @@ my_linux_users:
   jellyfin:
     uid: 1012
     gid: 1012
+  nextcloud:
+    uid: 1013
+    gid: 1013
   samba:
     uid: 1010
     gid: 1010
@@ -395,6 +401,11 @@ echo ""
 vault_encrypt "$PAPERLESS_DB_PW" "paperless_db_password"
 echo ""
 vault_encrypt "$PAPERLESS_ADMIN_PW" "paperless_admin_password"
+echo ""
+echo "### Nextcloud"
+vault_encrypt "$NEXTCLOUD_DB_PW" "nextcloud_db_password"
+echo ""
+vault_encrypt "$NEXTCLOUD_ADMIN_PW" "nextcloud_admin_password"
 echo "##################################################################################################"
 } > inventory/host_vars/homeserver/main.yml
 
@@ -534,6 +545,23 @@ cat << EOF
     volumes:
       - jellyfin-config
       - jellyfin-media
+
+EOF
+fi
+
+if is_selected nextcloud; then
+cat << EOF
+  - name: Nextcloud
+    user: nextcloud
+    uid: 1013
+    service: nextcloud-pod
+    urls:
+      - label: Web UI
+        url: http://${SERVER_IP}:8080
+    volumes:
+      - nextcloud-db-data
+      - nextcloud-data
+      - nextcloud-config
 
 EOF
 fi

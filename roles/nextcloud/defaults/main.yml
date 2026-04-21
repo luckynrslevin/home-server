@@ -1,0 +1,26 @@
+---
+# Admin account created on first startup.
+nextcloud_admin_user: "admin"
+
+# Timezone
+nextcloud_time_zone: "Europe/Berlin"
+
+# Trusted domains — space-separated list of hostnames/IPs that
+# Nextcloud accepts requests for. Must include the reverse proxy
+# subdomain if using Caddy.
+nextcloud_trusted_domains: "localhost"
+
+# Maximum upload size (PHP + Nextcloud).
+nextcloud_max_upload_size: "16G"
+
+# Backup manifest — consumed by the backup role and restore playbook.
+backup_manifest:
+  service_user: nextcloud
+  service_unit: nextcloud-pod
+  volumes:
+    - { name: nextcloud-config, method: tar }
+    - { name: nextcloud-redis-data, method: tar }
+    - { name: nextcloud-data, method: rsync, nas_share: nextcloud-data }
+  databases:
+    - { container: nextcloud-db, db_user: nextcloud, db_name: nextcloud, method: pgdump }
+  post_restore_tasks: restore.yml

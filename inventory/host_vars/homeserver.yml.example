@@ -99,3 +99,13 @@ paperless_admin_password: !vault |
 ### No secrets needed. Admin account created via web UI wizard.
 ### Set jellyfin_enable_hw_transcoding: true if you have a GPU with VAAPI.
 ##################################################################################################
+
+##################################################################################################
+### Nextcloud configuration
+### Generate: openssl rand -base64 24 | ansible-vault encrypt_string --stdin-name 'nextcloud_db_password'
+### Generate: openssl rand -base64 24 | ansible-vault encrypt_string --stdin-name 'nextcloud_admin_password'
+nextcloud_db_password: !vault |
+          <your vault-encrypted password here>
+nextcloud_admin_password: !vault |
+          <your vault-encrypted password here>
+##################################################################################################
