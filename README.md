@@ -5,10 +5,18 @@
 The objective of this project is to design and operate a **reliable, reproducible, and fully automated home server platform** that minimizes manual intervention, simplifies maintenance, and provides a solid foundation for containerized workloads.
 
 The solution emphasizes:
-- Automation by default
-- Security-conscious design
-- Operational consistency
-- Ease of recovery and reinstallation
+
+- **Automation by default**
+  - Fully automatic installation driven by Ansible
+  - Private overlay repository holds all host-specific configuration
+- **Security-conscious design**
+  - Unique credentials generated during initial install
+  - Private repository for home-server-specific configuration
+  - Secrets stored encrypted with `ansible-vault`
+  - Rootless containers first — each rootless application runs as its own dedicated Linux user
+  - Rootful containers only where rootless is not feasible, and always hardened
+- **Operational consistency**
+  - Fully automatic reinstall from scratch, including restore of configuration and data
 
 ---
 
