@@ -29,13 +29,6 @@ services:
       - systemd-pihole-etc
       - systemd-pihole-dnsmasq
 
-  - name: Samba
-    user: samba
-    uid: 1010
-    service: samba
-    volumes:
-      - systemd-samba-data
-
   - name: Syncthing
     user: syncthg
     uid: 1003

@@ -84,9 +84,8 @@ wasteful and history isn't needed (the data is the data).
   sudo -u <user> podman unshare chown -R 0:0 <volume mount path>
   ```
 
-Used for: samba (`systemd-samba-data` → `xchange`), syncthing data
-(`systemd-syncthing-data` → `syncthing`), jukebox music
-(`jukebox-server-music` → `music`), entephoto MinIO
+Used for: syncthing data (`systemd-syncthing-data` → `syncthing`),
+jukebox music (`jukebox-server-music` → `music`), entephoto MinIO
 (`entephoto-minio-data` → `photos`).
 
 ### 3. `pgdump` — logical PostgreSQL dump
@@ -113,7 +112,6 @@ Used for: entephoto Postgres (`entephoto-postgres` / `ente_db`).
 |-----------|-----------------------------------|---------|
 | pihole    | `systemd-pihole-etc`              | tar     |
 | pihole    | `systemd-pihole-dnsmasq`          | tar     |
-| samba     | `systemd-samba-data`              | rsync   |
 | syncthing | `systemd-syncthing-config`        | tar     |
 | syncthing | `systemd-syncthing-data`          | rsync   |
 | jukebox   | `jukebox-server-config`           | tar     |

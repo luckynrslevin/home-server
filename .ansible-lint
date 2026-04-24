@@ -5,7 +5,7 @@
 # Every backed-up role declares it in its defaults/main.yml using the
 # same schema so the backup role and restore playbook can aggregate
 # them generically. Prefixing it per role (pihole_backup_manifest,
-# samba_backup_manifest, ...) would break the aggregation pattern.
+# syncthing_backup_manifest, ...) would break the aggregation pattern.
 var_naming_pattern: "^[a-z_][a-z0-9_]*$"
 
 exclude_paths:

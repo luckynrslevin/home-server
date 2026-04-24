@@ -13,7 +13,6 @@
 #   ansible-playbook playbooks/restore.yml --limit homeserver --tags pihole
 #   ansible-playbook playbooks/restore.yml --limit homeserver --tags syncthing
 #   ansible-playbook playbooks/restore.yml --limit homeserver --tags jukebox
-#   ansible-playbook playbooks/restore.yml --limit homeserver --tags samba
 #   ansible-playbook playbooks/restore.yml --limit homeserver --tags entephoto
 #
 # Restore jukebox music (128 GB, opt-in):
@@ -39,7 +38,6 @@
     # Services that have backup manifests. Must match role directory names.
     _restorable_services:
       - pihole
-      - samba
       - syncthing
       - jukebox
       - entephoto
@@ -89,14 +87,6 @@
         svc: "{{ _restore_manifests | selectattr('_role_name', 'equalto', 'pihole') | first }}"
       when: _restore_manifests | selectattr('_role_name', 'equalto', 'pihole') | list | length > 0
       tags: [pihole]
-
-    - name: Restore samba
-      ansible.builtin.include_tasks:
-        file: tasks/restore_generic.yml
-      vars:
-        svc: "{{ _restore_manifests | selectattr('_role_name', 'equalto', 'samba') | first }}"
-      when: _restore_manifests | selectattr('_role_name', 'equalto', 'samba') | list | length > 0
-      tags: [samba]
 
     - name: Restore syncthing
       ansible.builtin.include_tasks:

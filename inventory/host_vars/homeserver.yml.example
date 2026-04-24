@@ -26,9 +26,6 @@ my_linux_users:
   entephoto:
     uid: 1008
     gid: 1008
-  samba:
-    uid: 1010
-    gid: 1010
   webproxy:
     uid: 1011
     gid: 1011
