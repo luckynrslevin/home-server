@@ -1,0 +1,153 @@
+---
+# Post-install smoke tests. Hard-fails the playbook when Pi-hole is up but
+# not actually doing its job (gravity empty, canary leaking, Unbound
+# bypassed, etc.). Re-runnable with `--tags verify`. Skip entirely with
+# `--skip-tags verify` or set `pihole_run_verification: false`.
+
+# Flush the resolver cache before testing so we see the live behaviour,
+# not stale answers from before Pi-hole was deployed or last reconfigured.
+- name: Flush systemd-resolved DNS cache before verification # noqa: no-changed-when
+  become: true
+  ansible.builtin.command: resolvectl flush-caches
+  changed_when: false
+
+- name: Verify Pi-hole container reports FTL listening
+  become: true
+  ansible.builtin.command:
+    cmd: su - pihole -c 'podman exec pihole pihole status'
+  register: _pihole_verify_status
+  changed_when: false
+  failed_when: "'FTL is listening' not in _pihole_verify_status.stdout"
+
+- name: Verify systemd-resolved points at Pi-hole on 127.0.0.1:1053
+  become: true
+  ansible.builtin.command: resolvectl status
+  register: _pihole_verify_resolvectl
+  changed_when: false
+  failed_when: "'127.0.0.1:1053' not in _pihole_verify_resolvectl.stdout"
+
+- name: Read gravity entry count
+  become: true
+  ansible.builtin.command:
+    cmd: >-
+      su - pihole -c "podman exec pihole pihole-FTL sqlite3
+      /etc/pihole/gravity.db 'SELECT count(*) FROM gravity;'"
+  register: _pihole_verify_gravity_count
+  changed_when: false
+
+- name: Assert gravity has more than zero domains
+  ansible.builtin.assert:
+    that:
+      - _pihole_verify_gravity_count.stdout | int > 0
+    fail_msg: >-
+      Gravity DB is empty ({{ _pihole_verify_gravity_count.stdout | trim }}).
+      Adlist download likely failed — check `pihole -g` output and the
+      addresses in pihole_adlists.
+
+- name: Verify legitimate canary ({{ pihole_verify_canary_legit }}) resolves to a real address
+  ansible.builtin.command: "getent ahosts {{ pihole_verify_canary_legit }}"
+  register: _pihole_verify_legit
+  changed_when: false
+  failed_when: >-
+    _pihole_verify_legit.rc != 0 or
+    _pihole_verify_legit.stdout | length == 0 or
+    (_pihole_verify_legit.stdout_lines | first | default('') | regex_search('^(0\.0\.0\.0|::)\s')) is not none
+
+- name: Verify blocked canary ({{ pihole_verify_canary_blocked }}) is sinkholed
+  ansible.builtin.command: "getent ahosts {{ pihole_verify_canary_blocked }}"
+  register: _pihole_verify_blocked
+  changed_when: false
+  failed_when: >-
+    _pihole_verify_blocked.rc == 0 and
+    (_pihole_verify_blocked.stdout_lines | first | default('') | regex_search('^(0\.0\.0\.0|::)\s')) is none
+
+- name: Sample {{ pihole_verify_random_count }} random domains from gravity
+  become: true
+  ansible.builtin.command:
+    cmd: >-
+      su - pihole -c "podman exec pihole pihole-FTL sqlite3
+      /etc/pihole/gravity.db
+      'SELECT domain FROM gravity ORDER BY RANDOM() LIMIT {{ pihole_verify_random_count }};'"
+  register: _pihole_verify_random_sample
+  changed_when: false
+
+- name: Verify each random sample is sinkholed (no upstream leaks)
+  ansible.builtin.command: "getent ahosts {{ item }}"
+  register: _pihole_verify_random_check
+  changed_when: false
+  loop: "{{ _pihole_verify_random_sample.stdout_lines }}"
+  failed_when: >-
+    _pihole_verify_random_check.rc == 0 and
+    (_pihole_verify_random_check.stdout_lines | first | default('') | regex_search('^(0\.0\.0\.0|::)\s')) is none
+
+# --- Unbound path (only when pihole_enable_unbound is true) ---
+
+- name: Verify Unbound systemd unit is active
+  become: true
+  ansible.builtin.command:
+    cmd: >-
+      sudo -u pihole XDG_RUNTIME_DIR=/run/user/{{ my_linux_users.pihole.uid }}
+      DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/{{ my_linux_users.pihole.uid }}/bus
+      systemctl --user is-active unbound
+  register: _pihole_verify_unbound_active
+  changed_when: false
+  failed_when: _pihole_verify_unbound_active.rc != 0
+  when: pihole_enable_unbound | bool
+
+- name: Verify Unbound is reachable on 127.0.0.1:{{ pihole_unbound_port }} from inside the Pi-hole pod
+  become: true
+  ansible.builtin.command:
+    # Unbound shares the pi-hole pod's network namespace and listens only
+    # on that namespace's loopback — invisible from the host. Probe it
+    # from inside the pihole container instead, where 127.0.0.1 reaches it.
+    cmd: >-
+      su - pihole -c "podman exec pihole timeout 2
+      bash -c '</dev/tcp/127.0.0.1/{{ pihole_unbound_port }}'"
+  register: _pihole_verify_unbound_listen
+  changed_when: false
+  failed_when: _pihole_verify_unbound_listen.rc != 0
+  when: pihole_enable_unbound | bool
+
+- name: Read Pi-hole effective upstream DNS
+  become: true
+  ansible.builtin.command:
+    # pihole-FTL --config dns.upstreams prints the resolved list on a single
+    # line like `[ 127.0.0.1#5335 ]` — easier to assert against than the
+    # multi-line TOML in pihole.toml.
+    cmd: "su - pihole -c 'podman exec pihole pihole-FTL --config dns.upstreams'"
+  register: _pihole_verify_upstreams
+  changed_when: false
+  when: pihole_enable_unbound | bool
+
+- name: Assert Pi-hole upstream is local Unbound only (no external DNS leak)
+  ansible.builtin.assert:
+    that:
+      - ('127.0.0.1#' ~ pihole_unbound_port) in _pihole_verify_upstreams.stdout
+      # Reject any well-known external resolver in the upstream list.
+      - "'9.9.9.9' not in _pihole_verify_upstreams.stdout"
+      - "'149.112.112.112' not in _pihole_verify_upstreams.stdout"
+      - "'1.1.1.1' not in _pihole_verify_upstreams.stdout"
+      - "'1.0.0.1' not in _pihole_verify_upstreams.stdout"
+      - "'8.8.8.8' not in _pihole_verify_upstreams.stdout"
+      - "'8.8.4.4' not in _pihole_verify_upstreams.stdout"
+    fail_msg: >-
+      Pi-hole upstream is NOT exclusively the local Unbound (127.0.0.1#{{ pihole_unbound_port }}).
+      Effective config: {{ _pihole_verify_upstreams.stdout | trim }}.
+      Either the deploy did not pick up pihole_enable_unbound=true,
+      or pihole_dns_upstreams is overriding it.
+  when: pihole_enable_unbound | bool
+
+# --- Optional external leak probe (off by default — needs internet) ---
+
+- name: External DNS-leak check via Mullvad (opt-in)
+  ansible.builtin.uri:
+    url: https://am.i.mullvad.net/json
+    return_content: true
+    timeout: 10
+  register: _pihole_verify_mullvad
+  failed_when: >-
+    _pihole_verify_mullvad.json.dns | default([])
+    | selectattr('ip', 'in', ['9.9.9.9','149.112.112.112','1.1.1.1','1.0.0.1','8.8.8.8','8.8.4.4'])
+    | list | length > 0
+  changed_when: false
+  when: pihole_verify_online | bool

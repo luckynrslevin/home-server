@@ -45,6 +45,28 @@ pihole_enable_unbound: true
 # on localhost). Convention: 5335 to avoid conflict with Pi-hole on 53.
 pihole_unbound_port: 5335
 
+# Run the tasks in verify.yml at the end of deploy to assert that Pi-hole
+# actually works (container healthy, gravity populated, canary blocked,
+# upstream is Unbound and not leaking externally). Hard-fails the play on
+# regression. Set to false to skip, or use `--skip-tags verify`.
+pihole_run_verification: true
+
+# How many random domains to pull from gravity and re-check during
+# verification. Higher = more coverage, slower play. 5 is a good
+# compromise for smoke-test purposes.
+pihole_verify_random_count: 5
+
+# Canary domains used by verify.yml. Override if you want to test
+# something different — but these defaults are stable and should be in
+# every reasonable adlist / safe to resolve indefinitely.
+pihole_verify_canary_blocked: "ad.doubleclick.net"
+pihole_verify_canary_legit: "example.com"
+
+# Opt-in external-leak probe via Mullvad's `am.i.mullvad.net/json`.
+# Requires outbound internet from the Pi-hole host. Off by default so
+# verification works in offline/CI/restricted environments.
+pihole_verify_online: false
+
 # Backup manifest — consumed by the backup role and restore playbook.
 backup_manifest:
   service_user: pihole
