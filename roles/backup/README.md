@@ -121,8 +121,12 @@ Used for: entephoto Postgres (`entephoto-postgres` / `ente_db`).
 | entephoto | `entephoto-museum-config`         | tar     |
 | entephoto | `entephoto-minio-data`            | rsync   |
 
-> Caddy volumes are not currently backed up — they hold derivable
-> state (TLS certs, Caddy cache).
+> Caddy volumes are not backed up. `caddy-etc` (Caddyfile) and
+> `caddy-config` (runtime state) are regenerated from the role.
+> Caddy's internal ACME root CA lives in `caddy-data` — it is
+> persisted via `caddy_seed_internal_ca` staging from the
+> `home-server-private` overlay, not via NAS backup. See
+> [roles/caddy/README.md](../caddy/README.md#internal-ca-persistence).
 
 ## Deployment
 

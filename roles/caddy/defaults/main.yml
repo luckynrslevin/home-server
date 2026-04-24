@@ -30,3 +30,21 @@ caddy_domain: ""
 #     - { subdomain: photos, port: 3000 }
 #     - { subdomain: paperless, port: 8000 }
 caddy_reverse_proxy_services: []
+
+# Seed Caddy's internal ACME CA (root + intermediate cert/key under
+# caddy/pki/authorities/local/) from files staged by the role.
+#
+# Set to true in host_vars when the four files are present under
+#   roles/caddy/files/volumes/caddy-data/caddy/pki/authorities/local/
+#     root.crt
+#     root.key          (ansible-vault encrypted recommended)
+#     intermediate.crt
+#     intermediate.key  (ansible-vault encrypted recommended)
+# The project convention is to symlink these paths into the
+# home-server-private overlay (see roles/caddy/README.md for bootstrap).
+#
+# When false (default), Caddy generates a fresh CA on first start. To
+# preserve the CA across reinstalls, extract it once with
+# scripts/caddy-ca-extract.sh, vault-encrypt the two .key files, commit
+# them to the private overlay, and flip this flag to true.
+caddy_seed_internal_ca: false
