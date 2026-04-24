@@ -17,6 +17,10 @@ The solution emphasizes:
   - Rootful containers only where rootless is not feasible, and always hardened
 - **Operational consistency**
   - Fully automatic reinstall from scratch, including restore of configuration and data
+- **Application focus**
+  - Provide a secure, private (ad- and tracker-filtered) home network environment for all family members
+  - Host and own all personal data — documents, music, photos, videos
+  - Seamless integration with the iOS ecosystem wherever practical (AirPlay, native photo sync, etc.)
 
 ---
 
