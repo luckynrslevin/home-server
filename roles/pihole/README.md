@@ -89,12 +89,62 @@ resolving recursively from the root servers.
 
 ## Verifying ad blocking
 
+### Automated (runs at end of every deploy)
+
+By default the role runs `tasks/verify.yml` after post-install. It
+hard-fails the play if anything looks wrong:
+
+- Pi-hole container is healthy and FTL is listening.
+- `systemd-resolved` on the host points at `127.0.0.1:1053`.
+- `gravity.db` has more than zero domains (catches a silent adlist
+  download failure).
+- A known legitimate canary (`pihole_verify_canary_legit`, default
+  `example.com`) resolves normally.
+- A known blocked canary (`pihole_verify_canary_blocked`, default
+  `ad.doubleclick.net`) is sinkholed.
+- `pihole_verify_random_count` domains (default 5) drawn live from
+  gravity are all sinkholed.
+- When `pihole_enable_unbound: true`: Unbound is active, listening on
+  `127.0.0.1:{{ pihole_unbound_port }}`, and Pi-hole's effective
+  upstream is exclusively that local Unbound (no Quad9/Cloudflare/
+  Google leak).
+
+Re-run the verification alone without redeploying:
+
+```bash
+ansible-playbook playbooks/pihole.yml --tags verify
+```
+
+Skip verification for a run:
+
+```bash
+ansible-playbook playbooks/pihole.yml --skip-tags verify
+```
+
+Disable permanently for a host by setting
+`pihole_run_verification: false` in that host's vars.
+
+#### Optional external-leak probe
+
+Set `pihole_verify_online: true` to also run a Mullvad DNS-leak probe
+(`https://am.i.mullvad.net/json`) from the Pi-hole host. Off by default
+because it requires outbound internet — leave it off for CI or
+disconnected environments. The probe fails if the answer shows a
+well-known external resolver (Quad9/Cloudflare/Google).
+
 ### Quick test
 
 Open [adblock.turtlecute.org](https://adblock.turtlecute.org/) in a
 browser that uses Pi-hole for DNS (disable DNS-over-HTTPS in browser
 settings first). The page tests requests against known ad/tracker
 domains and shows which ones are blocked.
+
+Note: some browser-level ad blockers (uBlock Origin, AdGuard) cancel
+requests at the extension layer with an error code the tester does
+not classify as "blocked", so the page can read "nothing filtered"
+even when both DNS- and browser-level blocking are active. The
+authoritative view is Pi-hole's own Query Log (admin UI → Query Log,
+or `sudo -u pihole podman exec pihole pihole -t`).
 
 ### Command-line test
 

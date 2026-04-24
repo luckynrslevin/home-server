@@ -100,6 +100,17 @@
     state: directory
     mode: "0755"
 
+# Remove the bootstrap drop-in that points at Quad9. systemd-resolved merges
+# all drop-ins additively — leaving this one behind adds 9.9.9.9 alongside
+# our 127.0.0.1:1053, and resolved freely round-robins between them, which
+# silently bypasses Pi-hole's blocking for whichever queries land on Quad9.
+- name: Remove bootstrap DNS drop-in (superseded by pihole.conf)
+  become: true
+  ansible.builtin.file:
+    path: /etc/systemd/resolved.conf.d/temp-dns.conf
+    state: absent
+  register: pihole_resolved_bootstrap_removed
+
 - name: Configure systemd-resolved to use Pi-hole
   become: true
   ansible.builtin.copy:
@@ -116,10 +127,26 @@
   ansible.builtin.systemd_service:
     name: systemd-resolved
     state: restarted
-  when: pihole_resolved_config.changed
+  when: pihole_resolved_config.changed or pihole_resolved_bootstrap_removed.changed
+
+# Even after restart, clients that previously queried a given name may see
+# stale answers until their own DNS caches expire. Flushing resolved's
+# cache here ensures the host immediately starts getting fresh answers
+# through Pi-hole rather than replaying cached pre-install results.
+- name: Flush systemd-resolved DNS caches # noqa: no-changed-when
+  become: true
+  ansible.builtin.command: resolvectl flush-caches
+  changed_when: false
+  when: pihole_resolved_config.changed or pihole_resolved_bootstrap_removed.changed
 
 - name: Run post-install configuration
   ansible.builtin.import_tasks: postinstall.yml
+
+- name: Run post-install verification
+  ansible.builtin.import_tasks: verify.yml
+  when: pihole_run_verification | bool
+  tags:
+    - verify
 
 - name: Register backup manifest
   ansible.builtin.set_fact:
