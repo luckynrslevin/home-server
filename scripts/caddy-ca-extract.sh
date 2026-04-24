@@ -25,7 +25,7 @@ mkdir -p "$OUT_DIR"
 chmod 0700 "$OUT_DIR"
 
 for f in root.crt root.key intermediate.crt intermediate.key; do
-    sudo -u "$USER_NAME" podman exec "$CONTAINER" cat "$SRC_DIR/$f" > "$OUT_DIR/$f"
+    sudo -iu "$USER_NAME" podman exec "$CONTAINER" cat "$SRC_DIR/$f" > "$OUT_DIR/$f"
     chmod 0600 "$OUT_DIR/$f"
 done
 chmod 0644 "$OUT_DIR/root.crt" "$OUT_DIR/intermediate.crt"
