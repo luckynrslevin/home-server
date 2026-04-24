@@ -5,16 +5,65 @@
 The objective of this project is to design and operate a **reliable, reproducible, and fully automated home server platform** that minimizes manual intervention, simplifies maintenance, and provides a solid foundation for containerized workloads.
 
 The solution emphasizes:
-- Automation by default
-- Security-conscious design
-- Operational consistency
-- Ease of recovery and reinstallation
+
+- **Application focus**
+  - Provide a secure, private (ad- and tracker-filtered) home network environment for all family members
+  - Host and own all personal data — documents, music, photos, videos
+  - Seamless integration with the iOS ecosystem wherever practical (AirPlay, native photo sync, etc.)
+- **Automation by default**
+  - Fully automatic installation driven by Ansible
+  - Private overlay repository holds all host-specific configuration
+- **Security-conscious design**
+  - Unique credentials generated during initial install
+  - Private repository for home-server-specific configuration
+  - Secrets stored encrypted with `ansible-vault`
+  - Rootless containers first — each rootless application runs as its own dedicated Linux user
+  - Rootful containers only where rootless is not feasible, and always hardened
+- **Operational consistency**
+  - Fully automatic reinstall from scratch, including restore of configuration and data
+  - Simple but practical backup and restore of all your data
 
 ---
 
 ## Target Architecture
 
 The target system is built around a small number of well-defined components that together provide a predictable and maintainable platform.
+
+```mermaid
+graph LR
+    subgraph HOST["Fedora Server"]
+        direction TB
+
+        subgraph ROOTFUL["Rootful containers"]
+            direction LR
+            RFC["container"] --- RFV[("volume")]
+        end
+
+        subgraph ROOTLESS["Rootless containers"]
+            direction LR
+            RLC["container"] --- RLV[("volume")]
+        end
+
+        subgraph OS["Base OS"]
+            KERNEL["`- podman
+- systemd
+- firewalld
+- dnf-automatic (security updates)
+- SELinux`"]
+        end
+
+        KERNEL --- ROOTFUL
+        KERNEL --- ROOTLESS
+    end
+
+    subgraph NAS["NAS"]
+        direction TB
+        TAR[("tar<br/>config / state volumes")] ~~~ PGD[("pgdump<br/>Postgres logical dumps")] ~~~ RSY[("rsync<br/>bulk / media data")]
+    end
+
+    ROOTFUL -. "backup role" .-> NAS
+    ROOTLESS -. "backup role" .-> NAS
+```
 
 ---
 
@@ -30,27 +79,7 @@ This choice ensures the system remains **secure, current, and aligned with enter
 
 ---
 
-### 2. Automated OS Installation – Kickstart
-
-The operating system installation is fully automated using **Kickstart**.
-
-Primary goals:
-- Zero-touch installation
-- Deterministic disk layout and filesystem structure
-- No manual steps during OS deployment
-- Fast reinstallation and disaster recovery
-
-Kickstart defines:
-- Disk partitioning and LVM layout
-- Base package selection
-- Network configuration
-- Initial system configuration and defaults
-
-This allows the server to be **reprovisioned at any time in a predictable and repeatable way**.
-
----
-
-### 3. Configuration Management – Ansible
+### 2. Configuration Management – Ansible
 
 All post-installation configuration is handled using **Ansible**, ensuring the system converges into a known desired state.
 
@@ -64,7 +93,7 @@ This approach treats the system as **infrastructure as code**, enabling version 
 
 ---
 
-### 4. Container-First Workload Model
+### 3. Container-First Workload Model
 
 All applications and services are deployed as containers using two complementary execution models.
 
@@ -105,45 +134,6 @@ The following items are explicitly **out of scope** for this project:
 The guiding principle is **rebuild over repair**: if the system drifts, it should be reinstalled and redeployed automatically rather than manually fixed.
 
 ---
-
-## High-Level Architecture Diagram
-
-```mermaid
-graph TD
-    KS["Kickstart<br/>(Disk, Base OS)"] -->|provisions| ANS["Ansible<br/>Configuration"]
-    ANS -->|deploys| SERVICES
-
-    subgraph SERVICES["Podman Quadlets on Fedora Server"]
-
-        subgraph rootful
-            SH["Shairport-sync<br/>(AirPlay)"]
-        end
-
-        subgraph rootless
-            subgraph PH_S["Pi-hole"]
-                direction LR
-                PH["DNS Ad-Blocker"] ~~~ PH_V[("pihole-etc<br/>pihole-dnsmasq")]
-            end
-
-            subgraph ST_S["Syncthing"]
-                direction LR
-                ST["File Sync"] ~~~ ST_V[("syncthing-config<br/>syncthing-data")]
-            end
-
-            subgraph JB["Jukebox Pod"]
-                direction LR
-                LMS["Lyrion Music Server"] ~~~ SL["Squeezelite"] ~~~ JB_V[("server-config<br/>server-music<br/>server-playlist")]
-            end
-
-            subgraph EP["Ente Photos Pod"]
-                direction LR
-                MUS["Museum API"] ~~~ PG["PostgreSQL"] ~~~ MIN["MinIO"] ~~~ WEB["Web"] ~~~ EP_V[("postgres-data<br/>minio-data<br/>museum-config")]
-            end
-
-            PH_S ~~~ SMB_S ~~~ ST_S ~~~ JB ~~~ EP
-        end
-    end
-```
 
 ## Getting Started
 
@@ -236,16 +226,28 @@ ansible-playbook playbooks/pihole.yml
 ## Services
 
 ### Deployed
-- Shairport-sync (AirPlay audio server)
-- Pi-hole (DNS ad blocker, HTTPS on port 8443)
-- Syncthing (file synchronization with config restore)
-- Lyrion Music Server / Squeezelite (Jukebox with Material Skin)
-- Ente Photos (self-hosted photo storage with PostgreSQL + MinIO)
+
+| Service | Purpose | Container images | Volumes (backup method) |
+|---|---|---|---|
+| **Dashboard** | Static status page served by Caddy, showing all deployed services and their volumes. | — (static HTML rendered on host) | — |
+| **Caddy** | Front-door reverse proxy with internal TLS via a private CA. | `caddy:latest` | <ul><li>`caddy-data` — not backed up</li><li>`caddy-config` — not backed up</li><li>`caddy-etc` — not backed up</li></ul> |
+| **Pi-hole + Unbound** | Network-wide DNS ad/tracker blocking with a local recursive resolver (no upstream DNS leakage). HTTPS admin UI on port 8443. | <ul><li>`pi-hole/pihole:latest`</li><li>`klutchell/unbound:latest`</li></ul> | <ul><li>`pihole-etc` — tar</li><li>`pihole-dnsmasq` — tar</li></ul> |
+| **Shairport-sync** | AirPlay audio receiver for iOS/macOS devices. | `mikebrady/shairport-sync` | — (stateless) |
+| **Syncthing** | Peer-to-peer file synchronization between household devices. | `syncthing/syncthing:2` | <ul><li>`syncthing-config` — tar</li><li>`syncthing-data` — rsync</li></ul> |
+| **Jukebox** (Lyrion Music Server + Squeezelite) | Self-hosted music server with streaming client, Material skin UI. | <ul><li>`lmscommunity/lyrionmusicserver`</li><li>`giof71/squeezelite`</li></ul> | <ul><li>`jukebox-server-config` — tar</li><li>`jukebox-server-playlist` — tar</li><li>`jukebox-server-music` — rsync (opt-in restore)</li></ul> |
+| **Ente Photos** | Self-hosted photo & video library with iOS/Android apps (end-to-end encrypted). | <ul><li>`ente-io/server:latest`</li><li>`ente-io/web:latest`</li><li>`postgres:15`</li><li>`minio/minio:latest`</li></ul> | <ul><li>`entephoto-museum-config` — tar</li><li>`entephoto-minio-data` — rsync</li><li>`ente_db` (Postgres) — pgdump</li></ul> |
+| **Paperless-NGX** | Document management with OCR + full-text search. Includes an SFTP sidecar for scanner auto-ingest. | <ul><li>`paperless-ngx/paperless-ngx:latest`</li><li>`postgres:16`</li><li>`redis:7-alpine`</li><li>`gotenberg/gotenberg:8`</li><li>`atmoz/sftp:latest`</li></ul> | <ul><li>`paperless-data` — tar</li><li>`paperless-export` — tar</li><li>`paperless-redis-data` — tar</li><li>`paperless-media` — rsync</li><li>`paperless` (Postgres) — pgdump</li><li>`paperless-consume`, `paperless-sftp-*` — runtime, not backed up</li></ul> |
+| **Jellyfin** | Media server for movies, TV and music with native iOS/tvOS clients. | `jellyfin/jellyfin:latest` | <ul><li>`jellyfin-config` — tar</li><li>`jellyfin-media` — rsync (opt-in restore)</li><li>`jellyfin-cache` — regenerated, not backed up</li></ul> |
+| **Backup** | Snapshots each role's declared volumes to the NAS on a schedule; retention per method. | — (host service, no container) | — |
+
+Backup flavours (driven by each role's `backup_manifest`):
+- **tar** — small config/state volumes, restored atomically.
+- **pgdump** — logical SQL dumps for PostgreSQL services (container stays up).
+- **rsync** — large mutable trees where a full-volume tar would be wasteful (media, bulk data).
 
 ### Planned
-- Paperless NGX
+- Nextcloud (file storage and sharing)
 - IoT stack (Mosquitto, InfluxDB, Grafana, Telegraf)
 - Uptime Kuma
 - Home Assistant
 - Mealie
-- Kopia (backup)
