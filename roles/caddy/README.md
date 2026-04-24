@@ -106,9 +106,19 @@ intermediate cert + key live in `caddy-data/caddy/pki/authorities/local/`.
 By default a reinstall rolls a new CA and every device that trusted the
 old root has to re-import the new one.
 
-To preserve the CA across reinstalls, stage the four CA files from the
-`home-server-private` overlay using the same pattern as syncthing's
-identity:
+The role can pre-seed the CA into `caddy-data` on every deploy, driven
+by four variables in `host_vars`:
+
+| Variable                       | Contents                              |
+|--------------------------------|---------------------------------------|
+| `caddy_ca_root_crt`            | Root certificate (PEM)                |
+| `caddy_ca_root_key`            | Root private key (PEM, vault-encrypt) |
+| `caddy_ca_intermediate_crt`    | Intermediate certificate (PEM)        |
+| `caddy_ca_intermediate_key`    | Intermediate private key (PEM, vault-encrypt) |
+
+With `caddy_seed_internal_ca: true`, the role renders these into the
+volume at the exact paths Caddy expects. Caddy reuses them on startup
+instead of generating a new CA.
 
 ### One-time bootstrap
 
@@ -118,45 +128,41 @@ identity:
    ./scripts/caddy-ca-extract.sh
    ```
 
-   The script prints the staging directory and the next-step commands.
+   The script writes the four files to a `/tmp/caddy-ca-<timestamp>/`
+   staging directory and prints the next-step commands.
 
-2. Vault-encrypt the two private keys:
-
-   ```bash
-   ansible-vault encrypt <staging>/root.key <staging>/intermediate.key
-   ```
-
-3. Copy all four files into the private overlay at the exact path
-   Caddy expects:
-
-   ```
-   home-server-private/
-     roles/caddy/files/volumes/caddy-data/caddy/pki/authorities/local/
-       root.crt
-       root.key           # vault-encrypted
-       intermediate.crt
-       intermediate.key   # vault-encrypted
-   ```
-
-4. Symlink the staging paths into the public repo (mirrors the
-   syncthing convention — see the project-level README):
+2. Vault-encrypt each private key into a YAML-ready block:
 
    ```bash
-   cd home-server
-   mkdir -p roles/caddy/files/volumes/caddy-data/caddy/pki/authorities/local
-   for f in root.crt root.key intermediate.crt intermediate.key; do
-     ln -sf ../../../../../../../../../../home-server-private/roles/caddy/files/volumes/caddy-data/caddy/pki/authorities/local/$f \
-       roles/caddy/files/volumes/caddy-data/caddy/pki/authorities/local/$f
-   done
+   ansible-vault encrypt_string --stdin-name 'caddy_ca_root_key' \
+       < /tmp/caddy-ca-*/root.key
+   ansible-vault encrypt_string --stdin-name 'caddy_ca_intermediate_key' \
+       < /tmp/caddy-ca-*/intermediate.key
    ```
 
-5. In the host's `inventory/host_vars/<host>/main.yml`, set:
+   Paste each block into the host's `inventory/host_vars/<host>/main.yml`.
+
+3. Paste the two certificates as plain YAML literal-block strings:
+
+   ```yaml
+   caddy_ca_root_crt: |
+     -----BEGIN CERTIFICATE-----
+     ... contents of root.crt ...
+     -----END CERTIFICATE-----
+
+   caddy_ca_intermediate_crt: |
+     -----BEGIN CERTIFICATE-----
+     ... contents of intermediate.crt ...
+     -----END CERTIFICATE-----
+   ```
+
+4. Flip the flag in the same `host_vars`:
 
    ```yaml
    caddy_seed_internal_ca: true
    ```
 
-6. Redeploy caddy and verify:
+5. Redeploy caddy and verify:
 
    ```bash
    # Capture current CA fingerprint
@@ -176,8 +182,8 @@ identity:
 ### Why not back it up to the NAS?
 
 The private overlay is already the project's source of truth for
-host-specific identity (syncthing cert, vault-encrypted secrets).
-Putting the CA there keeps all long-lived identity in one place,
+host-specific identity and secrets. Putting the CA inline with the
+rest of the host_vars keeps all per-host configuration in one file,
 avoids storing a private key in NAS tar archives, and removes the NAS
 from the "reinstall-from-scratch" critical path.
 

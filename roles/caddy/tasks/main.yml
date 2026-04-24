@@ -66,11 +66,11 @@
             {
               'name': 'caddy-data',
               'files': [
-                {'src': 'caddy/pki/authorities/local/',                 'mode': '0700'},
-                {'src': 'caddy/pki/authorities/local/root.crt',         'mode': '0644'},
-                {'src': 'caddy/pki/authorities/local/root.key',         'mode': '0600'},
-                {'src': 'caddy/pki/authorities/local/intermediate.crt', 'mode': '0644'},
-                {'src': 'caddy/pki/authorities/local/intermediate.key', 'mode': '0600'}
+                {'src': 'caddy/pki/authorities/local/',                     'mode': '0700'},
+                {'src': 'caddy/pki/authorities/local/root.crt.j2',          'mode': '0644'},
+                {'src': 'caddy/pki/authorities/local/root.key.j2',          'mode': '0600'},
+                {'src': 'caddy/pki/authorities/local/intermediate.crt.j2',  'mode': '0644'},
+                {'src': 'caddy/pki/authorities/local/intermediate.key.j2',  'mode': '0600'}
               ]
             }
           ] if caddy_seed_internal_ca else []
