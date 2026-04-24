@@ -127,8 +127,8 @@ graph LR
             KERNEL["`- podman
 - systemd
 - firewalld
-- SELinux
-- dnf-automatic (security updates)`"]
+- dnf-automatic (security updates)
+- SELinux`"]
         end
 
         KERNEL --- ROOTFUL
