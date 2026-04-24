@@ -24,6 +24,47 @@ The solution emphasizes:
 
 The target system is built around a small number of well-defined components that together provide a predictable and maintainable platform.
 
+```mermaid
+graph LR
+    subgraph HOST["Fedora Server"]
+        direction TB
+
+        subgraph ROOTFUL["Rootful containers"]
+            direction LR
+            RFC["container"] --- RFV[("volume")]
+        end
+
+        subgraph ROOTLESS["Rootless containers"]
+            direction LR
+            RLC["container"] --- RLV[("volume")]
+        end
+
+        subgraph OS["Base OS"]
+            KERNEL["`- podman
+- systemd
+- firewalld
+- dnf-automatic (security updates)
+- SELinux`"]
+        end
+
+        KERNEL --- ROOTFUL
+        KERNEL --- ROOTLESS
+    end
+
+    subgraph NAS["NAS"]
+        direction TB
+        TAR[("tar<br/>config / state volumes")] ~~~ PGD[("pgdump<br/>Postgres logical dumps")] ~~~ RSY[("rsync<br/>bulk / media data")]
+    end
+
+    ROOTFUL -. "backup role" .-> NAS
+    ROOTLESS -. "backup role" .-> NAS
+```
+
+Backup methods, driven by each role's `backup_manifest`:
+- **tar** — small config/state volumes (fast, restored atomically).
+- **pgdump** — logical SQL dumps for PostgreSQL services (container stays up).
+- **rsync** — large mutable trees where a full-volume tar would be wasteful (media, bulk data).
+
 ---
 
 ### 1. Base Operating System – Fedora Server
@@ -113,49 +154,6 @@ The following items are explicitly **out of scope** for this project:
 The guiding principle is **rebuild over repair**: if the system drifts, it should be reinstalled and redeployed automatically rather than manually fixed.
 
 ---
-
-## High-Level Architecture Diagram
-
-```mermaid
-graph LR
-    subgraph HOST["Fedora Server"]
-        direction TB
-
-        subgraph ROOTFUL["Rootful containers"]
-            direction LR
-            RFC["container"] --- RFV[("volume")]
-        end
-
-        subgraph ROOTLESS["Rootless containers"]
-            direction LR
-            RLC["container"] --- RLV[("volume")]
-        end
-
-        subgraph OS["Base OS"]
-            KERNEL["`- podman
-- systemd
-- firewalld
-- dnf-automatic (security updates)
-- SELinux`"]
-        end
-
-        KERNEL --- ROOTFUL
-        KERNEL --- ROOTLESS
-    end
-
-    subgraph NAS["NAS"]
-        direction TB
-        TAR[("tar<br/>config / state volumes")] ~~~ PGD[("pgdump<br/>Postgres logical dumps")] ~~~ RSY[("rsync<br/>bulk / media data")]
-    end
-
-    ROOTFUL -. "backup role" .-> NAS
-    ROOTLESS -. "backup role" .-> NAS
-```
-
-Backup methods, driven by each role's `backup_manifest`:
-- **tar** — small config/state volumes (fast, restored atomically).
-- **pgdump** — logical SQL dumps for PostgreSQL services (container stays up).
-- **rsync** — large mutable trees where a full-volume tar would be wasteful (media, bulk data).
 
 ## Getting Started
 
