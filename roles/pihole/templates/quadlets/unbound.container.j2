@@ -6,7 +6,7 @@ BindsTo=pihole.service
 
 [Container]
 ContainerName=%N
-Image=docker.io/klutchell/unbound:latest
+Image={{ pihole_unbound_image }}
 AutoUpdate=registry
 # Share Pi-hole's network namespace so both containers see the same
 # loopback — Pi-hole can reach Unbound at 127.0.0.1:{{ pihole_unbound_port }}.

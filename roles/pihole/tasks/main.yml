@@ -30,20 +30,13 @@
   ansible.builtin.set_fact:
     pihole_role_path: "{{ role_path }}"
 
-# Pre-pull the Pi-hole image while the old container is still serving DNS.
-# Without this, the podman_quadlet restart step would stop pihole, then try
-# to pull the new image, then fail because pihole IS the host's DNS server
-# (lookup of ghcr.io / docker.io fails the moment pihole is down).
-- name: Pre-pull Pi-hole image while old container still serves DNS # noqa: no-changed-when
-  become: true
-  ansible.builtin.shell: "su - pihole -c 'podman pull {{ pihole_image }}'"
-  changed_when: false
-
-- name: Pre-pull Unbound image # noqa: no-changed-when
-  become: true
-  ansible.builtin.shell: "su - pihole -c 'podman pull docker.io/klutchell/unbound:latest'"
-  changed_when: false
-  when: pihole_enable_unbound | bool
+# Image pre-pulling for the containers discovered in this role's quadlet
+# files is handled by the luckynrslevin.podman_quadlet role, which runs
+# the pull before stopping the old container — so the old Pi-hole instance
+# keeps serving DNS while the new images are fetched. From v1.2.0 onward
+# the Galaxy role also handles --policy=newer and the Docker Hub rate-limit
+# fallback (warn + reuse cached image when the pull fails but the image is
+# already locally available). No hand-rolled pre-pull is needed here.
 
 # Deploy the Unbound config file to the pihole user's home.
 # Bind-mounted into the container as a read-only drop-in.
