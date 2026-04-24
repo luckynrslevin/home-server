@@ -56,6 +56,50 @@
     podman_quadlet_firewall_ports:
       - "8000/tcp"
 
+# --------------------------------------------------------------------------
+# Optional SFTP sidecar — scanner drops PDFs straight into the paperless
+# consume volume. Runs as the same rootless `paperless` user so the volume
+# mounts natively; the container-side SFTP user `paperless-scanner` is
+# created with UID 1000 to match paperless's USERMAP_UID.
+# --------------------------------------------------------------------------
+- name: Assert at least one authorised public key when SFTP sidecar is enabled
+  ansible.builtin.assert:
+    that:
+      - paperless_sftp_ingest_authorized_keys | length > 0
+    fail_msg: >-
+      paperless_sftp_ingest_enabled is true but
+      paperless_sftp_ingest_authorized_keys is empty — the sidecar would
+      start with nobody able to log in. Populate the list (typically from
+      vaulted inventory) or flip the flag off.
+  when: paperless_sftp_ingest_enabled | bool
+
+- name: Deploy paperless-sftp sidecar using podman_quadlet
+  ansible.builtin.include_role:
+    name: luckynrslevin.podman_quadlet
+  vars:
+    podman_quadlet_app_name: "paperless-sftp"
+    podman_quadlet_rootless_user_name: paperless
+    podman_quadlet_files_templates_src_path: "{{ paperless_role_path }}"
+    podman_quadlet_file_names:
+      - paperless-sftp.container.j2
+      - paperless-sftp-keys.volume
+      - paperless-sftp-config.volume
+      - paperless-sftp-hostkeys.volume
+    podman_quadlet_volumes_files_to_stage:
+      - name: paperless-sftp-keys
+        files:
+          - src: authorized_keys.pub.j2
+            mode: "0444"
+      - name: paperless-sftp-config
+        files:
+          - src: 00-persist-host-keys.sh
+            mode: "0555"
+          - src: 10-fix-consume-perms.sh
+            mode: "0555"
+    podman_quadlet_firewall_ports:
+      - "{{ paperless_sftp_port }}/tcp"
+  when: paperless_sftp_ingest_enabled | bool
+
 - name: Register backup manifest
   ansible.builtin.set_fact:
     _backup_manifests: >-
