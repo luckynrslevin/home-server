@@ -32,19 +32,17 @@ caddy_domain: ""
 caddy_reverse_proxy_services: []
 
 # Seed Caddy's internal ACME CA (root + intermediate cert/key under
-# caddy/pki/authorities/local/) from files staged by the role.
+# caddy/pki/authorities/local/) from inventory variables. The four
+# variables below hold the PEM contents; private keys should be
+# ansible-vault encrypted in host_vars.
 #
-# Set to true in host_vars when the four files are present under
-#   roles/caddy/files/volumes/caddy-data/caddy/pki/authorities/local/
-#     root.crt
-#     root.key          (ansible-vault encrypted recommended)
-#     intermediate.crt
-#     intermediate.key  (ansible-vault encrypted recommended)
-# The project convention is to symlink these paths into the
-# home-server-private overlay (see roles/caddy/README.md for bootstrap).
-#
-# When false (default), Caddy generates a fresh CA on first start. To
-# preserve the CA across reinstalls, extract it once with
-# scripts/caddy-ca-extract.sh, vault-encrypt the two .key files, commit
-# them to the private overlay, and flip this flag to true.
+# Set caddy_seed_internal_ca: true in host_vars when the four variables
+# are populated. When false (default), Caddy generates a fresh CA on
+# first start. To preserve the CA across reinstalls, extract it once
+# with scripts/caddy-ca-extract.sh, vault-encrypt the two .key PEM
+# strings into host_vars, and flip this flag to true.
 caddy_seed_internal_ca: false
+caddy_ca_root_crt: ""
+caddy_ca_root_key: ""
+caddy_ca_intermediate_crt: ""
+caddy_ca_intermediate_key: ""

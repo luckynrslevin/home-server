@@ -15,6 +15,3 @@ inventory/host_vars/homeserver-test
 roles/syncthing/files/volumes/syncthing-config/config/key.pem
 roles/syncthing/files/volumes/syncthing-config/config/cert.pem
 roles/syncthing/templates/volumes/syncthing-config/config/config.xml.j2
-
-# Caddy internal ACME CA — symlinks into the private overlay
-roles/caddy/files/volumes/caddy-data/
