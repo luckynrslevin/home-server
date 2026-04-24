@@ -135,7 +135,7 @@ silent deployment of an unreachable endpoint.
 | Port | `2222` (default `paperless_sftp_port`) |
 | User | `paperless-scanner` |
 | Authentication | SSH public key (password auth is disabled) |
-| Remote path | `/inbox/` — or leave blank; session auto-cd's there |
+| Remote path | `/scan/` — or leave blank; session auto-cd's there |
 
 Chroot is enforced by the image; the SFTP session sees only the `inbox/`
 tree, no other filesystem exposure.

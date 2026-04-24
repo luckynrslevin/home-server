@@ -83,11 +83,19 @@
     podman_quadlet_file_names:
       - paperless-sftp.container.j2
       - paperless-sftp-keys.volume
+      - paperless-sftp-config.volume
+      - paperless-sftp-hostkeys.volume
     podman_quadlet_volumes_files_to_stage:
       - name: paperless-sftp-keys
         files:
           - src: authorized_keys.pub.j2
             mode: "0444"
+      - name: paperless-sftp-config
+        files:
+          - src: 00-persist-host-keys.sh
+            mode: "0555"
+          - src: 10-fix-consume-perms.sh
+            mode: "0555"
     podman_quadlet_firewall_ports:
       - "{{ paperless_sftp_port }}/tcp"
   when: paperless_sftp_ingest_enabled | bool

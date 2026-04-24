@@ -11,22 +11,46 @@ AutoUpdate=registry
 # Share the paperless-consume podman volume with the main paperless pod.
 # Both run as the same rootless host user, so ownership maps cleanly — files
 # the scanner writes land in the volume at the same namespace view paperless
-# itself uses.
-Volume=paperless-consume.volume:/home/paperless-scanner/inbox
+# itself uses. Referenced by the bare podman volume name (no `.volume`
+# suffix) because the .volume quadlet file lives in the paperless-ngx-pod
+# quadlet directory, not this sidecar's directory.
+#
+# IMPORTANT: the mount point is a subdirectory of the chroot root, and
+# SFTP_USERS below does NOT list a `:dir` for this user — that prevents
+# atmoz/sftp's entrypoint from chowning the mount point to root:0755
+# (which would break paperless's write access to the shared volume).
+# The scanner uploads to `/scan/` relative to its SFTP session root.
+Volume=paperless-consume:/home/paperless-scanner/scan
 
 # Public keys authorised to SFTP. atmoz/sftp concatenates all `*.pub` files
 # under ~/.ssh/keys/ into the user's real authorized_keys at start-up.
 Volume=paperless-sftp-keys.volume:/home/paperless-scanner/.ssh/keys:ro
 
+# Startup hooks — /etc/sftp.d/*.sh are sourced by atmoz/sftp's entrypoint
+# after its chroot-setup chown but before sshd starts. We use this hook
+# to (a) persist SSH host keys across container recreations and (b)
+# re-fix ownership on /home/paperless-scanner/scan which atmoz clobbers.
+# See files/volumes/paperless-sftp-config/*.sh.
+Volume=paperless-sftp-config.volume:/etc/sftp.d:ro
+
+# Persistent SSH host keys. Podman recreates the container rootfs on
+# every restart, which would rotate the host keys and break the
+# scanner's fingerprint check. The 00-persist-host-keys.sh hook uses
+# this volume to keep keys stable across recreations.
+Volume=paperless-sftp-hostkeys.volume:/etc/ssh-persistent
+
 PublishPort={{ paperless_sftp_port }}:22/tcp
 
-# SFTP_USERS syntax: username:password:uid:gid:dir[,user2:...]
+# SFTP_USERS syntax: username:password:uid:gid[:dir1,dir2,...]
 #   empty password  → key-only auth (atmoz/sftp disables password auth when
 #                     the field between the two colons is empty)
 #   uid/gid 1000    → matches paperless's USERMAP_UID so scanner-written
 #                     files look "native" from inside paperless-ngx
-#   dir=inbox       → SFTP session auto-cd's into /inbox within the chroot
-Environment=SFTP_USERS=paperless-scanner::1000:1000:inbox
+#   no :dir suffix  → intentional; otherwise atmoz/sftp chowns the dir to
+#                     root:root 0755 which collides with paperless-consume
+#                     being the actual write target. Scanner cd's into
+#                     /scan/ after login instead of landing there directly.
+Environment=SFTP_USERS=paperless-scanner::1000:1000
 
 [Service]
 Restart=on-failure
