@@ -31,6 +31,7 @@ Gotenberg (document conversion).
 | `paperless_sftp_image` | `docker.io/atmoz/sftp:latest` | Sidecar image — override only if mirroring to GHCR or similar. |
 | `paperless_sftp_port` | `2222` | Host TCP port the sidecar publishes. |
 | `paperless_sftp_ingest_authorized_keys` | `[]` | List of SSH public-key strings authorised to SFTP as `paperless-scanner`. Typically set from vault. |
+| `paperless_sftp_scan_subdirs` | `[]` | Subdirectories pre-created under `/scan/` so the scanner can target specific folders (e.g., `dirk`, `dirk/rechnungen`, `astrid/steuer`). Nested paths supported via `mkdir -p`. |
 
 ## Secrets
 
@@ -117,6 +118,16 @@ paperless_sftp_ingest_enabled: true
 paperless_sftp_ingest_authorized_keys:
   - "ssh-ed25519 AAAA…host-key-comment scanner@brother"
   # additional keys on additional lines
+
+# Optional: pre-create destination subfolders so the scanner can pick
+# one from its own folder picker without having to mkdir on first scan.
+# Nested paths are supported (created with `mkdir -p`). Entries never
+# removed from the volume by this role — delete folders manually via
+# SFTP if you want to retire one.
+paperless_sftp_scan_subdirs:
+  - dirk
+  - dirk/rechnungen
+  - astrid/steuer
 ```
 
 Typical setup is to **vault-encrypt** the `paperless_sftp_ingest_authorized_keys`
