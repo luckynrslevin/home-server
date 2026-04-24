@@ -14,9 +14,14 @@ Enabled by default (`pihole_enable_unbound: true`).
 | Container | Image |
 |-----------|-------|
 | pihole | `ghcr.io/pi-hole/pihole:latest` (override via `pihole_image`) |
-| unbound | `docker.io/klutchell/unbound:latest` (when `pihole_enable_unbound` is true) |
+| unbound | `docker.io/klutchell/unbound:latest` (override via `pihole_unbound_image`; only pulled when `pihole_enable_unbound` is true) |
 
-GHCR mirror for Pi-hole avoids Docker Hub anonymous pull rate limits.
+Pi-hole's image is mirrored on GHCR to sidestep Docker Hub's anonymous
+pull rate limit. Unbound only exists on Docker Hub, so the pre-pull
+task treats pull failures (rate limit, transient DNS issue, etc.) as
+non-fatal when the image is already cached locally — redeploys keep
+working without authentication once the image has been pulled at least
+once.
 
 ## Service user
 

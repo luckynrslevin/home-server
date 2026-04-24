@@ -45,6 +45,13 @@ pihole_enable_unbound: true
 # on localhost). Convention: 5335 to avoid conflict with Pi-hole on 53.
 pihole_unbound_port: 5335
 
+# Unbound container image. Only published on Docker Hub, which
+# aggressively rate-limits unauthenticated pulls — the pre-pull task
+# falls back to the locally cached image when the pull fails, so
+# redeploys keep working without credentials once the image has been
+# pulled at least once.
+pihole_unbound_image: "docker.io/klutchell/unbound:latest"
+
 # Run the tasks in verify.yml at the end of deploy to assert that Pi-hole
 # actually works (container healthy, gravity populated, canary blocked,
 # upstream is Unbound and not leaking externally). Hard-fails the play on

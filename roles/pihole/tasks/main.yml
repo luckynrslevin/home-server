@@ -34,16 +34,70 @@
 # Without this, the podman_quadlet restart step would stop pihole, then try
 # to pull the new image, then fail because pihole IS the host's DNS server
 # (lookup of ghcr.io / docker.io fails the moment pihole is down).
+#
+# If the pull itself fails (most commonly Docker Hub's anonymous-pull rate
+# limit on the Unbound image), fall back to whatever is already in the
+# local image store — redeploys shouldn't be blocked by a registry hiccup
+# when the image is already cached. We only hard-fail if both the pull
+# and the local-image check come back empty.
 - name: Pre-pull Pi-hole image while old container still serves DNS # noqa: no-changed-when
   become: true
-  ansible.builtin.shell: "su - pihole -c 'podman pull {{ pihole_image }}'"
+  ansible.builtin.command:
+    cmd: "su - pihole -c 'podman pull {{ pihole_image }}'"
+  register: _pihole_image_pull
+  changed_when: "'Writing manifest' in _pihole_image_pull.stdout"
+  failed_when: false
+
+- name: Verify Pi-hole image is available locally (pull OK or already cached)
+  become: true
+  ansible.builtin.command:
+    cmd: "su - pihole -c 'podman image exists {{ pihole_image }}'"
+  register: _pihole_image_cached
   changed_when: false
+  failed_when:
+    - _pihole_image_pull.rc != 0
+    - _pihole_image_cached.rc != 0
+
+- name: Warn when Pi-hole image pull failed but cached copy is in use
+  ansible.builtin.debug:
+    msg: >-
+      podman pull {{ pihole_image }} failed — continuing with the
+      locally cached image. Root cause (first line):
+      {{ (_pihole_image_pull.stderr | default('') | split('\n') | first) | trim }}
+  when:
+    - _pihole_image_pull.rc != 0
+    - _pihole_image_cached.rc == 0
 
 - name: Pre-pull Unbound image # noqa: no-changed-when
   become: true
-  ansible.builtin.shell: "su - pihole -c 'podman pull docker.io/klutchell/unbound:latest'"
-  changed_when: false
+  ansible.builtin.command:
+    cmd: "su - pihole -c 'podman pull {{ pihole_unbound_image }}'"
+  register: _pihole_unbound_pull
+  changed_when: "'Writing manifest' in _pihole_unbound_pull.stdout"
+  failed_when: false
   when: pihole_enable_unbound | bool
+
+- name: Verify Unbound image is available locally (pull OK or already cached)
+  become: true
+  ansible.builtin.command:
+    cmd: "su - pihole -c 'podman image exists {{ pihole_unbound_image }}'"
+  register: _pihole_unbound_cached
+  changed_when: false
+  failed_when:
+    - _pihole_unbound_pull.rc != 0
+    - _pihole_unbound_cached.rc != 0
+  when: pihole_enable_unbound | bool
+
+- name: Warn when Unbound image pull failed but cached copy is in use
+  ansible.builtin.debug:
+    msg: >-
+      podman pull {{ pihole_unbound_image }} failed — continuing with
+      the locally cached image. Root cause (first line):
+      {{ (_pihole_unbound_pull.stderr | default('') | split('\n') | first) | trim }}
+  when:
+    - pihole_enable_unbound | bool
+    - _pihole_unbound_pull.rc != 0
+    - _pihole_unbound_cached.rc == 0
 
 # Deploy the Unbound config file to the pihole user's home.
 # Bind-mounted into the container as a read-only drop-in.
