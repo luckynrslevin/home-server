@@ -125,10 +125,10 @@ graph LR
 
         subgraph OS["Base OS"]
             KERNEL["`- podman
-            - systemd
-            - firewalld
-            - SELinux
-            - dnf-automatic (security updates)`"]
+- systemd
+- firewalld
+- SELinux
+- dnf-automatic (security updates)`"]
         end
 
         KERNEL --- ROOTFUL
