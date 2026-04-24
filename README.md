@@ -114,46 +114,13 @@ graph LR
         direction TB
 
         subgraph ROOTFUL["Rootful containers"]
-            direction TB
-            CADDY["Caddy<br/>reverse proxy"]
-            DASH["Dashboard"]
-            SH["Shairport-sync<br/>(AirPlay)"]
+            direction LR
+            RFC["container"] --- RFV[("volume")]
         end
 
         subgraph ROOTLESS["Rootless containers"]
-            direction TB
-
-            subgraph PH_POD["Pi-hole pod"]
-                PH["Pi-hole"] ~~~ UB["Unbound"]
-                PH_V[("pihole-etc<br/>pihole-dnsmasq")]
-            end
-
-            subgraph ST_S["Syncthing"]
-                ST["Syncthing"]
-                ST_V[("syncthing-config<br/>syncthing-data")]
-            end
-
-            subgraph JB_POD["Jukebox pod"]
-                LMS["Lyrion Music Server"] ~~~ SL["Squeezelite"]
-                JB_V[("server-config<br/>server-playlist<br/>server-music")]
-            end
-
-            subgraph EP_POD["Ente Photos pod"]
-                MUS["Museum API"] ~~~ WEB["Web"]
-                PG["PostgreSQL"] ~~~ MIN["MinIO"]
-                EP_V[("postgres-data<br/>minio-data<br/>museum-config")]
-            end
-
-            subgraph PL_POD["Paperless-NGX pod"]
-                APP["Paperless App"] ~~~ GOT["Gotenberg"]
-                PDB["PostgreSQL"] ~~~ PRD["Redis"] ~~~ SFTP["SFTP sidecar"]
-                PL_V[("paperless-data<br/>paperless-media<br/>paperless-consume<br/>paperless-export")]
-            end
-
-            subgraph JF_S["Jellyfin"]
-                JF["Jellyfin"]
-                JF_V[("jellyfin-config<br/>jellyfin-media")]
-            end
+            direction LR
+            RLC["container"] --- RLV[("volume")]
         end
 
         subgraph OS["Base OS"]
@@ -164,20 +131,21 @@ graph LR
         KERNEL --- ROOTLESS
     end
 
-    subgraph NAS["NAS (Synology)"]
+    subgraph NAS["NAS"]
         direction TB
-        TAR[("tar archives<br/>config volumes")]
+        TAR[("tar<br/>config / state volumes")]
         PGD[("pgdump<br/>Postgres logical dumps")]
-        RSY[("rsync mirrors<br/>media / bulk data")]
+        RSY[("rsync<br/>bulk / media data")]
     end
 
-    ROOTLESS == "backup role" ==> NAS
+    ROOTFUL -. "backup role" .-> NAS
+    ROOTLESS -. "backup role" .-> NAS
 ```
 
 Backup methods, driven by each role's `backup_manifest`:
-- **tar** — config/state volumes (pihole, syncthing-config, jukebox config+playlist, entephoto-museum-config, paperless-data/redis/export, jellyfin-config).
-- **pgdump** — logical SQL dumps of the entephoto and paperless Postgres databases.
-- **rsync** — large mutable trees (syncthing-data, jukebox music, entephoto MinIO, paperless-media, jellyfin-media).
+- **tar** — small config/state volumes (fast, restored atomically).
+- **pgdump** — logical SQL dumps for PostgreSQL services (container stays up).
+- **rsync** — large mutable trees where a full-volume tar would be wasteful (media, bulk data).
 
 ## Getting Started
 
