@@ -20,9 +20,10 @@ The solution emphasizes:
   - Rootless containers first — each rootless application runs as its own dedicated Linux user
   - Rootful containers only where rootless is not feasible, and always hardened
 - **Operational consistency**
-  - All applications fully integrated with systemd (start, stop, reboot)
   - Fully automatic reinstall from scratch, including restore of configuration and data
+  - All applications fully integrated with systemd (start, stop, reboot)
   - Simple but practical backup and restore of all your data
+  - Automatic release update of containers
 
 ---
 
@@ -208,7 +209,7 @@ private overlay):
 ```bash
 mkdir -p roles/caddy/files/volumes/caddy-data/caddy/pki/authorities/local
 for f in root.crt root.key intermediate.crt intermediate.key; do
-  ln -sf ../../../../../../../../home-server-private/roles/caddy/files/volumes/caddy-data/caddy/pki/authorities/local/$f \
+  ln -sf ../../../../../../../../../../home-server-private/roles/caddy/files/volumes/caddy-data/caddy/pki/authorities/local/$f \
     roles/caddy/files/volumes/caddy-data/caddy/pki/authorities/local/$f
 done
 ```
@@ -243,7 +244,7 @@ ansible-playbook playbooks/pihole.yml
 
 | Service | Purpose | Container images | Volumes (backup method) |
 |---|---|---|---|
-| **Dashboard** | Static status page served by Caddy, showing all deployed services and their volumes. | — (static HTML rendered on host) | — |
+| **Dashboard** | Regularly updated Dashboard, showing all deployed services incl. status, related volumes and backup status. | — (static HTML rendered on host) | — |
 | **Caddy** | Front-door reverse proxy with internal TLS via a private CA. | `caddy:latest` | <ul><li>`caddy-data` — internal CA seeded from private overlay (not backed up)</li><li>`caddy-config` — not backed up</li><li>`caddy-etc` — not backed up</li></ul> |
 | **Pi-hole + Unbound** | Network-wide DNS ad/tracker blocking with a local recursive resolver (no upstream DNS leakage). HTTPS admin UI on port 8443. | <ul><li>`pi-hole/pihole:latest`</li><li>`klutchell/unbound:latest`</li></ul> | <ul><li>`pihole-etc` — tar</li><li>`pihole-dnsmasq` — tar</li></ul> |
 | **Shairport-sync** | AirPlay audio receiver for iOS/macOS devices. | `mikebrady/shairport-sync` | — (stateless) |

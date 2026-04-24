@@ -145,7 +145,7 @@ identity:
    cd home-server
    mkdir -p roles/caddy/files/volumes/caddy-data/caddy/pki/authorities/local
    for f in root.crt root.key intermediate.crt intermediate.key; do
-     ln -sf ../../../../../../../../home-server-private/roles/caddy/files/volumes/caddy-data/caddy/pki/authorities/local/$f \
+     ln -sf ../../../../../../../../../../home-server-private/roles/caddy/files/volumes/caddy-data/caddy/pki/authorities/local/$f \
        roles/caddy/files/volumes/caddy-data/caddy/pki/authorities/local/$f
    done
    ```
