@@ -137,9 +137,7 @@ graph LR
 
     subgraph NAS["NAS"]
         direction TB
-        TAR[("tar<br/>config / state volumes")]
-        PGD[("pgdump<br/>Postgres logical dumps")]
-        RSY[("rsync<br/>bulk / media data")]
+        TAR[("tar<br/>config / state volumes")] ~~~ PGD[("pgdump<br/>Postgres logical dumps")] ~~~ RSY[("rsync<br/>bulk / media data")]
     end
 
     ROOTFUL -. "backup role" .-> NAS
