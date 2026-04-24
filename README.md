@@ -124,7 +124,12 @@ graph LR
         end
 
         subgraph OS["Base OS"]
-            KERNEL["Fedora Server<br/>• podman<br/>• systemd<br/>• firewalld<br/>• SELinux<br/>• dnf-automatic (security updates)"]
+            KERNEL["`**Fedora Server**
+            - podman
+            - systemd
+            - firewalld
+            - SELinux
+            - dnf-automatic (security updates)`"]
         end
 
         KERNEL --- ROOTFUL
