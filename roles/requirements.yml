@@ -2,4 +2,4 @@
 roles:
   - name: luckynrslevin.podman_quadlet
     src: https://github.com/luckynrslevin/ansible-role-podman-quadlet.git
-    version: v1.2.0
+    version: v1.2.1
