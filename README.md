@@ -65,11 +65,6 @@ graph LR
     ROOTLESS -. "backup role" .-> NAS
 ```
 
-Backup methods, driven by each role's `backup_manifest`:
-- **tar** — small config/state volumes (fast, restored atomically).
-- **pgdump** — logical SQL dumps for PostgreSQL services (container stays up).
-- **rsync** — large mutable trees where a full-volume tar would be wasteful (media, bulk data).
-
 ---
 
 ### 1. Base Operating System – Fedora Server
@@ -231,16 +226,24 @@ ansible-playbook playbooks/pihole.yml
 ## Services
 
 ### Deployed
-- Caddy (reverse proxy, internal TLS via private CA)
-- Dashboard (generated status page)
-- Pi-hole + Unbound (DNS ad-blocker with recursive resolver, HTTPS on port 8443)
-- Shairport-sync (AirPlay audio server)
-- Syncthing (file synchronization with config restore)
-- Lyrion Music Server / Squeezelite (Jukebox with Material Skin)
-- Ente Photos (self-hosted photo storage with PostgreSQL + MinIO)
-- Paperless-NGX (document management, OCR + search, SFTP auto-ingest sidecar)
-- Jellyfin (media server)
-- Backup (NAS-backed tar / pgdump / rsync snapshots with retention)
+
+| Service | Purpose | Container images | Volumes (backup method) |
+|---|---|---|---|
+| **Caddy** | Front-door reverse proxy with internal TLS via a private CA. | `caddy:latest` | `caddy-data`, `caddy-config`, `caddy-etc` (not backed up — regenerated from role) |
+| **Dashboard** | Static status page served by Caddy, showing all deployed services and their volumes. | — (static HTML rendered on host) | — |
+| **Pi-hole + Unbound** | Network-wide DNS ad/tracker blocking with a local recursive resolver (no upstream DNS leakage). HTTPS admin UI on port 8443. | `pi-hole/pihole:latest`, `klutchell/unbound:latest` | `pihole-etc` (tar), `pihole-dnsmasq` (tar) |
+| **Shairport-sync** | AirPlay audio receiver for iOS/macOS devices. | `mikebrady/shairport-sync` | — (stateless) |
+| **Syncthing** | Peer-to-peer file synchronization between household devices. | `syncthing/syncthing:2` | `syncthing-config` (tar), `syncthing-data` (rsync) |
+| **Jukebox** (Lyrion Music Server + Squeezelite) | Self-hosted music server with streaming client, Material skin UI. | `lmscommunity/lyrionmusicserver`, `giof71/squeezelite` | `jukebox-server-config` (tar), `jukebox-server-playlist` (tar), `jukebox-server-music` (rsync, opt-in restore) |
+| **Ente Photos** | Self-hosted photo & video library with iOS/Android apps (end-to-end encrypted). | `ente-io/server:latest`, `ente-io/web:latest`, `postgres:15`, `minio/minio:latest` | `entephoto-museum-config` (tar), `entephoto-minio-data` (rsync), `ente_db` Postgres (pgdump) |
+| **Paperless-NGX** | Document management with OCR + full-text search. Includes an SFTP sidecar for scanner auto-ingest. | `paperless-ngx/paperless-ngx:latest`, `postgres:16`, `redis:7-alpine`, `gotenberg/gotenberg:8`, `atmoz/sftp:latest` | `paperless-data` (tar), `paperless-export` (tar), `paperless-redis-data` (tar), `paperless-media` (rsync), `paperless` Postgres (pgdump); `paperless-consume`, `paperless-sftp-*` are working/runtime volumes (not backed up) |
+| **Jellyfin** | Media server for movies, TV and music with native iOS/tvOS clients. | `jellyfin/jellyfin:latest` | `jellyfin-config` (tar), `jellyfin-media` (rsync, opt-in restore); `jellyfin-cache` is regenerated |
+| **Backup** | Snapshots each role's declared volumes to the NAS on a schedule; retention per method. | — (host service, no container) | — |
+
+Backup flavours (driven by each role's `backup_manifest`):
+- **tar** — small config/state volumes, restored atomically.
+- **pgdump** — logical SQL dumps for PostgreSQL services (container stays up).
+- **rsync** — large mutable trees where a full-volume tar would be wasteful (media, bulk data).
 
 ### Planned
 - Nextcloud (file storage and sharing)
