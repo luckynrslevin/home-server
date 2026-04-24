@@ -36,7 +36,13 @@ server:
     # Privacy
     hide-identity: yes
     hide-version: yes
-    use-caps-for-id: yes
+    # use-caps-for-id (DNS-0x20 case randomization) is disabled. It
+    # randomizes case in outgoing queries as a spoofing defense, but
+    # many large CDN / load-balancer stacks (Akamai, CloudFront, MSFT
+    # Akadns, Cloudflare, etc.) don't preserve case in responses —
+    # unbound then flags those answers as potential spoofs and returns
+    # SERVFAIL, which users see as intermittent "server not found".
+    use-caps-for-id: no
     minimal-responses: yes
     aggressive-nsec: yes
 
