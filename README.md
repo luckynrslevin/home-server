@@ -124,7 +124,7 @@ graph LR
         end
 
         subgraph OS["Base OS"]
-            KERNEL["Fedora Server · podman · systemd · firewalld · SELinux"]
+            KERNEL["Fedora Server<br/>• podman<br/>• systemd<br/>• firewalld<br/>• SELinux"]
         end
 
         KERNEL --- ROOTFUL
