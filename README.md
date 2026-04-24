@@ -229,8 +229,8 @@ ansible-playbook playbooks/pihole.yml
 
 | Service | Purpose | Container images | Volumes (backup method) |
 |---|---|---|---|
-| **Caddy** | Front-door reverse proxy with internal TLS via a private CA. | `caddy:latest` | `caddy-data`, `caddy-config`, `caddy-etc` (not backed up — regenerated from role) |
 | **Dashboard** | Static status page served by Caddy, showing all deployed services and their volumes. | — (static HTML rendered on host) | — |
+| **Caddy** | Front-door reverse proxy with internal TLS via a private CA. | `caddy:latest` | `caddy-data`, `caddy-config`, `caddy-etc` (not backed up — regenerated from role) |
 | **Pi-hole + Unbound** | Network-wide DNS ad/tracker blocking with a local recursive resolver (no upstream DNS leakage). HTTPS admin UI on port 8443. | `pi-hole/pihole:latest`, `klutchell/unbound:latest` | `pihole-etc` (tar), `pihole-dnsmasq` (tar) |
 | **Shairport-sync** | AirPlay audio receiver for iOS/macOS devices. | `mikebrady/shairport-sync` | — (stateless) |
 | **Syncthing** | Peer-to-peer file synchronization between household devices. | `syncthing/syncthing:2` | `syncthing-config` (tar), `syncthing-data` (rsync) |
