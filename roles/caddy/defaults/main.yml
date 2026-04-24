@@ -30,3 +30,18 @@ caddy_domain: ""
 #     - { subdomain: photos, port: 3000 }
 #     - { subdomain: paperless, port: 8000 }
 caddy_reverse_proxy_services: []
+
+# Backup manifest for the caddy role.
+#
+# caddy-data contains Caddy's internal ACME CA (root cert + key under
+# caddy/pki/authorities/local/). Without this backup a reinstall would
+# produce a new root CA, forcing every device that trusts the old one
+# to re-import the new root.
+#
+# caddy-etc (Caddyfile) and caddy-config (runtime state) are intentionally
+# not backed up — they are regenerated from the role on each deploy.
+backup_manifest:
+  service_user: webproxy
+  service_unit: caddy
+  volumes:
+    - { name: caddy-data, method: tar }

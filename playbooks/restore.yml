@@ -10,6 +10,7 @@
 #   ansible-playbook playbooks/restore.yml --limit homeserver
 #
 # Restore a single service:
+#   ansible-playbook playbooks/restore.yml --limit homeserver --tags caddy
 #   ansible-playbook playbooks/restore.yml --limit homeserver --tags pihole
 #   ansible-playbook playbooks/restore.yml --limit homeserver --tags syncthing
 #   ansible-playbook playbooks/restore.yml --limit homeserver --tags jukebox
@@ -37,6 +38,7 @@
     nfs_opts: "ro,noatime,vers=4"
     # Services that have backup manifests. Must match role directory names.
     _restorable_services:
+      - caddy
       - pihole
       - syncthing
       - jukebox
@@ -79,6 +81,14 @@
     # parameterised by the service's manifest. Static tags allow
     # --tags filtering.
     # ==================================================================
+
+    - name: Restore caddy
+      ansible.builtin.include_tasks:
+        file: tasks/restore_generic.yml
+      vars:
+        svc: "{{ _restore_manifests | selectattr('_role_name', 'equalto', 'caddy') | first }}"
+      when: _restore_manifests | selectattr('_role_name', 'equalto', 'caddy') | list | length > 0
+      tags: [caddy]
 
     - name: Restore pihole
       ansible.builtin.include_tasks:

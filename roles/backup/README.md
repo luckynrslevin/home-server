@@ -110,6 +110,7 @@ Used for: entephoto Postgres (`entephoto-postgres` / `ente_db`).
 
 | Service   | Volume / DB                       | Method  |
 |-----------|-----------------------------------|---------|
+| caddy     | `caddy-data`                      | tar     |
 | pihole    | `systemd-pihole-etc`              | tar     |
 | pihole    | `systemd-pihole-dnsmasq`          | tar     |
 | syncthing | `systemd-syncthing-config`        | tar     |
@@ -121,8 +122,10 @@ Used for: entephoto Postgres (`entephoto-postgres` / `ente_db`).
 | entephoto | `entephoto-museum-config`         | tar     |
 | entephoto | `entephoto-minio-data`            | rsync   |
 
-> Caddy volumes are not currently backed up — they hold derivable
-> state (TLS certs, Caddy cache).
+> Only `caddy-data` is backed up — it holds Caddy's internal root
+> CA, which must survive reinstalls so devices that trust the root
+> don't need to re-import a fresh one. `caddy-etc` (Caddyfile) and
+> `caddy-config` (runtime state) are regenerated from the role.
 
 ## Deployment
 

@@ -231,7 +231,7 @@ ansible-playbook playbooks/pihole.yml
 | Service | Purpose | Container images | Volumes (backup method) |
 |---|---|---|---|
 | **Dashboard** | Static status page served by Caddy, showing all deployed services and their volumes. | — (static HTML rendered on host) | — |
-| **Caddy** | Front-door reverse proxy with internal TLS via a private CA. | `caddy:latest` | <ul><li>`caddy-data` — not backed up</li><li>`caddy-config` — not backed up</li><li>`caddy-etc` — not backed up</li></ul> |
+| **Caddy** | Front-door reverse proxy with internal TLS via a private CA. | `caddy:latest` | <ul><li>`caddy-data` — tar (preserves internal root CA)</li><li>`caddy-config` — not backed up</li><li>`caddy-etc` — not backed up</li></ul> |
 | **Pi-hole + Unbound** | Network-wide DNS ad/tracker blocking with a local recursive resolver (no upstream DNS leakage). HTTPS admin UI on port 8443. | <ul><li>`pi-hole/pihole:latest`</li><li>`klutchell/unbound:latest`</li></ul> | <ul><li>`pihole-etc` — tar</li><li>`pihole-dnsmasq` — tar</li></ul> |
 | **Shairport-sync** | AirPlay audio receiver for iOS/macOS devices. | `mikebrady/shairport-sync` | — (stateless) |
 | **Syncthing** | Peer-to-peer file synchronization between household devices. | `syncthing/syncthing:2` | <ul><li>`syncthing-config` — tar</li><li>`syncthing-data` — rsync</li></ul> |
