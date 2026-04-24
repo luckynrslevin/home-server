@@ -21,6 +21,7 @@ The solution emphasizes:
   - Rootful containers only where rootless is not feasible, and always hardened
 - **Operational consistency**
   - Fully automatic reinstall from scratch, including restore of configuration and data
+  - Simple but practical backup and restore of all your data
 
 ---
 
