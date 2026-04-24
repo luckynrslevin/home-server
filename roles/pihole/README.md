@@ -14,9 +14,9 @@ Enabled by default (`pihole_enable_unbound: true`).
 | Container | Image |
 |-----------|-------|
 | pihole | `ghcr.io/pi-hole/pihole:latest` (override via `pihole_image`) |
-| unbound | `docker.io/klutchell/unbound:latest` (when `pihole_enable_unbound` is true) |
+| unbound | `docker.io/klutchell/unbound:latest` (override via `pihole_unbound_image`; only pulled when `pihole_enable_unbound` is true) |
 
-GHCR mirror for Pi-hole avoids Docker Hub anonymous pull rate limits.
+Pi-hole is mirrored on GHCR to sidestep Docker Hub's anonymous-pull rate limit. Unbound is only published on Docker Hub; pre-pulling and rate-limit fallback are handled upstream in the `luckynrslevin.podman_quadlet` role (>= v1.2.0) using `podman pull --policy=newer` with a fallback to the locally cached image when the pull fails.
 
 ## Service user
 
@@ -27,7 +27,8 @@ GHCR mirror for Pi-hole avoids Docker Hub anonymous pull rate limits.
 | Variable                   | Default                              | Purpose                                                                |
 |----------------------------|--------------------------------------|------------------------------------------------------------------------|
 | `pihole_web_port_https`    | `8443`                               | HTTPS port for the admin UI.                                           |
-| `pihole_image`             | `ghcr.io/pi-hole/pihole:latest`      | Container image.                                                       |
+| `pihole_image`             | `ghcr.io/pi-hole/pihole:latest`      | Pi-hole container image.                                               |
+| `pihole_unbound_image`     | `docker.io/klutchell/unbound:latest` | Unbound container image (pulled only when `pihole_enable_unbound`).    |
 | `pihole_enable_unbound`    | `true`                               | Enable Unbound recursive resolver as Pi-hole's upstream.               |
 | `pihole_unbound_port`      | `5335`                               | Unbound listen port (localhost).                                       |
 | `pihole_dns_upstreams`     | `9.9.9.9;149.112.112.112` (Quad9)    | Upstreams (only used when Unbound is disabled).                        |
@@ -202,12 +203,14 @@ Or use the admin UI at `https://<server-ip>:8443/admin` → Query Log.
 ansible-playbook playbooks/pihole.yml --limit homeserver
 ```
 
-The role pre-pulls the image **before** restarting the container —
-without this, restarting Pi-hole would take down its own DNS
-upstream, and the new pull would fail.
+Images are pulled by the `luckynrslevin.podman_quadlet` role **before**
+the old container is stopped, so Pi-hole keeps serving DNS while the
+new images are fetched — without this ordering, stopping Pi-hole first
+would break DNS resolution and make the pull fail.
 
-After deploy it also writes `/etc/systemd/resolved.conf.d/pihole.conf`
-so the host points at `127.0.0.1:1053` for DNS.
+After deploy the role also writes `/etc/systemd/resolved.conf.d/pihole.conf`
+so the host points at `127.0.0.1:1053` for DNS, and wipes a stray
+bootstrap drop-in (`temp-dns.conf`) if one exists — see [#37](https://github.com/luckynrslevin/home-server/issues/37).
 
 ## Post-install behaviour
 
