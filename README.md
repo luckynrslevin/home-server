@@ -109,41 +109,75 @@ The guiding principle is **rebuild over repair**: if the system drifts, it shoul
 ## High-Level Architecture Diagram
 
 ```mermaid
-graph TD
-    KS["Kickstart<br/>(Disk, Base OS)"] -->|provisions| ANS["Ansible<br/>Configuration"]
-    ANS -->|deploys| SERVICES
+graph LR
+    subgraph HOST["Fedora Server"]
+        direction TB
 
-    subgraph SERVICES["Podman Quadlets on Fedora Server"]
-
-        subgraph rootful
+        subgraph ROOTFUL["Rootful containers"]
+            direction TB
+            CADDY["Caddy<br/>reverse proxy"]
+            DASH["Dashboard"]
             SH["Shairport-sync<br/>(AirPlay)"]
         end
 
-        subgraph rootless
-            subgraph PH_S["Pi-hole"]
-                direction LR
-                PH["DNS Ad-Blocker"] ~~~ PH_V[("pihole-etc<br/>pihole-dnsmasq")]
+        subgraph ROOTLESS["Rootless containers"]
+            direction TB
+
+            subgraph PH_POD["Pi-hole pod"]
+                PH["Pi-hole"] ~~~ UB["Unbound"]
+                PH_V[("pihole-etc<br/>pihole-dnsmasq")]
             end
 
             subgraph ST_S["Syncthing"]
-                direction LR
-                ST["File Sync"] ~~~ ST_V[("syncthing-config<br/>syncthing-data")]
+                ST["Syncthing"]
+                ST_V[("syncthing-config<br/>syncthing-data")]
             end
 
-            subgraph JB["Jukebox Pod"]
-                direction LR
-                LMS["Lyrion Music Server"] ~~~ SL["Squeezelite"] ~~~ JB_V[("server-config<br/>server-music<br/>server-playlist")]
+            subgraph JB_POD["Jukebox pod"]
+                LMS["Lyrion Music Server"] ~~~ SL["Squeezelite"]
+                JB_V[("server-config<br/>server-playlist<br/>server-music")]
             end
 
-            subgraph EP["Ente Photos Pod"]
-                direction LR
-                MUS["Museum API"] ~~~ PG["PostgreSQL"] ~~~ MIN["MinIO"] ~~~ WEB["Web"] ~~~ EP_V[("postgres-data<br/>minio-data<br/>museum-config")]
+            subgraph EP_POD["Ente Photos pod"]
+                MUS["Museum API"] ~~~ WEB["Web"]
+                PG["PostgreSQL"] ~~~ MIN["MinIO"]
+                EP_V[("postgres-data<br/>minio-data<br/>museum-config")]
             end
 
-            PH_S ~~~ SMB_S ~~~ ST_S ~~~ JB ~~~ EP
+            subgraph PL_POD["Paperless-NGX pod"]
+                APP["Paperless App"] ~~~ GOT["Gotenberg"]
+                PDB["PostgreSQL"] ~~~ PRD["Redis"] ~~~ SFTP["SFTP sidecar"]
+                PL_V[("paperless-data<br/>paperless-media<br/>paperless-consume<br/>paperless-export")]
+            end
+
+            subgraph JF_S["Jellyfin"]
+                JF["Jellyfin"]
+                JF_V[("jellyfin-config<br/>jellyfin-media")]
+            end
         end
+
+        subgraph OS["Base OS"]
+            KERNEL["Fedora Server · podman · systemd · firewalld · SELinux"]
+        end
+
+        KERNEL --- ROOTFUL
+        KERNEL --- ROOTLESS
     end
+
+    subgraph NAS["NAS (Synology)"]
+        direction TB
+        TAR[("tar archives<br/>config volumes")]
+        PGD[("pgdump<br/>Postgres logical dumps")]
+        RSY[("rsync mirrors<br/>media / bulk data")]
+    end
+
+    ROOTLESS == "backup role" ==> NAS
 ```
+
+Backup methods, driven by each role's `backup_manifest`:
+- **tar** — config/state volumes (pihole, syncthing-config, jukebox config+playlist, entephoto-museum-config, paperless-data/redis/export, jellyfin-config).
+- **pgdump** — logical SQL dumps of the entephoto and paperless Postgres databases.
+- **rsync** — large mutable trees (syncthing-data, jukebox music, entephoto MinIO, paperless-media, jellyfin-media).
 
 ## Getting Started
 
@@ -236,16 +270,20 @@ ansible-playbook playbooks/pihole.yml
 ## Services
 
 ### Deployed
+- Caddy (reverse proxy, internal TLS via private CA)
+- Dashboard (generated status page)
+- Pi-hole + Unbound (DNS ad-blocker with recursive resolver, HTTPS on port 8443)
 - Shairport-sync (AirPlay audio server)
-- Pi-hole (DNS ad blocker, HTTPS on port 8443)
 - Syncthing (file synchronization with config restore)
 - Lyrion Music Server / Squeezelite (Jukebox with Material Skin)
 - Ente Photos (self-hosted photo storage with PostgreSQL + MinIO)
+- Paperless-NGX (document management, OCR + search, SFTP auto-ingest sidecar)
+- Jellyfin (media server)
+- Backup (NAS-backed tar / pgdump / rsync snapshots with retention)
 
 ### Planned
-- Paperless NGX
+- Nextcloud (file storage and sharing)
 - IoT stack (Mosquitto, InfluxDB, Grafana, Telegraf)
 - Uptime Kuma
 - Home Assistant
 - Mealie
-- Kopia (backup)
