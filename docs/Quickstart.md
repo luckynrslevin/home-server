@@ -15,8 +15,8 @@ an additional NAT layer. If you're using a VM (e.g., UTM, VirtualBox,
 Proxmox), configure it with **bridged networking** so it gets its own IP
 address from your home router, just like a physical machine.
 
-Services like AirPlay (Shairport-sync), DNS (Pi-hole), and file sharing
-(Samba) rely on mDNS/Bonjour discovery and direct LAN connectivity.
+Services like AirPlay (Shairport-sync) and DNS (Pi-hole) rely on
+mDNS/Bonjour discovery and direct LAN connectivity.
 These will not work correctly behind a NAT or on a virtual host-only
 network.
 
@@ -351,7 +351,6 @@ ports, deployment notes, and troubleshooting:
 - [jukebox](../roles/jukebox/README.md) — Lyrion Music Server + Squeezelite
 - [os-audio](../roles/os-audio/README.md) — ALSA prerequisites (used by shairportsync, jukebox)
 - [pihole](../roles/pihole/README.md) — Pi-hole DNS ad-blocker
-- [samba](../roles/samba/README.md) — SMB file share
 - [shairportsync](../roles/shairportsync/README.md) — AirPlay receiver (incl. audio debugging)
 - [syncthing](../roles/syncthing/README.md) — file sync
 - [paperless-ngx](../roles/paperless-ngx/README.md) — document management (OCR + search)

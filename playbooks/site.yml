@@ -21,7 +21,6 @@
     - { role: dashboard,     when: "'dashboard' in (deploy_services | default([]))" }
     - { role: pihole,        when: "'pihole' in (deploy_services | default([]))" }
     - { role: syncthing,     when: "'syncthing' in (deploy_services | default([]))" }
-    - { role: samba,         when: "'samba' in (deploy_services | default([]))" }
     - { role: shairportsync, when: "'shairportsync' in (deploy_services | default([]))" }
     - { role: jukebox,       when: "'jukebox' in (deploy_services | default([]))" }
     - { role: entephoto,     when: "'entephoto' in (deploy_services | default([]))" }

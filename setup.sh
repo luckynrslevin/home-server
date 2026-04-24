@@ -224,7 +224,6 @@ SERVICES=(
     [dashboard]="Status dashboard showing all services — recommended"
     [pihole]="Pi-hole DNS ad-blocker"
     [syncthing]="Syncthing file synchronization"
-    [samba]="Samba file sharing (SMB)"
     [shairportsync]="Shairport-sync AirPlay audio receiver (needs audio device)"
     [jukebox]="Lyrion Music Server + Squeezelite player"
     [entephoto]="Ente Photos (self-hosted photo storage)"
@@ -233,7 +232,7 @@ SERVICES=(
 )
 
 # Recommended order for deployment
-SERVICE_ORDER=(caddy dashboard pihole syncthing samba shairportsync jukebox entephoto paperless-ngx jellyfin)
+SERVICE_ORDER=(caddy dashboard pihole syncthing shairportsync jukebox entephoto paperless-ngx jellyfin)
 SELECTED_SERVICES=()
 
 for svc in "${SERVICE_ORDER[@]}"; do
@@ -354,16 +353,10 @@ my_linux_users:
   jellyfin:
     uid: 1012
     gid: 1012
-  samba:
-    uid: 1010
-    gid: 1010
   webproxy:
     uid: 1011
     gid: 1011
 ##################################################################################################
-
-### Samba
-samba_timezone: "$TIMEZONE"
 
 ### Pi-hole
 pihole_local_network: "$LAN_CIDR"
@@ -438,18 +431,6 @@ cat << EOF
     volumes:
       - systemd-pihole-etc
       - systemd-pihole-dnsmasq
-
-EOF
-fi
-
-if is_selected samba; then
-cat << EOF
-  - name: Samba
-    user: samba
-    uid: 1010
-    service: samba
-    volumes:
-      - systemd-samba-data
 
 EOF
 fi

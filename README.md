@@ -125,11 +125,6 @@ graph TD
                 PH["DNS Ad-Blocker"] ~~~ PH_V[("pihole-etc<br/>pihole-dnsmasq")]
             end
 
-            subgraph SMB_S["Samba"]
-                direction LR
-                SMB["File Sharing"] ~~~ SMB_V[("samba-data")]
-            end
-
             subgraph ST_S["Syncthing"]
                 direction LR
                 ST["File Sync"] ~~~ ST_V[("syncthing-config<br/>syncthing-data")]
@@ -243,7 +238,6 @@ ansible-playbook playbooks/pihole.yml
 ### Deployed
 - Shairport-sync (AirPlay audio server)
 - Pi-hole (DNS ad blocker, HTTPS on port 8443)
-- Samba (guest-accessible exchange folder)
 - Syncthing (file synchronization with config restore)
 - Lyrion Music Server / Squeezelite (Jukebox with Material Skin)
 - Ente Photos (self-hosted photo storage with PostgreSQL + MinIO)
