@@ -41,6 +41,20 @@ paperless_sftp_port: 2222
 # Empty list + enabled flag = hard fail at deploy (see tasks/main.yml).
 paperless_sftp_ingest_authorized_keys: []
 
+# Pre-created subdirectories inside the SFTP scan folder. Each entry
+# is a path relative to /scan/ (inside the scanner's SFTP session) and
+# is created with `mkdir -p`, so nested paths like "dirk/rechnungen"
+# work. Useful for letting the scanner drop scans into topic-specific
+# folders without needing to create the folder tree on the first scan.
+# Ownership is set so the SFTP user can write; the role does not
+# remove folders that disappear from this list on subsequent deploys.
+# Example:
+#   paperless_sftp_scan_subdirs:
+#     - dirk
+#     - dirk/rechnungen
+#     - astrid/steuer
+paperless_sftp_scan_subdirs: []
+
 # Backup manifest — consumed by the backup role and restore playbook.
 backup_manifest:
   service_user: paperless

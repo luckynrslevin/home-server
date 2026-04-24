@@ -100,6 +100,35 @@
       - "{{ paperless_sftp_port }}/tcp"
   when: paperless_sftp_ingest_enabled | bool
 
+# Pre-create scan subdirs inside the paperless-consume volume so the
+# scanner can target a specific folder without needing to create it
+# on first use. Runs under `podman unshare` as the paperless rootless
+# user so the resulting UID/GID (1000:1000 inside the container) maps
+# to the right host-side subuid automatically — same scheme the SFTP
+# sidecar and paperless-ngx both rely on.
+- name: Discover paperless-consume volume mountpoint
+  become: true
+  ansible.builtin.command:
+    cmd: su - paperless -c "podman volume inspect paperless-consume --format '{% raw %}{{ .Mountpoint }}{% endraw %}'"
+  register: _paperless_consume_mp
+  changed_when: false
+  when:
+    - paperless_sftp_ingest_enabled | bool
+    - paperless_sftp_scan_subdirs | length > 0
+
+- name: Pre-create SFTP scan subdirectories
+  become: true
+  ansible.builtin.command:
+    cmd: >-
+      su - paperless -c
+      "podman unshare bash -c 'mkdir -p {{ (_paperless_consume_mp.stdout + '/' + item) | quote }}
+      && chown 1000:1000 {{ (_paperless_consume_mp.stdout + '/' + item) | quote }}'"
+  loop: "{{ paperless_sftp_scan_subdirs }}"
+  changed_when: false
+  when:
+    - paperless_sftp_ingest_enabled | bool
+    - paperless_sftp_scan_subdirs | length > 0
+
 - name: Register backup manifest
   ansible.builtin.set_fact:
     _backup_manifests: >-
