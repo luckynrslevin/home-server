@@ -1,0 +1,36 @@
+[Unit]
+Description=Paperless SFTP drop (scanner auto-ingest)
+After=network-online.target
+Wants=network-online.target
+
+[Container]
+ContainerName=%N
+Image={{ paperless_sftp_image }}
+AutoUpdate=registry
+
+# Share the paperless-consume podman volume with the main paperless pod.
+# Both run as the same rootless host user, so ownership maps cleanly — files
+# the scanner writes land in the volume at the same namespace view paperless
+# itself uses.
+Volume=paperless-consume.volume:/home/paperless-scanner/inbox
+
+# Public keys authorised to SFTP. atmoz/sftp concatenates all `*.pub` files
+# under ~/.ssh/keys/ into the user's real authorized_keys at start-up.
+Volume=paperless-sftp-keys.volume:/home/paperless-scanner/.ssh/keys:ro
+
+PublishPort={{ paperless_sftp_port }}:22/tcp
+
+# SFTP_USERS syntax: username:password:uid:gid:dir[,user2:...]
+#   empty password  → key-only auth (atmoz/sftp disables password auth when
+#                     the field between the two colons is empty)
+#   uid/gid 1000    → matches paperless's USERMAP_UID so scanner-written
+#                     files look "native" from inside paperless-ngx
+#   dir=inbox       → SFTP session auto-cd's into /inbox within the chroot
+Environment=SFTP_USERS=paperless-scanner::1000:1000:inbox
+
+[Service]
+Restart=on-failure
+TimeoutStartSec=300
+
+[Install]
+WantedBy=multi-user.target default.target

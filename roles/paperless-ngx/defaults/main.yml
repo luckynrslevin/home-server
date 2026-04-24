@@ -19,6 +19,28 @@ paperless_ocr_language: "deu+eng"
 # Enable Gotenberg for Office document conversion (docx, xlsx, pptx → PDF).
 paperless_enable_gotenberg: true
 
+# SFTP sidecar (opt-in). When enabled, an atmoz/sftp container runs
+# alongside the paperless pod under the same rootless user and mounts
+# `paperless-consume.volume` as its SFTP drop target. A scanner (or any
+# SFTP client) with an authorised public key can write PDFs directly
+# into the volume paperless already watches — no intermediate move step.
+# When disabled (default), nothing extra is deployed.
+paperless_sftp_ingest_enabled: false
+
+# Sidecar image. atmoz/sftp is small, widely used, key-auth-capable,
+# chroots by default. See https://github.com/atmoz/sftp for docs.
+paperless_sftp_image: "docker.io/atmoz/sftp:latest"
+
+# Host TCP port the sidecar publishes. Deliberately *not* 22, to avoid
+# any collision or confusion with the host's own sshd.
+paperless_sftp_port: 2222
+
+# List of SSH public keys (one per entry, full line in OpenSSH format)
+# authorised to SFTP as the `paperless-scanner` user. Expected to be
+# set from vaulted private inventory when the feature is enabled.
+# Empty list + enabled flag = hard fail at deploy (see tasks/main.yml).
+paperless_sftp_ingest_authorized_keys: []
+
 # Backup manifest — consumed by the backup role and restore playbook.
 backup_manifest:
   service_user: paperless
