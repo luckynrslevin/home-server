@@ -79,27 +79,7 @@ This choice ensures the system remains **secure, current, and aligned with enter
 
 ---
 
-### 2. Automated OS Installation – Kickstart
-
-The operating system installation is fully automated using **Kickstart**.
-
-Primary goals:
-- Zero-touch installation
-- Deterministic disk layout and filesystem structure
-- No manual steps during OS deployment
-- Fast reinstallation and disaster recovery
-
-Kickstart defines:
-- Disk partitioning and LVM layout
-- Base package selection
-- Network configuration
-- Initial system configuration and defaults
-
-This allows the server to be **reprovisioned at any time in a predictable and repeatable way**.
-
----
-
-### 3. Configuration Management – Ansible
+### 2. Configuration Management – Ansible
 
 All post-installation configuration is handled using **Ansible**, ensuring the system converges into a known desired state.
 
@@ -113,7 +93,7 @@ This approach treats the system as **infrastructure as code**, enabling version 
 
 ---
 
-### 4. Container-First Workload Model
+### 3. Container-First Workload Model
 
 All applications and services are deployed as containers using two complementary execution models.
 
