@@ -27,6 +27,9 @@ Gotenberg (document conversion).
 | `paperless_time_zone` | `Europe/Berlin` | Timezone for timestamps and scheduler. |
 | `paperless_ocr_language` | `deu+eng` | OCR languages (ISO 639-2, `+` separated). |
 | `paperless_enable_gotenberg` | `true` | Enable Gotenberg for Office doc conversion. |
+| `paperless_consumer_recursive` | `false` | Watch subdirectories of the consume volume, not just the top level. Required if you drop files into per-topic subfolders. |
+| `paperless_consumer_subdirs_as_tags` | `false` | Auto-tag each ingested document with the name of the subdirectory it was dropped into. Pairs with `paperless_sftp_scan_subdirs`. |
+| `paperless_consumer_delete_duplicates` | `false` | Silently delete dropped files whose MD5 matches an existing document, instead of moving them to the error area. Cleaner than repeated manual cleanup. |
 | `paperless_sftp_ingest_enabled` | `false` | Deploy the SFTP sidecar so scanners / SFTP clients can drop PDFs straight into the consume volume. See [Scanner SFTP auto-ingest](#scanner-sftp-auto-ingest) below. |
 | `paperless_sftp_image` | `docker.io/atmoz/sftp:latest` | Sidecar image — override only if mirroring to GHCR or similar. |
 | `paperless_sftp_port` | `2222` | Host TCP port the sidecar publishes. |

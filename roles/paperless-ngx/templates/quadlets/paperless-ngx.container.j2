@@ -49,6 +49,11 @@ Environment=PAPERLESS_URL={{ paperless_url | default('') }}
 Environment=USERMAP_UID=1000
 Environment=USERMAP_GID=1000
 
+# Consumer behaviour
+Environment=PAPERLESS_CONSUMER_RECURSIVE={{ paperless_consumer_recursive | bool | string | lower }}
+Environment=PAPERLESS_CONSUMER_SUBDIRS_AS_TAGS={{ paperless_consumer_subdirs_as_tags | bool | string | lower }}
+Environment=PAPERLESS_CONSUMER_DELETE_DUPLICATES={{ paperless_consumer_delete_duplicates | bool | string | lower }}
+
 HealthCmd=curl -fs http://localhost:8000 || exit 1
 HealthInterval=30s
 HealthStartPeriod=120s

@@ -19,6 +19,27 @@ paperless_ocr_language: "deu+eng"
 # Enable Gotenberg for Office document conversion (docx, xlsx, pptx → PDF).
 paperless_enable_gotenberg: true
 
+# Consumer behaviour.
+#
+# consumer_recursive:        watch subdirectories of /usr/src/paperless/consume,
+#                            not just the top level. Needed for use-cases that
+#                            organise scans into subfolders (e.g. the SFTP
+#                            sidecar with paperless_sftp_scan_subdirs).
+# consumer_subdirs_as_tags:  auto-tag each ingested document with the names
+#                            of the subdirectories it was dropped into. Works
+#                            well combined with paperless_sftp_scan_subdirs =
+#                            pick a folder in the scanner, get a tag.
+# consumer_delete_duplicates: when a dropped file is an exact duplicate
+#                            (MD5) of an existing doc, silently delete the
+#                            incoming file instead of moving it to the
+#                            error/duplicates area. Cleaner scan-reattempt
+#                            workflow; skipped docs just vanish.
+#
+# All three default False (paperless's own defaults).
+paperless_consumer_recursive: false
+paperless_consumer_subdirs_as_tags: false
+paperless_consumer_delete_duplicates: false
+
 # SFTP sidecar (opt-in). When enabled, an atmoz/sftp container runs
 # alongside the paperless pod under the same rootless user and mounts
 # `paperless-consume.volume` as its SFTP drop target. A scanner (or any
