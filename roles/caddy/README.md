@@ -21,6 +21,7 @@ subdomain-based routing and automatic HTTPS (self-signed certs).
 | `caddy_listen_port_https`       | `9443`  | Internal HTTPS port. Firewall forwards `443 → caddy_listen_port_https` (only when `caddy_domain` is set). |
 | `caddy_domain`                  | `""`    | Server domain (e.g. `eddie.lan`). Enables reverse proxy + HTTPS. Empty = simple dashboard mode. |
 | `caddy_reverse_proxy_services`  | `[]`    | List of `{subdomain, port, proto?}` dicts — one per proxied service. |
+| `caddy_seed_internal_ca`        | `false` | Stage the internal ACME CA (root + intermediate cert/key) from the private overlay on deploy. See [Internal CA persistence](#internal-ca-persistence). |
 
 ### Reverse proxy configuration example
 
@@ -97,6 +98,92 @@ The role:
 Caddy automatically generates self-signed certificates for `.lan`
 domains. Browsers will show a one-time cert warning — acceptable
 for a LAN home server. Certificate data is persisted in `caddy-data`.
+
+## Internal CA persistence
+
+Caddy uses `tls internal`, which runs a private ACME CA. The root and
+intermediate cert + key live in `caddy-data/caddy/pki/authorities/local/`.
+By default a reinstall rolls a new CA and every device that trusted the
+old root has to re-import the new one.
+
+To preserve the CA across reinstalls, stage the four CA files from the
+`home-server-private` overlay using the same pattern as syncthing's
+identity:
+
+### One-time bootstrap
+
+1. On the already-running host, extract the current CA:
+
+   ```bash
+   ./scripts/caddy-ca-extract.sh
+   ```
+
+   The script prints the staging directory and the next-step commands.
+
+2. Vault-encrypt the two private keys:
+
+   ```bash
+   ansible-vault encrypt <staging>/root.key <staging>/intermediate.key
+   ```
+
+3. Copy all four files into the private overlay at the exact path
+   Caddy expects:
+
+   ```
+   home-server-private/
+     roles/caddy/files/volumes/caddy-data/caddy/pki/authorities/local/
+       root.crt
+       root.key           # vault-encrypted
+       intermediate.crt
+       intermediate.key   # vault-encrypted
+   ```
+
+4. Symlink the staging paths into the public repo (mirrors the
+   syncthing convention — see the project-level README):
+
+   ```bash
+   cd home-server
+   mkdir -p roles/caddy/files/volumes/caddy-data/caddy/pki/authorities/local
+   for f in root.crt root.key intermediate.crt intermediate.key; do
+     ln -sf ../../../../../../../../../../home-server-private/roles/caddy/files/volumes/caddy-data/caddy/pki/authorities/local/$f \
+       roles/caddy/files/volumes/caddy-data/caddy/pki/authorities/local/$f
+   done
+   ```
+
+5. In the host's `inventory/host_vars/<host>/main.yml`, set:
+
+   ```yaml
+   caddy_seed_internal_ca: true
+   ```
+
+6. Redeploy caddy and verify:
+
+   ```bash
+   # Capture current CA fingerprint
+   sudo openssl x509 -in /etc/pki/caddy-internal/root.crt \
+       -noout -fingerprint -sha256
+
+   # Destroy and recreate the volume to prove the seed works
+   sudo -u webproxy systemctl --user stop caddy
+   sudo -u webproxy podman volume rm caddy-data
+   ansible-playbook playbooks/caddy.yml --limit <host>
+
+   # Fingerprint must match
+   sudo openssl x509 -in /etc/pki/caddy-internal/root.crt \
+       -noout -fingerprint -sha256
+   ```
+
+### Why not back it up to the NAS?
+
+The private overlay is already the project's source of truth for
+host-specific identity (syncthing cert, vault-encrypted secrets).
+Putting the CA there keeps all long-lived identity in one place,
+avoids storing a private key in NAS tar archives, and removes the NAS
+from the "reinstall-from-scratch" critical path.
+
+`caddy-etc` (Caddyfile) and `caddy-config` (runtime state) are not
+seeded or backed up — both are regenerated from the role on each
+deploy.
 
 ## Backward compatibility
 
