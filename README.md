@@ -20,6 +20,7 @@ The solution emphasizes:
   - Rootless containers first — each rootless application runs as its own dedicated Linux user
   - Rootful containers only where rootless is not feasible, and always hardened
 - **Operational consistency**
+  - All applications fully integrated with systemd (start, stop, reboot)
   - Fully automatic reinstall from scratch, including restore of configuration and data
   - Simple but practical backup and restore of all your data
 
