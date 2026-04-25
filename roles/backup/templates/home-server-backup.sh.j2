@@ -13,7 +13,7 @@ set -euo pipefail
 #
 # Backup target: NFS shares on Synology NAS.
 #   One shared folder for all tar/pgdump archives, plus a dedicated shared
-#   folder per rsync dataset (photos, syncthing, xchange, music).
+#   folder per rsync dataset (e.g. photos, syncthing, music, paperless-media).
 #   All shares are mounted at startup and unmounted on exit (even on failure).
 # ===========================================================================
 
