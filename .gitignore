@@ -15,3 +15,4 @@ inventory/host_vars/homeserver-test
 roles/syncthing/files/volumes/syncthing-config/config/key.pem
 roles/syncthing/files/volumes/syncthing-config/config/cert.pem
 roles/syncthing/templates/volumes/syncthing-config/config/config.xml.j2
+.claude/scheduled_tasks.lock

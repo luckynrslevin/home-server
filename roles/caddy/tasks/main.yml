@@ -138,3 +138,17 @@
     path: "{{ caddy_ca_cert_host_path }}"
     mode: "0644"
   when: caddy_domain | length > 0
+
+# Publish the root CA via the dashboard so devices on the LAN can
+# install it. Caddy bind-mounts /var/www/dashboard read-only and serves
+# it at https://<caddy_domain>/, so dropping the cert here makes it
+# fetchable at https://<caddy_domain>/caddy-root.crt.
+- name: Publish Caddy root CA via dashboard
+  become: true
+  ansible.builtin.copy:
+    src: "{{ caddy_ca_cert_host_path }}"
+    dest: /var/www/dashboard/caddy-root.crt
+    remote_src: true
+    mode: "0644"
+    setype: container_file_t
+  when: caddy_domain | length > 0
