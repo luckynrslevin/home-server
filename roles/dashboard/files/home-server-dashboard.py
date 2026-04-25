@@ -335,10 +335,39 @@ def generate_html(services_data, generated_at, nas_host_display):
   .unknown { background: #e2e3e5; color: #383d41; }
   .backup-path { color: #6c757d; font-style: italic; }
   .footer { margin-top: 15px; color: #888; font-size: 0.85em; }
+  .ca-install { margin: 0 0 18px 0; padding: 10px 14px; background: #eef5ff;
+                border: 1px solid #b6d4fe; border-radius: 6px; font-size: 0.92em; }
+  .ca-install a { color: #084298; font-weight: 600; }
+  .ca-install details { margin-top: 6px; }
+  .ca-install summary { cursor: pointer; color: #555; }
+  .ca-install ol { margin: 6px 0 0 22px; padding: 0; }
 </style>
 </head>
 <body>
 <h1>Home Server Dashboard</h1>
+<div class="ca-install">
+  Trust this server's HTTPS:
+  <a href="/caddy-root.crt" download>Download root certificate</a>
+  <details>
+    <summary>iOS / iPadOS install</summary>
+    <ol>
+      <li>Open this page in <strong>Safari</strong> (not Chrome) and tap the link above.</li>
+      <li>Tap <em>Allow</em> when iOS offers to download the configuration profile.</li>
+      <li>Open <em>Settings &rarr; General &rarr; VPN &amp; Device Management</em>, tap the
+          <em>Caddy Local Authority</em> profile, then <em>Install</em>.</li>
+      <li>Open <em>Settings &rarr; General &rarr; About &rarr; Certificate Trust Settings</em>
+          and turn the toggle on for the new root.</li>
+    </ol>
+  </details>
+  <details>
+    <summary>macOS install</summary>
+    <ol>
+      <li>Download the certificate, then open it &mdash; Keychain Access launches.</li>
+      <li>Add it to the <strong>System</strong> keychain.</li>
+      <li>Double-click the entry, expand <em>Trust</em>, set <em>When using this certificate: Always Trust</em>.</li>
+    </ol>
+  </details>
+</div>
 <table>
   <thead>
     <tr>
