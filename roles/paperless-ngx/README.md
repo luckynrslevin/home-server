@@ -59,11 +59,15 @@ ansible -i inventory/hosts.yml homeserver -m debug -a "var=paperless_secret_key"
 
 ## Firewall ports
 
-- **8000/tcp** — Web UI and API.
+The web UI / API on port 8000 is **not** exposed in the firewall —
+access it via Caddy at `https://paperless.<caddy_domain>`.
+
+When the SFTP sidecar is enabled, **{{ paperless_sftp_port }}/tcp**
+(default 2222) opens for the scanner ingest path.
 
 ## Endpoints
 
-- Web UI: `http://<server-ip>:8000`
+- Web UI: `https://paperless.<caddy_domain>`
 
 ## Volumes
 

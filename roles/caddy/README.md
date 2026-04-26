@@ -1,9 +1,10 @@
 # caddy
 
-Front-door web server and reverse proxy. In simple mode (default),
-it serves the [dashboard](../dashboard/README.md) on port 80. When
-`caddy_domain` is set, it becomes a full reverse proxy with
-subdomain-based routing and automatic HTTPS (self-signed certs).
+Front-door web server and reverse proxy. **Mandatory** in this project:
+every per-service web UI is fronted at `https://<subdomain>.<caddy_domain>`
+with an internally-trusted CA, and direct per-service HTTP ports are not
+exposed in the firewall. `caddy_domain` must be set in host_vars; an
+empty value will cause `playbooks/site.yml` to fail fast.
 
 ## Container image
 
@@ -63,13 +64,12 @@ None.
 ## Firewall ports
 
 - **80/tcp** (port-forward → `caddy_listen_port`)
-- **443/tcp** (port-forward → `caddy_listen_port_https`) — only when
-  `caddy_domain` is set
+- **443/tcp** (port-forward → `caddy_listen_port_https`)
 
 ## Endpoints
 
-- Simple mode: `http://<server-ip>/`
-- Reverse proxy mode: `https://<caddy_domain>/` + `https://<subdomain>.<caddy_domain>/`
+- Dashboard: `https://<caddy_domain>/`
+- Per-service: `https://<subdomain>.<caddy_domain>/` (one per `caddy_reverse_proxy_services` entry)
 
 ## Volumes
 
@@ -190,12 +190,6 @@ from the "reinstall-from-scratch" critical path.
 `caddy-etc` (Caddyfile) and `caddy-config` (runtime state) are not
 seeded or backed up — both are regenerated from the role on each
 deploy.
-
-## Backward compatibility
-
-Direct `IP:port` access still works — existing firewall rules
-remain. The reverse proxy is an additional access path, not a
-replacement.
 
 ## Cross-role dependencies
 

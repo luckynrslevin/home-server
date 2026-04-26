@@ -187,6 +187,13 @@ ask "Server hostname [$DEFAULT_HOSTNAME]:"
 read -r SERVER_HOSTNAME
 SERVER_HOSTNAME=${SERVER_HOSTNAME:-$DEFAULT_HOSTNAME}
 
+# caddy_domain — used for HTTPS reverse-proxy subdomains. Caddy is
+# mandatory in this project, so the domain is required.
+DEFAULT_CADDY_DOMAIN="${SERVER_HOSTNAME}.lan"
+ask "Caddy domain (for https://*.<domain>) [$DEFAULT_CADDY_DOMAIN]:"
+read -r CADDY_DOMAIN
+CADDY_DOMAIN=${CADDY_DOMAIN:-$DEFAULT_CADDY_DOMAIN}
+
 ask "Your username [$DEFAULT_USER]:"
 read -r SERVER_USER
 SERVER_USER=${SERVER_USER:-$DEFAULT_USER}
@@ -220,7 +227,6 @@ echo
 
 declare -A SERVICES
 SERVICES=(
-    [caddy]="Web server (serves the dashboard) — recommended"
     [dashboard]="Status dashboard showing all services — recommended"
     [pihole]="Pi-hole DNS ad-blocker"
     [syncthing]="Syncthing file synchronization"
@@ -231,19 +237,21 @@ SERVICES=(
     [jellyfin]="Jellyfin media server (movies, TV, music)"
 )
 
-# Recommended order for deployment
-SERVICE_ORDER=(caddy dashboard pihole syncthing shairportsync jukebox entephoto paperless-ngx jellyfin)
-SELECTED_SERVICES=()
+# Caddy is always deployed — it's the mandatory front-door reverse proxy.
+SELECTED_SERVICES=(caddy)
+
+# Recommended order for deployment of optional services
+SERVICE_ORDER=(dashboard pihole syncthing shairportsync jukebox entephoto paperless-ngx jellyfin)
 
 for svc in "${SERVICE_ORDER[@]}"; do
     desc="${SERVICES[$svc]}"
-    if [[ "$svc" == "caddy" || "$svc" == "dashboard" ]]; then
+    if [[ "$svc" == "dashboard" ]]; then
         ask "Deploy $svc? ($desc) [Y/n]:"
     else
         ask "Deploy $svc? ($desc) [y/N]:"
     fi
     read -r answer
-    if [[ "$svc" == "caddy" || "$svc" == "dashboard" ]]; then
+    if [[ "$svc" == "dashboard" ]]; then
         [[ ! "$answer" =~ ^[Nn]$ ]] && SELECTED_SERVICES+=("$svc")
     else
         [[ "$answer" =~ ^[Yy]$ ]] && SELECTED_SERVICES+=("$svc")
@@ -357,6 +365,9 @@ my_linux_users:
     uid: 1011
     gid: 1011
 ##################################################################################################
+
+### Caddy reverse-proxy
+caddy_domain: "$CADDY_DOMAIN"
 
 ### Pi-hole
 pihole_local_network: "$LAN_CIDR"

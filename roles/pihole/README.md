@@ -185,11 +185,13 @@ Or use the admin UI at `https://<server-ip>:8443/admin` → Query Log.
 
 - **53/tcp** and **53/udp** (port-forwarded to `1053` for the
   rootless container)
-- **8443/tcp** — HTTPS admin UI
+
+The HTTPS admin UI on port 8443 is **not** exposed in the firewall —
+access it via Caddy at `https://pihole.<caddy_domain>/admin`.
 
 ## Endpoints
 
-- Admin UI: `https://<server-ip>:8443/admin`
+- Admin UI: `https://pihole.<caddy_domain>/admin`
 
 ## Volumes
 
