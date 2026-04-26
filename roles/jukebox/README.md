@@ -55,16 +55,16 @@ and therefore captured by the backup role.
 
 ## Firewall ports
 
-- **9100/tcp** — Web UI.
+None. The web UI on port 9100 is **not** exposed in the firewall —
+access it via Caddy at `https://jukebox.<caddy_domain>`.
 
-(Optional, commented out in [tasks/main.yml](tasks/main.yml):
-`9090/tcp` for external Squeezebox-protocol clients,
-`3483/tcp+udp` for player ↔ server — not needed when both run in the
-same pod.)
+(Optional Squeezebox-protocol ports (`9090/tcp`, `3483/tcp+udp`) are
+commented out in [tasks/main.yml](tasks/main.yml); not needed when
+player and server run in the same pod.)
 
 ## Endpoints
 
-- Web UI: `http://<server-ip>:9100`
+- Web UI: `https://jukebox.<caddy_domain>`
 
 ## Volumes
 

@@ -16,8 +16,30 @@
   become: true
   gather_facts: true
 
+  pre_tasks:
+    # Caddy is mandatory: every web UI in the project is reverse-proxied
+    # through Caddy on https://*.<caddy_domain>. Without Caddy + a
+    # configured domain, services have no externally trusted access path.
+    - name: Assert Caddy is in deploy_services
+      ansible.builtin.assert:
+        that:
+          - "'caddy' in (deploy_services | default([]))"
+        fail_msg: >-
+          'caddy' must be in deploy_services. Caddy is the mandatory
+          front-door reverse proxy for this project — direct per-service
+          HTTP ports are no longer exposed.
+    - name: Assert caddy_domain is set
+      ansible.builtin.assert:
+        that:
+          - caddy_domain is defined
+          - caddy_domain | length > 0
+        fail_msg: >-
+          caddy_domain must be set in host_vars (e.g. 'eddie.lan').
+          Without it, Caddy serves no reverse-proxy routes and every
+          web UI becomes unreachable.
+
   roles:
-    - { role: caddy,         when: "'caddy' in (deploy_services | default([]))" }
+    - { role: caddy }
     - { role: dashboard,     when: "'dashboard' in (deploy_services | default([]))" }
     - { role: pihole,        when: "'pihole' in (deploy_services | default([]))" }
     - { role: syncthing,     when: "'syncthing' in (deploy_services | default([]))" }

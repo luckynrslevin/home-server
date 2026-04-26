@@ -28,13 +28,15 @@ at `https://<server-ip>:8384`.
 
 ## Firewall ports
 
-- **8384/tcp** — GUI
 - **22000/tcp** + **22000/udp** — sync protocol
 - **21027/udp** — local discovery
 
+The web UI on port 8384 is **not** exposed in the firewall — access it
+via Caddy at `https://syncthing.<caddy_domain>`.
+
 ## Endpoints
 
-- Web UI: `https://<server-ip>:8384`
+- Web UI: `https://syncthing.<caddy_domain>`
 
 ## Volumes
 

@@ -19,6 +19,7 @@ The solution emphasizes:
   - Secrets stored encrypted with `ansible-vault`
   - Rootless containers first — each rootless application runs as its own dedicated Linux user
   - Rootful containers only where rootless is not feasible, and always hardened
+  - Caddy is the mandatory front door — every web UI is reachable only via `https://<subdomain>.<caddy_domain>` with a single trusted internal CA; per-service HTTP ports are not exposed on the LAN
 - **Operational consistency**
   - Fully automatic reinstall from scratch, including restore of configuration and data
   - All applications fully integrated with systemd (start, stop, reboot)

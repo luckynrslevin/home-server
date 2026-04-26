@@ -64,16 +64,19 @@ ansible -i inventory/hosts.yml homeserver -m debug -a "var=entephoto_jwt_secret"
 
 ## Firewall ports
 
-- **8080/tcp** — Museum (API)
-- **3200/tcp** — MinIO S3 (browser uploads via presigned URLs)
-- **3000-3008/tcp** — Web apps (photos, accounts, albums, auth, cast,
-  share, embed, paste)
+None. All Ente surfaces (photos, accounts, cast, auth, museum API,
+S3) are reverse-proxied by Caddy on `https://*.<caddy_domain>` —
+direct LAN access on 8080, 3200, and 3000-3008 is intentionally not
+exposed.
 
 ## Endpoints
 
-- Photos: `http://<server-ip>:3000`
-- Albums: `http://<server-ip>:3002`
-- API health: `http://<server-ip>:8080/ping`
+- Photos: `https://photos.<caddy_domain>`
+- Accounts: `https://accounts.<caddy_domain>`
+- Cast: `https://cast.<caddy_domain>`
+- Auth: `https://auth.<caddy_domain>`
+- API: `https://photos-api.<caddy_domain>`
+- S3: `https://photos-s3.<caddy_domain>`
 
 ## Volumes
 
