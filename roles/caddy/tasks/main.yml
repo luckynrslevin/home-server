@@ -137,6 +137,11 @@
   ansible.builtin.file:
     path: "{{ caddy_ca_cert_host_path }}"
     mode: "0644"
+    # container_file_t so other rootless containers can read this file
+    # when bind-mounted (entephoto-museum mounts it at
+    # /etc/ssl/certs/caddy-root.crt). The default cert_t inherited from
+    # /etc/pki/ blocks confined containers from reading it.
+    setype: container_file_t
   when: caddy_domain | length > 0
 
 # Publish the root CA via the dashboard so devices on the LAN can
