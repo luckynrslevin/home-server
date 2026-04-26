@@ -53,8 +53,9 @@
       - paperless-data.volume
       - paperless-export.volume
       - paperless-consume.volume
-    podman_quadlet_firewall_ports:
-      - "8000/tcp"
+    # Paperless-NGX web UI is reverse-proxied by Caddy at
+    # https://paperless.<caddy_domain> — direct LAN access on 8000
+    # intentionally not exposed.
 
 # --------------------------------------------------------------------------
 # Optional SFTP sidecar — scanner drops PDFs straight into the paperless
