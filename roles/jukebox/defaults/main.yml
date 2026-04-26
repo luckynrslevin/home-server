@@ -1,6 +1,11 @@
 ---
 # Container images
-jukebox_server_image: "ghcr.io/lmscommunity/lyrionmusicserver"
+# GHCR org is "lms-community" (with hyphen), not "lmscommunity".
+# The hyphen-less variant returns 403/NAME_UNKNOWN. GHCR has no
+# anonymous-pull rate limit (unlike Docker Hub), so prefer it.
+# 'stable' is the rolling stable tag; pin to e.g. '9.1.1-stable' for
+# reproducible deploys. 'latest' does not exist on this repo.
+jukebox_server_image: "ghcr.io/lms-community/lyrionmusicserver:stable"
 jukebox_player_image: "docker.io/giof71/squeezelite"
 
 # Squeezelite preset selecting the audio output device. The

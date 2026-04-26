@@ -17,7 +17,7 @@ host plays music from its own library through its sound card.
 
 | Container       | Image                                  |
 |-----------------|----------------------------------------|
-| jukebox-server  | `docker.io/lmscommunity/lyrionmusicserver` |
+| jukebox-server  | `ghcr.io/lms-community/lyrionmusicserver:stable` |
 | jukebox-player  | `docker.io/giof71/squeezelite`         |
 
 ## Service user
