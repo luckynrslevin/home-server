@@ -82,11 +82,11 @@
             mode: "0700"
           - src: prefs/favorites.opml
             mode: "0600"
-    podman_quadlet_firewall_ports:
-      - "9100/tcp" # For access to  web interface
-      # - "9090/tcp" # only required for external clients (e.g. smart phone)
-      # - "3483/tcp" # player and server communicate over
-      # - "3483/udp" # pod related network
+    # Jukebox (LMS) web UI is reverse-proxied by Caddy at
+    # https://jukebox.<caddy_domain> — direct LAN access on 9100 intentionally
+    # not exposed.
+    # Squeezelite/LMS protocol ports (9090, 3483/tcp+udp) only needed for
+    # external clients; uncomment if/when needed.
 
 - name: Register backup manifest
   ansible.builtin.set_fact:

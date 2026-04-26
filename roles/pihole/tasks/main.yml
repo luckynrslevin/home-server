@@ -61,8 +61,8 @@
     podman_quadlet_file_names: >-
       {{ ['pihole.container.j2', 'pihole-etc.volume', 'pihole-dnsmasq.volume']
          + (['unbound.container.j2'] if pihole_enable_unbound | bool else []) }}
-    podman_quadlet_firewall_ports:
-      - "{{ pihole_web_port_https }}/tcp"
+    # Pi-hole admin UI is reverse-proxied by Caddy at https://pihole.<caddy_domain>
+    # — direct LAN access on {{ pihole_web_port_https }} intentionally not exposed.
     podman_quadlet_firewall_port_forwards:
       - port: 53
         proto: tcp

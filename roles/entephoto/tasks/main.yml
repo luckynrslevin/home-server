@@ -59,10 +59,10 @@
         files:
           - src: museum.yaml.j2
             mode: "0600"
-    podman_quadlet_firewall_ports:
-      - "8080/tcp"         # museum API
-      - "3200/tcp"         # MinIO S3 API (for browser uploads via presigned URLs)
-      - "3000-3008/tcp"    # web apps (photos, accounts, albums, auth, cast, share, embed, paste)
+    # All Ente surfaces are reverse-proxied by Caddy at
+    # https://photos.<caddy_domain>, photos-api, photos-s3, accounts, cast,
+    # auth, etc. Direct LAN openings (8080, 3200, 3000-3008) intentionally
+    # not exposed.
 
 # --------------------------------------------------------------------------
 # MinIO bucket initialization

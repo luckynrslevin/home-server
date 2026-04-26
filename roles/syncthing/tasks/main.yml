@@ -48,8 +48,11 @@
       - syncthing.container.j2
       - syncthing-config.volume
       - syncthing-data.volume
+    # Syncthing web UI is reverse-proxied by Caddy at
+    # https://syncthing.<caddy_domain> — direct LAN access on
+    # {{ syncthing_gui_port }} intentionally not exposed. Sync (22000) and
+    # discovery (21027) are P2P protocols and stay open.
     podman_quadlet_firewall_ports:
-      - "{{ syncthing_gui_port }}/tcp"
       - "{{ syncthing_listen_port }}/tcp"
       - "{{ syncthing_listen_port }}/udp"
       - "{{ syncthing_discovery_port }}/udp"
