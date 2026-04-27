@@ -120,6 +120,8 @@ Used for: entephoto Postgres (`entephoto-postgres` / `ente_db`).
 | entephoto | `ente_db` (Postgres)              | pgdump  |
 | entephoto | `entephoto-museum-config`         | tar     |
 | entephoto | `entephoto-minio-data`            | rsync   |
+| jellyfin  | `systemd-jellyfin-config`         | tar     |
+| jellyfin  | `systemd-jellyfin-media`          | rsync   |
 
 > Caddy volumes are not backed up. `caddy-etc` (Caddyfile) and
 > `caddy-config` (runtime state) are regenerated from the role.
