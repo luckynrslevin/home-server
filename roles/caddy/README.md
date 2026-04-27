@@ -99,6 +99,20 @@ Caddy automatically generates self-signed certificates for `.lan`
 domains. Browsers will show a one-time cert warning — acceptable
 for a LAN home server. Certificate data is persisted in `caddy-data`.
 
+## Distributing the internal CA to client devices
+
+The role publishes the root CA at two URLs on the dashboard:
+
+| URL                              | For                       | UX                                                                                                  |
+|----------------------------------|---------------------------|-----------------------------------------------------------------------------------------------------|
+| `/caddy-trust.mobileconfig`      | iOS / iPadOS / macOS      | Tap in Safari → install Apple configuration profile → two-tap trust on iOS, one-tap on macOS.       |
+| `/caddy-root.crt`                | Linux / Android / other   | Raw PEM cert; install via OS / browser certificate manager.                                         |
+
+The mobileconfig profile is generated from
+`templates/caddy-trust.mobileconfig.j2` on every deploy, so a CA
+rotation regenerates the file automatically. The profile is
+unsigned (Apple displays a "Verify" prompt; the user accepts).
+
 ## Internal CA persistence
 
 Caddy uses `tls internal`, which runs a private ACME CA. The root and
