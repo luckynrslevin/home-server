@@ -81,10 +81,23 @@ intentionally not exposed.
 
 ## Volumes
 
-- `jellyfin-config` — SQLite database, server settings, metadata.
-- `jellyfin-cache` — transcoding cache and image cache (regenerable,
-  not backed up).
-- `jellyfin-media` — your media library (movies, TV, music).
+The `.volume` files declare no explicit `VolumeName=`, so podman
+auto-prefixes them with `systemd-`. The on-disk names (and the names
+the backup manifest references) are:
+
+- `systemd-jellyfin-config` — SQLite database, server settings, metadata.
+- `systemd-jellyfin-cache` — transcoding cache and image cache
+  (regenerable, not backed up).
+- `systemd-jellyfin-media` — your media library (movies, TV, music).
+
+## Backup prerequisites
+
+The Jellyfin media volume is mirrored to NFS share
+`backup-jellyfin-media` on the project NAS via the `backup` role.
+Before the first nightly run will succeed, **create the share on the
+NAS** (e.g. Synology DSM → File Services → NFS → New Folder named
+`backup-jellyfin-media`, allow the home-server's IP, squash to
+`admin`). Same shape as the existing `backup-paperless-media` share.
 
 ## Deployment
 

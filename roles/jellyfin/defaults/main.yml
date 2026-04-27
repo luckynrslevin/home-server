@@ -41,9 +41,15 @@ jellyfin_libraries:
   - { name: "Home Videos", type: "homevideos", path: "/media/home-videos" }
 
 # Backup manifest — consumed by the backup role and restore playbook.
+# The role's .volume files have no `VolumeName=`, so podman auto-prefixes
+# the actual volume names with `systemd-`. The backup script passes
+# `vol.name` straight to `podman volume inspect` with no rewriting, so
+# the manifest must use the on-disk names. Same shape pihole and
+# syncthing already use (e.g. `systemd-pihole-etc`,
+# `systemd-syncthing-data`).
 backup_manifest:
   service_user: jellyfin
   service_unit: jellyfin
   volumes:
-    - { name: jellyfin-config, method: tar }
-    - { name: jellyfin-media, method: rsync, nas_share: jellyfin-media, restore_opt_in: true }
+    - { name: systemd-jellyfin-config, method: tar }
+    - { name: systemd-jellyfin-media, method: rsync, nas_share: jellyfin-media, restore_opt_in: true }
