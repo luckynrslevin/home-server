@@ -33,6 +33,33 @@
   ansible.builtin.set_fact:
     jellyfin_role_path: "{{ role_path }}"
 
+# NFS-backed media mounts on the host. Persistent via fstab so they
+# come up at boot before the rootless user systemd starts the
+# container. Read-only by default — see `jellyfin_nas_mounts` in
+# defaults for the var shape.
+- name: Ensure NFS mountpoints exist on host
+  become: true
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: directory
+    mode: "0755"
+    setype: container_file_t
+  loop: "{{ jellyfin_nas_mounts }}"
+  loop_control:
+    label: "{{ item.path }}"
+
+- name: Mount NFS shares for Jellyfin
+  become: true
+  ansible.posix.mount:
+    src: "{{ item.src }}"
+    path: "{{ item.path }}"
+    fstype: nfs
+    opts: "{{ item.opts | default('ro,noatime,vers=4,_netdev') }}"
+    state: mounted
+  loop: "{{ jellyfin_nas_mounts }}"
+  loop_control:
+    label: "{{ item.src }} -> {{ item.path }}"
+
 - name: Deploy jellyfin container using podman_quadlet
   ansible.builtin.include_role:
     name: luckynrslevin.podman_quadlet

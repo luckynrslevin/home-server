@@ -40,6 +40,28 @@ jellyfin_libraries:
   - { name: "Shows", type: "tvshows", path: "/media/tv" }
   - { name: "Home Videos", type: "homevideos", path: "/media/home-videos" }
 
+# Extra bind mounts into the Jellyfin container, beyond the role's own
+# `jellyfin-media` volume. Use this for NAS-backed media — mount the
+# NFS share on the host first (see `jellyfin_nas_mounts` below) and
+# point each entry's `host_path` at the host mountpoint. Read-only by
+# default; Jellyfin doesn't need to write to your media files.
+#
+# Example (in host_vars):
+#   jellyfin_extra_media_mounts:
+#     - { host_path: /srv/jellyfin-video, container_path: /media/video-nas, ro: true }
+jellyfin_extra_media_mounts: []
+
+# NFS shares to mount on the host before the container starts. Each
+# entry is mounted persistently via systemd (added to /etc/fstab).
+# Pair with `jellyfin_extra_media_mounts` so the in-container path
+# resolves to the NFS-backed host directory.
+#
+# Example (in host_vars):
+#   jellyfin_nas_mounts:
+#     - { src: "ds9:/volume1/video", path: /srv/jellyfin-video,
+#         opts: "ro,noatime,vers=4,_netdev" }
+jellyfin_nas_mounts: []
+
 # Backup manifest — consumed by the backup role and restore playbook.
 # The role's .volume files have no `VolumeName=`, so podman auto-prefixes
 # the actual volume names with `systemd-`. The backup script passes
