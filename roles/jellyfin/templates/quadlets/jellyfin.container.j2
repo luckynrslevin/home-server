@@ -12,6 +12,10 @@ Network=host
 Volume=jellyfin-config.volume:/config
 Volume=jellyfin-cache.volume:/cache
 Volume=jellyfin-media.volume:/media
+{% for m in jellyfin_extra_media_mounts | default([]) %}
+Volume={{ m.host_path }}:{{ m.container_path }}{% if m.ro | default(true) %}:ro{% endif %}
+
+{% endfor %}
 
 Environment=TZ={{ jellyfin_time_zone }}
 
