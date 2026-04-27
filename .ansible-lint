@@ -13,3 +13,9 @@ exclude_paths:
 
 skip_list:
   - var-naming[no-role-prefix]
+  # Role names like 'paperless-ngx' and 'music-assistant' use hyphens to
+  # match the upstream project names; the official Ansible style only
+  # allows underscores. The aggregation pattern in playbooks/site.yml
+  # uses these exact names as deploy_services tokens, so renaming
+  # would break the existing inventory/UX.
+  - role-name
