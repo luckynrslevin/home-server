@@ -1,0 +1,55 @@
+{# Apple configuration profile that bundles Caddy's internal root CA.
+   Tapping the link in Safari (iOS or macOS) installs the profile in
+   one prompt; on iOS the user then enables trust under Certificate
+   Trust Settings.
+
+   PayloadUUID/PayloadIdentifier are derived from caddy_domain so a
+   re-render replaces an existing profile cleanly rather than stacking.
+
+   The PayloadContent for com.apple.security.root expects base64-encoded
+   DER. The PEM file at caddy_ca_cert_host_path is BEGIN/END markers
+   wrapping base64-DER; stripping the markers gives us the right value.
+-#}
+{%- set _ca_b64 = caddy_ca_pem_content
+      | regex_replace('-----BEGIN [A-Z ]+-----', '')
+      | regex_replace('-----END [A-Z ]+-----', '')
+      | regex_replace('\\s+', '') -%}
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>PayloadType</key>
+    <string>Configuration</string>
+    <key>PayloadVersion</key>
+    <integer>1</integer>
+    <key>PayloadIdentifier</key>
+    <string>lan.{{ caddy_domain }}.caddy.trust</string>
+    <key>PayloadUUID</key>
+    <string>{{ ('caddy-trust-profile-' ~ caddy_domain) | to_uuid }}</string>
+    <key>PayloadDisplayName</key>
+    <string>Caddy Internal CA — {{ caddy_domain }}</string>
+    <key>PayloadDescription</key>
+    <string>Trusts certificates issued by your home Caddy instance.</string>
+    <key>PayloadOrganization</key>
+    <string>home-server</string>
+    <key>PayloadContent</key>
+    <array>
+        <dict>
+            <key>PayloadType</key>
+            <string>com.apple.security.root</string>
+            <key>PayloadVersion</key>
+            <integer>1</integer>
+            <key>PayloadIdentifier</key>
+            <string>lan.{{ caddy_domain }}.caddy.trust.root</string>
+            <key>PayloadUUID</key>
+            <string>{{ ('caddy-trust-root-' ~ caddy_domain) | to_uuid }}</string>
+            <key>PayloadDisplayName</key>
+            <string>Caddy Local Authority — {{ caddy_domain }}</string>
+            <key>PayloadCertificateFileName</key>
+            <string>caddy-root.crt</string>
+            <key>PayloadContent</key>
+            <data>{{ _ca_b64 }}</data>
+        </dict>
+    </array>
+</dict>
+</plist>

@@ -347,24 +347,35 @@ def generate_html(services_data, generated_at, nas_host_display):
 <h1>Home Server Dashboard</h1>
 <div class="ca-install">
   Trust this server's HTTPS:
+  <a href="/caddy-trust.mobileconfig"><strong>Install Apple profile</strong></a>
+  &nbsp;&middot;&nbsp;
   <a href="/caddy-root.crt" download>Download root certificate</a>
   <details>
-    <summary>iOS / iPadOS install</summary>
+    <summary>iOS / iPadOS install (Apple profile, recommended)</summary>
     <ol>
-      <li>Open this page in <strong>Safari</strong> (not Chrome) and tap the link above.</li>
-      <li>Tap <em>Allow</em> when iOS offers to download the configuration profile.</li>
-      <li>Open <em>Settings &rarr; General &rarr; VPN &amp; Device Management</em>, tap the
-          <em>Caddy Local Authority</em> profile, then <em>Install</em>.</li>
+      <li>Open this page in <strong>Safari</strong> (not Chrome) and tap <em>Install Apple profile</em>.</li>
+      <li>Tap <em>Allow</em>, then open <em>Settings &rarr; General &rarr; VPN &amp; Device Management</em>
+          and tap the downloaded profile to install.</li>
       <li>Open <em>Settings &rarr; General &rarr; About &rarr; Certificate Trust Settings</em>
-          and turn the toggle on for the new root.</li>
+          and turn on trust for the new root.</li>
     </ol>
   </details>
   <details>
-    <summary>macOS install</summary>
+    <summary>macOS install (Apple profile, recommended)</summary>
     <ol>
-      <li>Download the certificate, then open it &mdash; Keychain Access launches.</li>
-      <li>Add it to the <strong>System</strong> keychain.</li>
-      <li>Double-click the entry, expand <em>Trust</em>, set <em>When using this certificate: Always Trust</em>.</li>
+      <li>Open this page in Safari and click <em>Install Apple profile</em>.</li>
+      <li>System Settings opens to the Profiles pane &mdash; click <em>Install</em>.</li>
+      <li>Trust is applied automatically; HTTPS works in Safari and Chrome immediately.</li>
+    </ol>
+  </details>
+  <details>
+    <summary>Linux / Android / other</summary>
+    <ol>
+      <li>Use <em>Download root certificate</em> instead of the Apple profile.</li>
+      <li>Linux: copy to <code>/etc/pki/ca-trust/source/anchors/</code> (Fedora/RHEL) or
+          <code>/usr/local/share/ca-certificates/</code> (Debian/Ubuntu) and run
+          <code>update-ca-trust</code> / <code>update-ca-certificates</code>.</li>
+      <li>Android &le; 6 / desktop Chrome: import via the OS certificate manager.</li>
     </ol>
   </details>
 </div>

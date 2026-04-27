@@ -157,3 +157,29 @@
     mode: "0644"
     setype: container_file_t
   when: caddy_domain | length > 0
+
+# Apple-flavoured one-tap trust: the same root CA wrapped into a
+# .mobileconfig profile. iOS / iPadOS / macOS install it via Safari
+# in two taps, much friendlier than the raw .crt path. Linux/Android
+# clients keep using caddy-root.crt above.
+#
+# We slurp the cert from the target host so the template lookup
+# doesn't try to read it from the Ansible controller (which won't
+# have it on cross-host deploys).
+- name: Read Caddy root CA from target for mobileconfig
+  become: true
+  ansible.builtin.slurp:
+    src: "{{ caddy_ca_cert_host_path }}"
+  register: _caddy_ca_pem
+  when: caddy_domain | length > 0
+
+- name: Publish Caddy mobileconfig profile via dashboard
+  become: true
+  ansible.builtin.template:
+    src: caddy-trust.mobileconfig.j2
+    dest: /var/www/dashboard/caddy-trust.mobileconfig
+    mode: "0644"
+    setype: container_file_t
+  vars:
+    caddy_ca_pem_content: "{{ _caddy_ca_pem.content | b64decode }}"
+  when: caddy_domain | length > 0
