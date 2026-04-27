@@ -45,8 +45,13 @@
       - jellyfin-config.volume
       - jellyfin-cache.volume
       - jellyfin-media.volume
-    podman_quadlet_firewall_ports:
-      - "8096/tcp"
+    # Jellyfin web UI is reverse-proxied by Caddy at
+    # https://jellyfin.<caddy_domain>. Direct LAN access on 8096 is
+    # intentionally not exposed (Caddy is mandatory in this project).
+
+- name: Run first-run postinstall (wizard + libraries)
+  ansible.builtin.import_tasks: postinstall.yml
+  when: jellyfin_admin_password | length > 0
 
 - name: Register backup manifest
   ansible.builtin.set_fact:

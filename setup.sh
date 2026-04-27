@@ -312,6 +312,7 @@ ENTEPHOTO_JWT=$(openssl rand -hex 32)
 PAPERLESS_SECRET_KEY=$(openssl rand -hex 32)
 PAPERLESS_DB_PW=$(openssl rand -base64 24)
 PAPERLESS_ADMIN_PW=$(openssl rand -base64 24)
+JELLYFIN_ADMIN_PW=$(openssl rand -base64 24)
 
 # Generate a stable, locally-administered unicast MAC for the
 # squeezelite player. First octet 0x02 sets the locally-administered
@@ -399,6 +400,9 @@ echo ""
 vault_encrypt "$PAPERLESS_DB_PW" "paperless_db_password"
 echo ""
 vault_encrypt "$PAPERLESS_ADMIN_PW" "paperless_admin_password"
+echo ""
+echo "### Jellyfin"
+vault_encrypt "$JELLYFIN_ADMIN_PW" "jellyfin_admin_password"
 echo "##################################################################################################"
 } > inventory/host_vars/homeserver/main.yml
 

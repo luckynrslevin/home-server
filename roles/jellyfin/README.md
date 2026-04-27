@@ -14,24 +14,70 @@ single rootless container with host networking (for DLNA discovery).
 
 ## Variables
 
-| Variable                        | Default        | Purpose |
-|---------------------------------|----------------|---------|
-| `jellyfin_enable_hw_transcoding`| `false`        | Enable VAAPI hardware transcoding via `/dev/dri`. |
-| `jellyfin_time_zone`            | `Europe/Berlin`| Timezone for metadata and scheduled tasks. |
+| Variable                          | Default                     | Purpose |
+|-----------------------------------|-----------------------------|---------|
+| `jellyfin_enable_hw_transcoding`  | `false`                     | Enable VAAPI hardware transcoding via `/dev/dri`. |
+| `jellyfin_time_zone`              | `Europe/Berlin`             | Timezone for metadata and scheduled tasks. |
+| `jellyfin_admin_user`             | `jellyadmin`                | Admin username created during first-run automation. |
+| `jellyfin_admin_password`         | `""` *(vaulted)*            | Admin password. Empty disables postinstall (manual wizard). |
+| `jellyfin_metadata_language`      | `en`                        | Default metadata language for new libraries. |
+| `jellyfin_metadata_country`       | `US`                        | Default metadata country code. |
+| `jellyfin_libraries`              | *(four standard libraries)* | List of `{name, type, path}` dicts auto-created on deploy. |
+
+### Library list (default)
+
+```yaml
+jellyfin_libraries:
+  - { name: "Music",       type: "music",      path: "/media/music" }
+  - { name: "Movies",      type: "movies",     path: "/media/movies" }
+  - { name: "Shows",       type: "tvshows",    path: "/media/tv" }
+  - { name: "Home Videos", type: "homevideos", path: "/media/home-videos" }
+```
+
+Override the whole list in your host_vars to drop entries (e.g.
+omit Home Videos) or add libraries (e.g. an audiobooks library
+mapped at `/media/audiobooks`). Each path's subdirectory is
+pre-created inside the `jellyfin-media` volume on deploy.
+
+## First-run automation
+
+When `jellyfin_admin_password` is set, the role's `postinstall.yml`
+walks Jellyfin's REST API after the container is healthy:
+
+1. Configures metadata locale (`UICulture` / `MetadataCountryCode`).
+2. Creates the admin user (`/Startup/User`).
+3. Sets remote-access defaults (Caddy fronts; UPnP off).
+4. Marks the wizard complete (`/Startup/Complete`).
+5. Authenticates as admin and registers any libraries from
+   `jellyfin_libraries` that don't already exist.
+6. Triggers a single library scan if any new libraries were added.
+
+Idempotent: subsequent runs detect the wizard-complete state via a
+403 from `/Startup/User` and skip; libraries already present are
+left untouched.
 
 ## Secrets
 
-None. The admin account is created via the web UI wizard on first
-access — no vault-encrypted variables needed.
+| Variable                  | Purpose                                  |
+|---------------------------|------------------------------------------|
+| `jellyfin_admin_password` | Admin password for the auto-created user.|
+
+`setup.sh` generates this as a vault-encrypted random string. Inspect
+the stored value with:
+
+```bash
+ansible -i inventory/hosts.yml homeserver -m debug -a "var=jellyfin_admin_password"
+```
 
 ## Firewall ports
 
-- **8096/tcp** — Web UI and API.
+None. The web UI is reverse-proxied by Caddy at
+`https://jellyfin.<caddy_domain>` — direct LAN access on 8096
+intentionally not exposed.
 
 ## Endpoints
 
-- Web UI: `http://<server-ip>:8096`
-- With reverse proxy: `https://jellyfin.<caddy_domain>`
+- Web UI: `https://jellyfin.<caddy_domain>`
 
 ## Volumes
 

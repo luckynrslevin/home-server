@@ -1,0 +1,166 @@
+---
+# Jellyfin first-run automation: create admin user, set locale, register
+# the standard media libraries, all via Jellyfin's REST API.
+#
+# Idempotent: every step polls existing state (wizard complete? library
+# already present?) before issuing writes. Re-running site.yml is safe.
+#
+# All API calls go to http://127.0.0.1:8096 — the container uses
+# Network=host so the host loopback hits Jellyfin directly.
+
+- name: Wait for Jellyfin web service to come up
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:8096/health"
+    status_code: 200
+    return_content: true
+  register: _jellyfin_health
+  retries: 30
+  delay: 5
+  until: _jellyfin_health.status == 200 and 'Healthy' in (_jellyfin_health.content | default(''))
+
+# Pre-create media library subdirectories inside the running
+# container. Done here (after the health wait) rather than via
+# podman_quadlet_volumes_files_to_stage which would require a real
+# source dir on the control host.
+- name: Pre-create media library subdirectories # noqa: no-changed-when
+  become: true
+  ansible.builtin.command:
+    cmd: >-
+      sudo -iu jellyfin podman exec jellyfin
+      mkdir -p {{ item.path | quote }}
+  loop: "{{ jellyfin_libraries }}"
+  loop_control:
+    label: "{{ item.path }}"
+  changed_when: false
+
+# --------------------------------------------------------------------------
+# Wizard state probe
+# --------------------------------------------------------------------------
+# The Startup endpoints are only reachable while the first-run wizard
+# is incomplete. Once /Startup/Complete has been called, GET /Startup/User
+# returns 403 and the entire /Startup/* surface stops accepting writes.
+# That's our idempotency switch.
+
+- name: Probe wizard state
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:8096/Startup/User"
+    method: GET
+    status_code: [200, 403]
+    return_content: false
+  register: _jellyfin_wizard_probe
+
+- name: Set wizard_incomplete fact
+  ansible.builtin.set_fact:
+    _jellyfin_wizard_incomplete: "{{ _jellyfin_wizard_probe.status == 200 }}"
+
+# --------------------------------------------------------------------------
+# Wizard walkthrough — only when wizard is still incomplete
+# --------------------------------------------------------------------------
+- name: Configure metadata locale
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:8096/Startup/Configuration"
+    method: POST
+    body_format: json
+    body:
+      UICulture: "{{ jellyfin_metadata_language }}"
+      MetadataCountryCode: "{{ jellyfin_metadata_country }}"
+      PreferredMetadataLanguage: "{{ jellyfin_metadata_language }}"
+    status_code: [200, 204]
+  when: _jellyfin_wizard_incomplete
+
+- name: Create admin user via wizard
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:8096/Startup/User"
+    method: POST
+    body_format: json
+    body:
+      Name: "{{ jellyfin_admin_user }}"
+      Password: "{{ jellyfin_admin_password }}"
+    status_code: [200, 204]
+  when: _jellyfin_wizard_incomplete
+
+- name: Configure remote-access settings (Caddy fronts; UPnP off)
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:8096/Startup/RemoteAccess"
+    method: POST
+    body_format: json
+    body:
+      EnableRemoteAccess: true
+      EnableAutomaticPortMapping: false
+    status_code: [200, 204]
+  when: _jellyfin_wizard_incomplete
+
+- name: Mark wizard complete
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:8096/Startup/Complete"
+    method: POST
+    status_code: [200, 204]
+  when: _jellyfin_wizard_incomplete
+
+# --------------------------------------------------------------------------
+# Authenticate as admin to drive library setup (post-wizard auth required).
+# --------------------------------------------------------------------------
+- name: Authenticate as admin
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:8096/Users/AuthenticateByName"
+    method: POST
+    body_format: json
+    body:
+      Username: "{{ jellyfin_admin_user }}"
+      Pw: "{{ jellyfin_admin_password }}"
+    headers:
+      Authorization: 'MediaBrowser Client="ansible-postinstall", Device="home-server", DeviceId="home-server-postinstall", Version="1.0"'
+    status_code: 200
+    return_content: true
+  register: _jellyfin_auth
+  no_log: true
+
+- name: Cache admin access token
+  ansible.builtin.set_fact:
+    _jellyfin_token: "{{ _jellyfin_auth.json.AccessToken }}"
+  no_log: true
+
+# --------------------------------------------------------------------------
+# Libraries — list current, then create any missing ones.
+# --------------------------------------------------------------------------
+- name: List existing libraries
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:8096/Library/VirtualFolders"
+    method: GET
+    headers:
+      Authorization: 'MediaBrowser Token="{{ _jellyfin_token }}"'
+    status_code: 200
+    return_content: true
+  register: _jellyfin_existing_libs
+  no_log: true
+
+- name: Build set of existing library names
+  ansible.builtin.set_fact:
+    _jellyfin_existing_lib_names: "{{ _jellyfin_existing_libs.json | map(attribute='Name') | list }}"
+
+- name: Create missing libraries
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:8096/Library/VirtualFolders?name={{ item.name | urlencode }}&collectionType={{ item.type }}&refreshLibrary=false"
+    method: POST
+    body_format: json
+    body:
+      LibraryOptions:
+        PathInfos:
+          - { Path: "{{ item.path }}" }
+    headers:
+      Authorization: 'MediaBrowser Token="{{ _jellyfin_token }}"'
+    status_code: [200, 204]
+  loop: "{{ jellyfin_libraries }}"
+  loop_control:
+    label: "{{ item.name }} ({{ item.type }} -> {{ item.path }})"
+  when: item.name not in _jellyfin_existing_lib_names
+  register: _jellyfin_libs_changed
+
+- name: Trigger one library scan if anything changed # noqa: no-handler
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:8096/Library/Refresh"
+    method: POST
+    headers:
+      Authorization: 'MediaBrowser Token="{{ _jellyfin_token }}"'
+    status_code: [200, 204]
+  when: _jellyfin_libs_changed.changed | default(false)

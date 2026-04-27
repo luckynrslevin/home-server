@@ -11,6 +11,35 @@ jellyfin_enable_hw_transcoding: false
 # Timezone for metadata and scheduled tasks.
 jellyfin_time_zone: "Europe/Berlin"
 
+# First-run automation — admin account, locale, libraries.
+# Set jellyfin_admin_password from a vault-encrypted secret in your
+# private inventory (setup.sh generates this automatically). Leaving
+# it empty disables the postinstall step.
+jellyfin_admin_user: jellyadmin
+jellyfin_admin_password: ""
+
+# Default locale for the metadata wizard. Override in host_vars when
+# your household isn't English/US.
+jellyfin_metadata_language: "en"
+jellyfin_metadata_country: "US"
+
+# Libraries pre-registered during postinstall. Each entry maps a
+# Jellyfin library name + content type to a path inside the
+# jellyfin-media volume. The corresponding subdirectories are
+# pre-created on deploy.
+#
+# Valid content types (Jellyfin's collectionType field):
+#   movies | tvshows | music | musicvideos | homevideos
+#   playlists | books | mixed (discouraged)
+#
+# Override the whole list in host_vars to drop entries you don't want
+# (e.g. omit homevideos if you don't keep any).
+jellyfin_libraries:
+  - { name: "Music", type: "music", path: "/media/music" }
+  - { name: "Movies", type: "movies", path: "/media/movies" }
+  - { name: "Shows", type: "tvshows", path: "/media/tv" }
+  - { name: "Home Videos", type: "homevideos", path: "/media/home-videos" }
+
 # Backup manifest — consumed by the backup role and restore playbook.
 backup_manifest:
   service_user: jellyfin
