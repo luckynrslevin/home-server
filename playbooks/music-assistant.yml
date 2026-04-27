@@ -1,0 +1,7 @@
+- name: Install music-assistant pod on my home server
+  hosts: homeservers
+  become: true
+  gather_facts: true
+
+  roles:
+    - music-assistant

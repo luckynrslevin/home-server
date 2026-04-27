@@ -1,0 +1,22 @@
+[Unit]
+Description=music-assistant
+After=network-online.target
+Wants=network-online.target
+
+[Pod]
+PodName=music-assistant
+Network=music-assistant.network
+
+PublishPort={{ music_assistant_web_port }}:{{ music_assistant_web_port }}/tcp
+
+# Resolve Caddy-fronted internal hostnames (e.g. jellyfin.<caddy_domain>)
+# from inside the pod. The pod's own bridge DNS resolver can't reach
+# Pi-hole reliably; --add-host pins them to the host's loopback via
+# podman's host-gateway alias. Same pattern entephoto uses for its
+# S3-host trust path.
+{% for host in music_assistant_internal_hosts | default([]) %}
+PodmanArgs=--add-host={{ host }}:host-gateway
+{% endfor %}
+
+[Install]
+WantedBy=default.target

@@ -1,0 +1,57 @@
+---
+# Container images
+# Music Assistant publishes its server image on GHCR. No anonymous
+# pull rate limit (unlike Docker Hub).
+music_assistant_server_image: "ghcr.io/music-assistant/server:latest"
+
+# Squeezelite player image — same as the jukebox role uses for LMS.
+# Music Assistant has a built-in SlimProto server, so this player
+# connects to MA over the pod-local network.
+music_assistant_player_image: "docker.io/giof71/squeezelite"
+
+# Squeezelite preset selecting the audio output device. The
+# giof71/squeezelite image ships presets matching specific DACs
+# (e.g. "topping-D10s", "x20", "aune-s6"). Override per-host in
+# inventory to match your hardware.
+music_assistant_squeezelite_preset: "default"
+
+# Player name shown in the Music Assistant UI. Defaulting it per-host
+# keeps names unique on a LAN without manual configuration, similar
+# to what jukebox_squeezelite_name does for the LMS player.
+music_assistant_squeezelite_name: "MA-Player-{{ ansible_facts['hostname'] }}"
+
+# Stable MAC address for the squeezelite player. SlimProto identifies
+# players by MAC — so without a fixed value, every redeploy shows up
+# as a new player. Set to a unique 02:xx:xx:xx:xx:xx value distinct
+# from jukebox_squeezelite_mac when both LMS and MA run on the same
+# host (otherwise both Squeezelite instances claim the same identity).
+# Empty string leaves it up to the container entrypoint (random MAC).
+music_assistant_squeezelite_mac: ""
+
+# Host-published port for the Music Assistant web UI. Caddy reverse-
+# proxies this at https://music.<caddy_domain>; direct LAN access on
+# this port is intentionally not exposed in the firewall.
+music_assistant_web_port: 8095
+
+# Hostnames that need to resolve inside the MA pod via the host
+# gateway. Used to reach Caddy-fronted services (e.g. Jellyfin as a
+# library provider) without depending on the pod's own bridge DNS,
+# which doesn't always fall back to Pi-hole. Override per-host with
+# the actual fully-qualified subdomains under your caddy_domain.
+music_assistant_internal_hosts: []
+
+# Host path to the Caddy internal root CA cert (typically
+# /etc/pki/caddy-internal/root.crt — see caddy_ca_cert_host_path).
+# Empty disables the mount; set this in host_vars when MA needs to
+# trust HTTPS endpoints fronted by your Caddy (Jellyfin provider,
+# etc.). Same pattern entephoto uses for entephoto_caddy_ca_cert_path.
+music_assistant_caddy_ca_cert_path: ""
+
+# Backup manifest — consumed by the backup role and restore playbook.
+# music-assistant-data holds the SQLite library DB, provider config,
+# player config, and queue state. Small (well under 1 GB).
+backup_manifest:
+  service_user: music-assistant
+  service_unit: music-assistant-pod
+  volumes:
+    - { name: music-assistant-data, method: tar }

@@ -235,13 +235,14 @@ SERVICES=(
     [entephoto]="Ente Photos (self-hosted photo storage)"
     [paperless-ngx]="Paperless-NGX document management (OCR + search)"
     [jellyfin]="Jellyfin media server (movies, TV, music)"
+    [music-assistant]="Music Assistant (server-side music playback via SlimProto/Squeezelite)"
 )
 
 # Caddy is always deployed — it's the mandatory front-door reverse proxy.
 SELECTED_SERVICES=(caddy)
 
 # Recommended order for deployment of optional services
-SERVICE_ORDER=(dashboard pihole syncthing shairportsync jukebox entephoto paperless-ngx jellyfin)
+SERVICE_ORDER=(dashboard pihole syncthing shairportsync jukebox entephoto paperless-ngx jellyfin music-assistant)
 
 for svc in "${SERVICE_ORDER[@]}"; do
     desc="${SERVICES[$svc]}"
@@ -365,6 +366,9 @@ my_linux_users:
   webproxy:
     uid: 1011
     gid: 1011
+  music-assistant:
+    uid: 1014
+    gid: 1014
 ##################################################################################################
 
 ### Caddy reverse-proxy
@@ -526,10 +530,25 @@ cat << EOF
     service: jellyfin
     urls:
       - label: Web UI
-        url: http://${SERVER_IP}:8096
+        url: https://jellyfin.${CADDY_DOMAIN}
     volumes:
       - jellyfin-config
       - jellyfin-media
+
+EOF
+fi
+
+if is_selected music-assistant; then
+cat << EOF
+  - name: Music Assistant
+    user: music-assistant
+    uid: 1014
+    service: music-assistant-pod
+    urls:
+      - label: Web UI
+        url: https://music.${CADDY_DOMAIN}
+    volumes:
+      - music-assistant-data
 
 EOF
 fi

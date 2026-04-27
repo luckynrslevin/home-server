@@ -1,0 +1,114 @@
+---
+
+- name: Ensure rootless user group exists
+  ansible.builtin.group:
+    name: music-assistant
+    gid: "{{ my_linux_users['music-assistant'].gid }}"
+    state: present
+
+- name: Ensure rootless user exists
+  ansible.builtin.user:
+    name: music-assistant
+    state: present
+    uid: "{{ my_linux_users['music-assistant'].uid }}"
+    group: music-assistant
+    create_home: true
+
+- name: Add music-assistant user to audio group to get access to /dev/snd
+  ansible.builtin.user:
+    name: music-assistant
+    groups: audio
+    append: true
+# Same caveat as the jukebox role: a reboot is required on first
+# install for the supplementary group to propagate to the rootless
+# user namespace before the squeezelite container can open /dev/snd.
+
+# os-audio writes /etc/asound.conf when the host's playback card
+# isn't card 0 (typical for VMs with virtio-snd) and registers
+# `asound_conf_stat` so the player quadlet template can decide
+# whether to bind-mount the override.
+- name: Install audio prerequisites on os level
+  ansible.builtin.import_role:
+    name: os-audio
+
+- name: Enable linger for rootless user
+  become: true
+  ansible.builtin.command:
+    cmd: "loginctl enable-linger music-assistant"
+  changed_when: false
+
+- name: Enable podman auto-update timer for rootless user # noqa: no-changed-when
+  become: true
+  ansible.builtin.command:
+    cmd: >
+      sudo -u music-assistant XDG_RUNTIME_DIR=/run/user/{{ my_linux_users['music-assistant'].uid }}
+      DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/{{ my_linux_users['music-assistant'].uid }}/bus
+      systemctl --user enable --now podman-auto-update.timer
+  changed_when: false
+
+- name: Save current role path
+  ansible.builtin.set_fact:
+    music_assistant_role_path: "{{ role_path }}"
+
+# Build a combined CA bundle = system trust + Caddy internal CA, so MA
+# trusts both internal Caddy-signed endpoints (e.g. Jellyfin library
+# provider) AND public HTTPS endpoints (lrclib.net for lyrics,
+# metadata providers, streaming services). Mounting only Caddy's root
+# would break the public path; concatenating preserves both.
+- name: Ensure CA trust directory for music-assistant
+  become: true
+  ansible.builtin.file:
+    path: /home/music-assistant/ca-trust
+    state: directory
+    owner: music-assistant
+    group: music-assistant
+    mode: "0755"
+  when: music_assistant_caddy_ca_cert_path | length > 0
+
+- name: Build combined CA bundle (system + Caddy) for music-assistant
+  become: true
+  ansible.builtin.shell: |
+    set -euo pipefail
+    DEST=/home/music-assistant/ca-trust/full-bundle.pem
+    cat /etc/pki/tls/certs/ca-bundle.crt {{ music_assistant_caddy_ca_cert_path | quote }} > "$DEST.new"
+    mv "$DEST.new" "$DEST"
+  args:
+    executable: /bin/bash
+  changed_when: false
+  when: music_assistant_caddy_ca_cert_path | length > 0
+
+- name: Set ownership and SELinux label on combined CA bundle
+  become: true
+  ansible.builtin.file:
+    path: /home/music-assistant/ca-trust/full-bundle.pem
+    owner: music-assistant
+    group: music-assistant
+    mode: "0644"
+    setype: container_file_t
+  when: music_assistant_caddy_ca_cert_path | length > 0
+
+- name: Deploy music-assistant pod using podman_quadlet
+  ansible.builtin.include_role:
+    name: luckynrslevin.podman_quadlet
+  vars:
+    podman_quadlet_app_name: "music-assistant-pod"
+    podman_quadlet_rootless_user_name: music-assistant
+    podman_quadlet_files_templates_src_path: "{{ music_assistant_role_path }}"
+    podman_quadlet_file_names:
+      - music-assistant-server.container.j2
+      - music-assistant-player.container.j2
+      - music-assistant.pod.j2
+      - music-assistant.network
+      - music-assistant-data.volume
+    # Music Assistant web UI is reverse-proxied by Caddy at
+    # https://music.<caddy_domain> — direct LAN access on
+    # {{ music_assistant_web_port }} intentionally not exposed.
+    # SlimProto (3483 tcp+udp) stays pod-internal — the player connects
+    # to the server via pod-local DNS, no host firewall opening needed.
+
+- name: Register backup manifest
+  ansible.builtin.set_fact:
+    _backup_manifests: >-
+      {{ _backup_manifests | default([]) +
+         [backup_manifest | combine({'_role_name': role_name})] }}
+  when: backup_manifest is defined

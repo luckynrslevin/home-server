@@ -1,0 +1,28 @@
+[Unit]
+Description=music-assistant server
+PartOf=music-assistant-pod.service
+
+[Container]
+ContainerName=%N
+Image={{ music_assistant_server_image }}
+AutoUpdate=registry
+
+Pod=music-assistant.pod
+
+Volume=music-assistant-data.volume:/data
+{% if music_assistant_caddy_ca_cert_path %}
+# Mount a combined CA bundle (host system trust + Caddy internal CA)
+# so MA trusts BOTH https://*.<caddy_domain> endpoints (Jellyfin etc.)
+# AND public HTTPS endpoints (lrclib.net lyrics, metadata providers,
+# streaming services). Built by tasks/main.yml.
+Volume=/home/music-assistant/ca-trust/full-bundle.pem:/etc/ssl/certs/ca-bundle-with-caddy.pem:ro
+{% endif %}
+
+Environment=TZ=Europe/Berlin
+Environment=LOG_LEVEL=info
+{% if music_assistant_caddy_ca_cert_path %}
+# Point Python's ssl module + aiohttp + requests at the combined
+# bundle. Replacing only with Caddy's root would break public TLS.
+Environment=SSL_CERT_FILE=/etc/ssl/certs/ca-bundle-with-caddy.pem
+Environment=REQUESTS_CA_BUNDLE=/etc/ssl/certs/ca-bundle-with-caddy.pem
+{% endif %}
