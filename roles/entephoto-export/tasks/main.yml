@@ -31,14 +31,16 @@
 # user's timer fires.
 # ----------------------------------------------------------------------
 
+# Don't set owner/group/mode here — once the NFS mount is in place,
+# chown on the local mountpoint fails because the NFS server's
+# root_squash blocks it. File ownership on the share is governed by
+# the NFS server (Synology's anonuid mapping); the local mountpoint
+# is just an attachment point.
 - name: Ensure NFS mountpoint exists on host
   become: true
   ansible.builtin.file:
     path: "{{ entephoto_export_nas_mount.path }}"
     state: directory
-    owner: entephoto-export
-    group: entephoto-export
-    mode: "0755"
     setype: container_file_t
   when: entephoto_export_nas_mount | length > 0
 
