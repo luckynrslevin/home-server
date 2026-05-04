@@ -7,7 +7,11 @@
 # publish a pre-built CLI image, so we build locally on first deploy.
 entephoto_export_repo_url: "https://github.com/ente-io/ente.git"
 entephoto_export_repo_ref: "main"
-entephoto_export_repo_path: "/home/entephoto-export/ente-src"
+# Owned by root (so subsequent ansible runs can git-pull without
+# git's "dubious ownership" check tripping); world-readable so the
+# rootless entephoto-export user can use it as the podman build
+# context.
+entephoto_export_repo_path: "/usr/local/src/ente-cli"
 
 # Local image tag built from cli/Dockerfile in the cloned repo.
 entephoto_export_image: "localhost/ente-cli:latest"
