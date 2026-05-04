@@ -11,6 +11,9 @@ TimeoutStartSec=4h
 ExecStart=/usr/bin/podman run --rm --name=ente-export \
   --entrypoint=./ente-cli \
   --network host \
+{% if entephoto_export_api_host_ip %}
+  --add-host={{ entephoto_export_api_url | regex_replace('^https?://([^/:]+).*$', '\\1') }}:{{ entephoto_export_api_host_ip }} \
+{% endif %}
   -v ente-export-state:/cli-data \
   -v {{ entephoto_export_nas_mount.path }}:/data \
 {% if entephoto_export_caddy_ca_cert_path %}

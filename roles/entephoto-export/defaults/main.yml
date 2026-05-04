@@ -22,6 +22,14 @@ entephoto_export_image: "localhost/ente-cli:latest"
 # process).
 entephoto_export_api_url: "https://photos-api.eddie.lan"
 
+# Optional: pin the museum hostname to an IP via /etc/hosts inside
+# the container (`podman --add-host=`). Useful when the host's own
+# DNS can't resolve `*.eddie.lan` because of an
+# nftables-PREROUTING-only port-53 redirect (i.e., the LAN works
+# fine but eddie itself doesn't, so the rootless container also
+# can't). Set to "" to skip and let DNS handle it.
+entephoto_export_api_host_ip: ""
+
 # Daily systemd timer firing time (host local timezone).
 entephoto_export_oncalendar: "*-*-* 03:00:00"
 
