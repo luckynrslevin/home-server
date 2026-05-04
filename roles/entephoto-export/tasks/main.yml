@@ -156,6 +156,24 @@
     chdir: /tmp
   changed_when: false
 
+# Seed config.yaml into the CLI state volume so the CLI talks to the
+# local museum, not api.ente.io (its default). Without this, both
+# `account add` and `export` go to the public Ente service and fail
+# with 401. We use a one-shot container with the image's `sh` to
+# write the file because the volume is owned by uid 1015 and rootless
+# podman maps that into the container correctly.
+- name: Seed Ente CLI config.yaml pointing at local museum
+  become: true
+  ansible.builtin.command:
+    cmd: >
+      sudo -u entephoto-export
+      XDG_RUNTIME_DIR=/run/user/{{ my_linux_users['entephoto-export'].uid }}
+      podman run --rm -v ente-export-state:/cli-data --entrypoint=sh
+      {{ entephoto_export_image }}
+      -c 'printf "endpoint:\n  api: %s\n" "{{ entephoto_export_api_url }}" > /cli-data/config.yaml'
+    chdir: /tmp
+  changed_when: false
+
 - name: Ensure user systemd unit dir exists for entephoto-export
   become: true
   ansible.builtin.file:
