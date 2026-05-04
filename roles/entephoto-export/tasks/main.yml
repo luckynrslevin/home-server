@@ -90,6 +90,8 @@
 
 # Always rebuild on role apply — fast for incremental upstream changes
 # (Go module + layer cache do most of the work).
+# `chdir: /tmp` works around `sudo -u` inheriting Ansible's cwd
+# (typically /home/ds, mode 700, unreadable by uid 1015).
 - name: Build the Ente CLI podman image
   become: true
   ansible.builtin.command:
@@ -99,6 +101,7 @@
       podman build -t {{ entephoto_export_image }}
       -f {{ entephoto_export_repo_path }}/cli/Dockerfile
       {{ entephoto_export_repo_path }}/cli
+    chdir: /tmp
   changed_when: false
 
 # ----------------------------------------------------------------------
