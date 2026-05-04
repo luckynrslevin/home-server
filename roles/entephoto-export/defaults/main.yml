@@ -1,0 +1,45 @@
+---
+# entephoto-export — periodic decrypted export of Ente Photos to a
+# plain-files folder on the NAS, running alongside the encrypted
+# museum/MinIO backup pipeline. See README.md for the rationale.
+
+# Where the Ente CLI source is cloned and built. Upstream does not
+# publish a pre-built CLI image, so we build locally on first deploy.
+entephoto_export_repo_url: "https://github.com/ente-io/ente.git"
+entephoto_export_repo_ref: "main"
+entephoto_export_repo_path: "/home/entephoto-export/ente-src"
+
+# Local image tag built from cli/Dockerfile in the cloned repo.
+entephoto_export_image: "localhost/ente-cli:latest"
+
+# Museum API endpoint the CLI authenticates against. Must be reachable
+# from the host's network namespace (the container runs with
+# Network=host, so it resolves via Pi-hole DNS like any other host
+# process).
+entephoto_export_api_url: "https://photos-api.eddie.lan"
+
+# Daily systemd timer firing time (host local timezone).
+entephoto_export_oncalendar: "*-*-* 03:00:00"
+
+# How much randomized jitter to add so multiple hosts don't fire at
+# exactly the same minute (mostly cosmetic for a single-host setup).
+entephoto_export_random_delay: "15min"
+
+# NFS mount on the host where decrypted photos are written. Mirrors the
+# `jellyfin_nas_mounts` shape — declare in host_vars to enable, leave
+# empty to disable. Keys: src, path, opts.
+#
+# Example (in host_vars):
+#   entephoto_export_nas_mount:
+#     src: "ds9:/volume1/photos-export"
+#     path: /srv/photos-export
+#     opts: "rw,noatime,vers=4,_netdev,async"
+entephoto_export_nas_mount: {}
+
+# Path to the Caddy internal-CA root certificate on the host. The
+# container builds a combined CA bundle (system trust + Caddy CA) so
+# `ente` trusts both `*.eddie.lan` (museum) and any public HTTPS
+# endpoint the CLI may touch. Same pattern as the music-assistant role.
+# Set to "" to disable Caddy CA trust (e.g. if you publish museum on a
+# public LE-issued certificate).
+entephoto_export_caddy_ca_cert_path: ""

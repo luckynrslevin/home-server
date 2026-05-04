@@ -1,0 +1,7 @@
+[Unit]
+Description=Ente CLI state (config, secrets, sync database)
+
+[Volume]
+# CLI state: ~/.ente equivalent, encryption secrets, sync DB. Treat as
+# sensitive — readable only by the rootless user (which the volume's
+# mount lifecycle enforces).

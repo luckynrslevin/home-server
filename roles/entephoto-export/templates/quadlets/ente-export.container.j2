@@ -1,0 +1,47 @@
+[Unit]
+Description=Ente Photos decrypted export (one-shot)
+# Don't auto-start at boot; the .timer in ~/.config/systemd/user
+# triggers this service on schedule.
+
+[Container]
+ContainerName=%N
+Image={{ entephoto_export_image }}
+# Image is built locally from upstream source; AutoUpdate=local lets
+# `podman auto-update` rebuild it from the cloned repo when the build
+# task is re-run by Ansible.
+AutoUpdate=local
+
+# Container runs as `ente-cli <command>`; we pass `export` so each
+# timer-fired run does an incremental decrypted export. Bootstrap
+# (`ente account add`) is documented in README.md as a manual one-time
+# step using `podman run -it --rm` against the same volumes.
+Exec=export
+
+Volume=ente-export-state.volume:/cli-data:Z
+Volume={{ entephoto_export_nas_mount.path }}:/data
+{% if entephoto_export_caddy_ca_cert_path %}
+Volume=/home/entephoto-export/ca-trust/full-bundle.pem:/etc/ssl/certs/ca-bundle-with-caddy.pem:ro
+{% endif %}
+
+# Use the host network so museum's hostname resolves via Pi-hole DNS
+# (the same way other host processes reach *.eddie.lan).
+Network=host
+
+Environment=ENTE_CLI_CONFIG_DIR=/cli-data
+Environment=ENTE_CLI_SECRETS_PATH=/cli-data/secrets
+{% if entephoto_export_caddy_ca_cert_path %}
+Environment=SSL_CERT_FILE=/etc/ssl/certs/ca-bundle-with-caddy.pem
+{% endif %}
+
+[Service]
+# One-shot: the container exits when `ente export` returns. The .timer
+# unit re-fires us on schedule.
+Type=oneshot
+RemainAfterExit=no
+# Reasonable per-run cap; large initial exports may exceed this and
+# should be done manually via `podman run --rm` for the bootstrap.
+TimeoutStartSec=4h
+
+[Install]
+# Not WantedBy=default.target — we don't want this to auto-start on
+# boot; the timer drives it.

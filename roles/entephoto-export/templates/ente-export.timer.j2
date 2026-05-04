@@ -1,0 +1,12 @@
+[Unit]
+Description=Daily Ente Photos decrypted export
+Documentation=file:///home/entephoto-export/.config/containers/systemd/ente-export.container
+
+[Timer]
+OnCalendar={{ entephoto_export_oncalendar }}
+RandomizedDelaySec={{ entephoto_export_random_delay }}
+Persistent=true
+Unit=ente-export.service
+
+[Install]
+WantedBy=timers.target

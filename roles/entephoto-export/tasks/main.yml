@@ -1,0 +1,176 @@
+---
+# entephoto-export role — see roles/entephoto-export/README.md.
+
+- name: Ensure rootless user group exists
+  ansible.builtin.group:
+    name: entephoto-export
+    gid: "{{ my_linux_users['entephoto-export'].gid }}"
+    state: present
+
+- name: Ensure rootless user exists
+  ansible.builtin.user:
+    name: entephoto-export
+    state: present
+    uid: "{{ my_linux_users['entephoto-export'].uid }}"
+    group: entephoto-export
+    create_home: true
+
+- name: Enable linger for rootless user
+  become: true
+  ansible.builtin.command:
+    cmd: "loginctl enable-linger entephoto-export"
+  changed_when: false
+
+- name: Save current role path
+  ansible.builtin.set_fact:
+    entephoto_export_role_path: "{{ role_path }}"
+
+# ----------------------------------------------------------------------
+# NFS mount on the host (the export folder lives on ds9, not on eddie).
+# Persistent via systemd so it comes up at boot before the rootless
+# user's timer fires.
+# ----------------------------------------------------------------------
+
+- name: Ensure NFS mountpoint exists on host
+  become: true
+  ansible.builtin.file:
+    path: "{{ entephoto_export_nas_mount.path }}"
+    state: directory
+    owner: entephoto-export
+    group: entephoto-export
+    mode: "0755"
+    setype: container_file_t
+  when: entephoto_export_nas_mount | length > 0
+
+- name: Mount NFS share for entephoto-export
+  become: true
+  ansible.posix.mount:
+    src: "{{ entephoto_export_nas_mount.src }}"
+    path: "{{ entephoto_export_nas_mount.path }}"
+    fstype: nfs
+    opts: "{{ entephoto_export_nas_mount.opts | default('rw,noatime,vers=4,_netdev,async') }}"
+    state: mounted
+  when: entephoto_export_nas_mount | length > 0
+
+# ----------------------------------------------------------------------
+# Build the Ente CLI image locally — upstream doesn't publish one.
+# ----------------------------------------------------------------------
+
+- name: Install git for cloning the Ente source repo
+  become: true
+  ansible.builtin.dnf:
+    name: git
+    state: present
+
+- name: Clone (or update) the Ente source repo for CLI build
+  become: true
+  become_user: entephoto-export
+  ansible.builtin.git:
+    repo: "{{ entephoto_export_repo_url }}"
+    dest: "{{ entephoto_export_repo_path }}"
+    version: "{{ entephoto_export_repo_ref }}"
+    depth: 1
+    update: true
+    force: true
+
+# Always rebuild on role apply — fast for incremental upstream changes
+# (Go module + layer cache do most of the work).
+- name: Build the Ente CLI podman image
+  become: true
+  ansible.builtin.command:
+    cmd: >
+      sudo -u entephoto-export
+      XDG_RUNTIME_DIR=/run/user/{{ my_linux_users['entephoto-export'].uid }}
+      podman build -t {{ entephoto_export_image }}
+      -f {{ entephoto_export_repo_path }}/cli/Dockerfile
+      {{ entephoto_export_repo_path }}/cli
+  changed_when: false
+
+# ----------------------------------------------------------------------
+# Caddy CA trust — same combined-bundle pattern as the music-assistant
+# role. Required so the CLI trusts https://photos-api.eddie.lan.
+# ----------------------------------------------------------------------
+
+- name: Ensure CA trust directory for entephoto-export
+  become: true
+  ansible.builtin.file:
+    path: /home/entephoto-export/ca-trust
+    state: directory
+    owner: entephoto-export
+    group: entephoto-export
+    mode: "0755"
+  when: entephoto_export_caddy_ca_cert_path | length > 0
+
+- name: Build combined CA bundle (system + Caddy) for entephoto-export
+  become: true
+  ansible.builtin.shell: |
+    set -euo pipefail
+    DEST=/home/entephoto-export/ca-trust/full-bundle.pem
+    cat /etc/pki/tls/certs/ca-bundle.crt {{ entephoto_export_caddy_ca_cert_path | quote }} > "$DEST.new"
+    mv "$DEST.new" "$DEST"
+  args:
+    executable: /bin/bash
+  changed_when: false
+  when: entephoto_export_caddy_ca_cert_path | length > 0
+
+- name: Set ownership and SELinux label on combined CA bundle
+  become: true
+  ansible.builtin.file:
+    path: /home/entephoto-export/ca-trust/full-bundle.pem
+    owner: entephoto-export
+    group: entephoto-export
+    mode: "0644"
+    setype: container_file_t
+  when: entephoto_export_caddy_ca_cert_path | length > 0
+
+# ----------------------------------------------------------------------
+# Quadlet container + state volume.
+# The systemd .timer that fires this is deployed below as a regular
+# user-systemd unit (the podman_quadlet role doesn't handle .timer).
+# ----------------------------------------------------------------------
+
+- name: Deploy ente-export quadlet using podman_quadlet
+  ansible.builtin.include_role:
+    name: luckynrslevin.podman_quadlet
+  vars:
+    podman_quadlet_app_name: "ente-export"
+    podman_quadlet_rootless_user_name: entephoto-export
+    podman_quadlet_files_templates_src_path: "{{ entephoto_export_role_path }}"
+    podman_quadlet_file_names:
+      - ente-export.container.j2
+      - ente-export-state.volume
+
+- name: Ensure user systemd unit dir exists for entephoto-export
+  become: true
+  ansible.builtin.file:
+    path: /home/entephoto-export/.config/systemd/user
+    state: directory
+    owner: entephoto-export
+    group: entephoto-export
+    mode: "0755"
+
+# Deploy the timer as a regular user-systemd unit (the quadlet
+# generator only knows about .container/.pod/.network/.volume/.image —
+# .timer must live in ~/.config/systemd/user/ so user systemd picks
+# it up directly).
+- name: Deploy systemd timer for daily export
+  become: true
+  ansible.builtin.template:
+    src: ente-export.timer.j2
+    dest: "/home/entephoto-export/.config/systemd/user/ente-export.timer"
+    owner: entephoto-export
+    group: entephoto-export
+    mode: "0644"
+
+- name: Enable and start ente-export timer
+  become: true
+  become_user: entephoto-export
+  environment:
+    XDG_RUNTIME_DIR: "/run/user/{{ my_linux_users['entephoto-export'].uid }}"
+    DBUS_SESSION_BUS_ADDRESS: "unix:path=/run/user/{{ my_linux_users['entephoto-export'].uid }}/bus"
+  ansible.builtin.systemd_service:
+    name: ente-export.timer
+    scope: user
+    enabled: true
+    state: started
+    daemon_reload: true
