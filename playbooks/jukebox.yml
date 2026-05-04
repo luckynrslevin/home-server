@@ -1,7 +1,0 @@
-- name: Install jukebox containers on my home server
-  hosts: homeservers
-  become: true
-  gather_facts: true
-
-  roles:
-    - jukebox
