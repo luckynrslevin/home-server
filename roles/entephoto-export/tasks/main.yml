@@ -62,9 +62,13 @@
     name: git
     state: present
 
+# Clone as root rather than `become_user: entephoto-export` — Ansible's
+# unprivileged-user become path tries BSD ACL chmod syntax which Linux
+# chmod rejects (see issue notes in commit history). Other roles in
+# this repo follow the same pattern: do work as root, fix ownership
+# afterwards.
 - name: Clone (or update) the Ente source repo for CLI build
   become: true
-  become_user: entephoto-export
   ansible.builtin.git:
     repo: "{{ entephoto_export_repo_url }}"
     dest: "{{ entephoto_export_repo_path }}"
@@ -72,6 +76,15 @@
     depth: 1
     update: true
     force: true
+
+- name: Set ownership of cloned repo to entephoto-export
+  become: true
+  ansible.builtin.file:
+    path: "{{ entephoto_export_repo_path }}"
+    state: directory
+    recurse: true
+    owner: entephoto-export
+    group: entephoto-export
 
 # Always rebuild on role apply — fast for incremental upstream changes
 # (Go module + layer cache do most of the work).
