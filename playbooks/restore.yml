@@ -12,11 +12,7 @@
 # Restore a single service:
 #   ansible-playbook playbooks/restore.yml --limit homeserver --tags pihole
 #   ansible-playbook playbooks/restore.yml --limit homeserver --tags syncthing
-#   ansible-playbook playbooks/restore.yml --limit homeserver --tags jukebox
 #   ansible-playbook playbooks/restore.yml --limit homeserver --tags entephoto
-#
-# Restore jukebox music (128 GB, opt-in):
-#   ansible-playbook playbooks/restore.yml --limit homeserver --tags jukebox-music
 #
 # Prerequisites:
 #   - Services must be deployed first (playbooks/site.yml) so users,
@@ -39,7 +35,6 @@
     _restorable_services:
       - pihole
       - syncthing
-      - jukebox
       - entephoto
       - paperless-ngx
       - jellyfin
@@ -96,14 +91,6 @@
       when: _restore_manifests | selectattr('_role_name', 'equalto', 'syncthing') | list | length > 0
       tags: [syncthing]
 
-    - name: Restore jukebox
-      ansible.builtin.include_tasks:
-        file: tasks/restore_generic.yml
-      vars:
-        svc: "{{ _restore_manifests | selectattr('_role_name', 'equalto', 'jukebox') | first }}"
-      when: _restore_manifests | selectattr('_role_name', 'equalto', 'jukebox') | list | length > 0
-      tags: [jukebox]
-
     - name: Restore entephoto
       ansible.builtin.include_tasks:
         file: tasks/restore_generic.yml
@@ -128,32 +115,3 @@
       when: _restore_manifests | selectattr('_role_name', 'equalto', 'jellyfin') | list | length > 0
       tags: [jellyfin]
 
-    # ==================================================================
-    # Opt-in: jukebox music (128 GB rsync — tagged [never])
-    # ==================================================================
-    - name: Restore jukebox music library
-      tags: [jukebox-music, never]
-      block:
-        - name: "JUKEBOX-MUSIC: mount NAS music share"
-          ansible.builtin.file:
-            path: "{{ restore_root }}/music"
-            state: directory
-        - ansible.posix.mount:
-            path: "{{ restore_root }}/music"
-            src: "{{ nas_host }}:{{ nas_volume }}/backup-music"
-            fstype: nfs
-            opts: "{{ nfs_opts }}"
-            state: ephemeral
-
-        - name: "JUKEBOX-MUSIC: rsync music into volume"
-          ansible.builtin.shell: |
-            cd /tmp
-            MP=$(sudo -u jukebox podman volume inspect jukebox-server-music \
-                --format='{% raw %}{{.Mountpoint}}{% endraw %}')
-            sudo -u jukebox podman unshare rsync -a --no-owner --no-group \
-                --numeric-ids "{{ restore_root }}/music/" "$MP/"
-
-        - name: "JUKEBOX-MUSIC: unmount NAS"
-          ansible.posix.mount:
-            path: "{{ restore_root }}/music"
-            state: unmounted
