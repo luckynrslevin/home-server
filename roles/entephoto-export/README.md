@@ -82,13 +82,14 @@ this **once** interactively after the role's first apply:
 ```bash
 ssh eddie
 
-# Run an interactive ente account add against the same volumes the
-# timer-fired container uses. State persists in ente-export-state.volume.
+# Run an interactive `ente account add` against the same volumes the
+# timer-fired runs use. State persists in the `ente-export-state`
+# podman volume.
 sudo -u entephoto-export -i bash -c '
   XDG_RUNTIME_DIR=/run/user/$(id -u) \
   podman run --rm -it \
     --network host \
-    -v ente-export-state.volume:/cli-data:Z \
+    -v ente-export-state:/cli-data \
     -v /srv/photos-export:/data \
     -v /home/entephoto-export/ca-trust/full-bundle.pem:/etc/ssl/certs/ca-bundle-with-caddy.pem:ro \
     -e SSL_CERT_FILE=/etc/ssl/certs/ca-bundle-with-caddy.pem \

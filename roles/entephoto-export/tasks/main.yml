@@ -137,21 +137,24 @@
   when: entephoto_export_caddy_ca_cert_path | length > 0
 
 # ----------------------------------------------------------------------
-# Quadlet container + state volume.
-# The systemd .timer that fires this is deployed below as a regular
-# user-systemd unit (the podman_quadlet role doesn't handle .timer).
+# Podman volume + plain systemd .service / .timer.
+# Skipping the podman_quadlet role for this one — it always
+# `systemctl restart`s the generated service after deploy, which
+# fails for a Type=oneshot whose command is `ente export` *before
+# the user has manually bootstrapped an account*. A plain systemd
+# unit + timer pair stays unstarted until the timer fires (or the
+# user runs the bootstrap manually), avoiding that chicken-and-egg.
 # ----------------------------------------------------------------------
 
-- name: Deploy ente-export quadlet using podman_quadlet
-  ansible.builtin.include_role:
-    name: luckynrslevin.podman_quadlet
-  vars:
-    podman_quadlet_app_name: "ente-export"
-    podman_quadlet_rootless_user_name: entephoto-export
-    podman_quadlet_files_templates_src_path: "{{ entephoto_export_role_path }}"
-    podman_quadlet_file_names:
-      - ente-export.container.j2
-      - ente-export-state.volume
+- name: Ensure ente-export-state podman volume exists
+  become: true
+  ansible.builtin.command:
+    cmd: >
+      sudo -u entephoto-export
+      XDG_RUNTIME_DIR=/run/user/{{ my_linux_users['entephoto-export'].uid }}
+      podman volume create --ignore ente-export-state
+    chdir: /tmp
+  changed_when: false
 
 - name: Ensure user systemd unit dir exists for entephoto-export
   become: true
@@ -162,10 +165,15 @@
     group: entephoto-export
     mode: "0755"
 
-# Deploy the timer as a regular user-systemd unit (the quadlet
-# generator only knows about .container/.pod/.network/.volume/.image —
-# .timer must live in ~/.config/systemd/user/ so user systemd picks
-# it up directly).
+- name: Deploy systemd service for ente-export
+  become: true
+  ansible.builtin.template:
+    src: ente-export.service.j2
+    dest: "/home/entephoto-export/.config/systemd/user/ente-export.service"
+    owner: entephoto-export
+    group: entephoto-export
+    mode: "0644"
+
 - name: Deploy systemd timer for daily export
   become: true
   ansible.builtin.template:
@@ -175,15 +183,24 @@
     group: entephoto-export
     mode: "0644"
 
+- name: Reload entephoto-export user systemd
+  become: true
+  ansible.builtin.command:
+    cmd: >
+      sudo -u entephoto-export
+      XDG_RUNTIME_DIR=/run/user/{{ my_linux_users['entephoto-export'].uid }}
+      DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/{{ my_linux_users['entephoto-export'].uid }}/bus
+      systemctl --user daemon-reload
+    chdir: /tmp
+  changed_when: false
+
 - name: Enable and start ente-export timer
   become: true
-  become_user: entephoto-export
-  environment:
-    XDG_RUNTIME_DIR: "/run/user/{{ my_linux_users['entephoto-export'].uid }}"
-    DBUS_SESSION_BUS_ADDRESS: "unix:path=/run/user/{{ my_linux_users['entephoto-export'].uid }}/bus"
-  ansible.builtin.systemd_service:
-    name: ente-export.timer
-    scope: user
-    enabled: true
-    state: started
-    daemon_reload: true
+  ansible.builtin.command:
+    cmd: >
+      sudo -u entephoto-export
+      XDG_RUNTIME_DIR=/run/user/{{ my_linux_users['entephoto-export'].uid }}
+      DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/{{ my_linux_users['entephoto-export'].uid }}/bus
+      systemctl --user enable --now ente-export.timer
+    chdir: /tmp
+  changed_when: false

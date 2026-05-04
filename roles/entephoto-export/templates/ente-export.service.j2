@@ -1,0 +1,25 @@
+[Unit]
+Description=Ente Photos decrypted export
+Documentation=file:///usr/local/src/ente-cli/cli/README.md
+# Don't start at boot — the .timer drives this.
+
+[Service]
+Type=oneshot
+RemainAfterExit=no
+TimeoutStartSec=4h
+
+ExecStart=/usr/bin/podman run --rm --name=ente-export \
+  --network host \
+  -v ente-export-state:/cli-data \
+  -v {{ entephoto_export_nas_mount.path }}:/data \
+{% if entephoto_export_caddy_ca_cert_path %}
+  -v /home/entephoto-export/ca-trust/full-bundle.pem:/etc/ssl/certs/ca-bundle-with-caddy.pem:ro \
+  -e SSL_CERT_FILE=/etc/ssl/certs/ca-bundle-with-caddy.pem \
+{% endif %}
+  -e ENTE_CLI_CONFIG_DIR=/cli-data \
+  -e ENTE_CLI_SECRETS_PATH=/cli-data/secrets \
+  {{ entephoto_export_image }} \
+  export
+
+[Install]
+# Not WantedBy=default.target — only the timer triggers this.
