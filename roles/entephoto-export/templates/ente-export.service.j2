@@ -9,6 +9,7 @@ RemainAfterExit=no
 TimeoutStartSec=4h
 
 ExecStart=/usr/bin/podman run --rm --name=ente-export \
+  --entrypoint=./ente-cli \
   --network host \
   -v ente-export-state:/cli-data \
   -v {{ entephoto_export_nas_mount.path }}:/data \

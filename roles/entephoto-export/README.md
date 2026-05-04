@@ -85,19 +85,15 @@ ssh eddie
 # Run an interactive `ente account add` against the same volumes the
 # timer-fired runs use. State persists in the `ente-export-state`
 # podman volume.
-sudo -u entephoto-export -i bash -c '
-  XDG_RUNTIME_DIR=/run/user/$(id -u) \
-  podman run --rm -it \
-    --network host \
-    -v ente-export-state:/cli-data \
-    -v /srv/photos-export:/data \
-    -v /home/entephoto-export/ca-trust/full-bundle.pem:/etc/ssl/certs/ca-bundle-with-caddy.pem:ro \
-    -e SSL_CERT_FILE=/etc/ssl/certs/ca-bundle-with-caddy.pem \
-    -e ENTE_CLI_CONFIG_DIR=/cli-data \
-    -e ENTE_CLI_SECRETS_PATH=/cli-data/secrets \
-    localhost/ente-cli:latest \
-    account add
-'
+#
+# Single-line so paste-with-line-continuations doesn't get mangled.
+# `cd /tmp` because sudo -u inherits the caller's cwd; if that's
+# /home/ds (mode 700), entephoto-export can't chdir there.
+# `--entrypoint=./ente-cli` because the upstream image has Cmd
+# without Entrypoint, so positional args replace Cmd instead of
+# appending — without this, podman tries to exec `account` as the
+# binary.
+cd /tmp && sudo -u entephoto-export XDG_RUNTIME_DIR=/run/user/1015 podman run --rm -it --entrypoint=./ente-cli --network host -v ente-export-state:/cli-data -v /srv/photos-export:/data -v /home/entephoto-export/ca-trust/full-bundle.pem:/etc/ssl/certs/ca-bundle-with-caddy.pem:ro -e SSL_CERT_FILE=/etc/ssl/certs/ca-bundle-with-caddy.pem -e ENTE_CLI_CONFIG_DIR=/cli-data -e ENTE_CLI_SECRETS_PATH=/cli-data/secrets localhost/ente-cli:latest account add
 ```
 
 Prompts: app type (`photos`), export directory (`/data`), email,
