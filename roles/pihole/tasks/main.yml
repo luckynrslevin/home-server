@@ -151,6 +151,15 @@
   when: item.rc != 0
   notify: Reload firewalld
 
+# Force the firewalld reload immediately, before any downstream task
+# in this playbook can fail and skip the handler-flush phase. Without
+# this, an unrelated failure further down (e.g. another role's NFS
+# mount) would leave the rules sitting in `--permanent` but never
+# loaded into runtime — the host would still see "Connection refused"
+# for *.<caddy_domain>.
+- name: Flush handlers so the firewalld reload happens now
+  ansible.builtin.meta: flush_handlers
+
 # Start and enable Unbound (it's a separate systemd unit, not part of
 # the pihole app unit, so the Galaxy role's restart doesn't cover it).
 - name: Enable and start Unbound # noqa: no-changed-when
