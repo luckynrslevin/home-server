@@ -80,6 +80,46 @@ No third-party resolver sees your full query stream. Authoritative
 servers each see only their piece (root sees TLD lookup, `.com` sees
 domain name, etc.).
 
+## Local resolution on the Pi-hole host itself
+
+The host runs Pi-hole rootless on `:1053`, with `systemd-resolved`
+holding `:53` for its stub listener. Inbound DNS from the LAN works
+via a firewalld port-forward (`53 → 1053`) on the **PREROUTING** chain.
+
+NetworkManager additionally hands `systemd-resolved` a per-link DNS
+from DHCP — typically the host's own LAN IP. Resolved sends queries
+matching the link's DNS-Domain (e.g. `*.lan`) to that link DNS first.
+But that destination is the host's own LAN IP on port 53, where
+nothing listens locally. The PREROUTING redirect doesn't fire for
+locally-generated traffic, so the host (and any host-network
+container) gets `Connection refused` when resolving `*.<caddy_domain>`.
+
+The role works around this with a second firewalld direct rule on the
+**OUTPUT** chain that mirrors the PREROUTING redirect, restricted to
+traffic destined to the host's own LAN IP. This way:
+
+- Inbound LAN DNS → PREROUTING REDIRECT → Pi-hole :1053 (existing)
+- Local outbound DNS to own IP:53 → OUTPUT REDIRECT → Pi-hole :1053 (new)
+- Unbound's recursive queries to public root servers (destination is
+  not the host's own IP) → no redirect, pass through normally.
+
+Verify the rules are present:
+
+```
+sudo firewall-cmd --direct --get-all-rules | grep dport.53
+```
+
+Expected: two `OUTPUT` lines (tcp + udp) and the existing PREROUTING
+forwards. To remove (e.g. if Pi-hole is moved off-host):
+
+```
+sudo firewall-cmd --permanent --direct --remove-rule ipv4 nat OUTPUT 0 \
+  -d <host-lan-ip> -p tcp --dport 53 -j REDIRECT --to-ports 1053
+sudo firewall-cmd --permanent --direct --remove-rule ipv4 nat OUTPUT 0 \
+  -d <host-lan-ip> -p udp --dport 53 -j REDIRECT --to-ports 1053
+sudo firewall-cmd --reload
+```
+
 ### Verifying Unbound works
 
 Use the [Mullvad DNS leak test](https://mullvad.net/en/check) or
