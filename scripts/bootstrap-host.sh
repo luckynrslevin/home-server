@@ -23,6 +23,17 @@
 #        - disables password authentication
 #   6. Opens port 2343 in firewalld and labels it ssh_port_t in SELinux.
 #
+# SELinux notes:
+#   - AlmaLinux/RHEL 9 ships with SELinux Enforcing by default. The
+#     script keeps it that way — no setenforce/setpermissive — and
+#     prints a warning if the running mode is not Enforcing.
+#   - The new SSH port (2343) gets `semanage port -a -t ssh_port_t -p tcp`
+#     so sshd is allowed to bind it.
+#   - `restorecon` is run on the files we write (authorized_keys and
+#     the sshd drop-in) to ensure the labels match the policy
+#     defaults (ssh_home_t / sshd_config_t). Cheap insurance against
+#     "key auth silently fails" debugging on RHEL family.
+#
 # What it deliberately does NOT do:
 #   - Close port 22 in the firewall. Test the new port first from a
 #     SECOND terminal:
@@ -83,6 +94,23 @@ echo "   ssh port:       $NEW_SSH_PORT"
 echo "   keymap:         $NEW_KEYMAP"
 echo "   pubkey:         ${SSH_PUBKEY:0:50}…"
 echo "=================================================================="
+
+# Sanity-check SELinux mode. We don't fix this — disabling SELinux is
+# a deliberate choice and we don't want to silently change it — but a
+# host running in Permissive (or Disabled) loses a lot of the security
+# the rest of this script assumes.
+if command -v getenforce >/dev/null 2>&1; then
+    selinux_mode=$(getenforce 2>/dev/null || true)
+    if [[ "$selinux_mode" != "Enforcing" ]]; then
+        echo
+        echo "  WARNING: SELinux is '$selinux_mode' (expected Enforcing)."
+        echo "           This script will still work, but the system is"
+        echo "           less protected. Re-enable with:"
+        echo "             setenforce 1"
+        echo "             sed -i 's/^SELINUX=.*/SELINUX=enforcing/' /etc/selinux/config"
+        echo
+    fi
+fi
 
 # ---- 1. System update + prerequisites --------------------------------------
 echo
@@ -147,6 +175,15 @@ fi
 chmod 0600 "$AUTH_KEYS"
 chown "$NEW_USER:$NEW_USER" "$AUTH_KEYS"
 
+# Reset SELinux labels on the .ssh tree to whatever the policy says
+# they should be (ssh_home_t for the dir + authorized_keys). Files
+# created via shell redirection inherit the parent's context, which
+# is usually correct here, but `restorecon` makes failure deterministic
+# instead of "sometimes works, sometimes mysterious AVC denial".
+if command -v restorecon >/dev/null 2>&1; then
+    restorecon -R "$USER_SSH_DIR"
+fi
+
 # ---- 6. Firewalld ----------------------------------------------------------
 echo
 echo "[6/8] Opening firewall port $NEW_SSH_PORT/tcp (port 22 is left open"
@@ -175,6 +212,13 @@ PasswordAuthentication no
 KbdInteractiveAuthentication no
 EOF
 chmod 0600 "$SSHD_DROPIN"
+
+# Same insurance as for authorized_keys — if the policy expects
+# sshd_config_t in /etc/ssh/sshd_config.d/ (it does on RHEL 9),
+# restorecon makes the label deterministic so sshd can read it.
+if command -v restorecon >/dev/null 2>&1; then
+    restorecon "$SSHD_DROPIN"
+fi
 
 # Validate config before restart
 sshd -t
