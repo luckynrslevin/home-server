@@ -13,14 +13,15 @@
 # What it does:
 #   1. Updates the system and installs prerequisites (Python for Ansible,
 #      Podman, firewalld, SELinux tooling).
-#   2. Creates user `ds` with passwordless sudo.
-#   3. Installs your SSH public key for `ds` BEFORE password auth is
+#   2. Sets the console keymap to German (configurable via NEW_KEYMAP).
+#   3. Creates user `ds` with passwordless sudo.
+#   4. Installs your SSH public key for `ds` BEFORE password auth is
 #      disabled — without this you would be locked out.
-#   4. Hardens sshd via /etc/ssh/sshd_config.d/ drop-in:
+#   5. Hardens sshd via /etc/ssh/sshd_config.d/ drop-in:
 #        - port 2343
 #        - disables root login
 #        - disables password authentication
-#   5. Opens port 2343 in firewalld and labels it ssh_port_t in SELinux.
+#   6. Opens port 2343 in firewalld and labels it ssh_port_t in SELinux.
 #
 # What it deliberately does NOT do:
 #   - Close port 22 in the firewall. Test the new port first from a
@@ -42,6 +43,7 @@ set -euo pipefail
 # ---- Config ----------------------------------------------------------------
 NEW_USER="ds"
 NEW_SSH_PORT=2343
+NEW_KEYMAP="de"   # console (TTY) keymap — see `localectl list-keymaps`
 
 # ---- Args ------------------------------------------------------------------
 SSH_PUBKEY="${1:-}"
@@ -78,12 +80,13 @@ echo "=================================================================="
 echo " Home-server host bootstrap"
 echo "   user:           $NEW_USER  (passwordless sudo)"
 echo "   ssh port:       $NEW_SSH_PORT"
+echo "   keymap:         $NEW_KEYMAP"
 echo "   pubkey:         ${SSH_PUBKEY:0:50}…"
 echo "=================================================================="
 
 # ---- 1. System update + prerequisites --------------------------------------
 echo
-echo "[1/7] Updating system and installing prerequisites…"
+echo "[1/8] Updating system and installing prerequisites…"
 dnf -y update
 dnf -y install \
     sudo openssh-server \
@@ -94,18 +97,27 @@ dnf -y install \
 
 systemctl enable --now firewalld
 
-# ---- 2. Create user --------------------------------------------------------
+# ---- 2. Console keymap -----------------------------------------------------
 echo
-echo "[2/7] Creating user $NEW_USER…"
+echo "[2/8] Setting console keymap to $NEW_KEYMAP…"
+if localectl status 2>/dev/null | grep -q "^ *VC Keymap: $NEW_KEYMAP$"; then
+    echo "  already set to $NEW_KEYMAP — skipping"
+else
+    localectl set-keymap "$NEW_KEYMAP"
+fi
+
+# ---- 3. Create user --------------------------------------------------------
+echo
+echo "[3/8] Creating user $NEW_USER…"
 if id "$NEW_USER" >/dev/null 2>&1; then
     echo "  user $NEW_USER already exists — skipping"
 else
     useradd -m -s /bin/bash "$NEW_USER"
 fi
 
-# ---- 3. Sudo rights --------------------------------------------------------
+# ---- 4. Sudo rights --------------------------------------------------------
 echo
-echo "[3/7] Granting passwordless sudo to $NEW_USER…"
+echo "[4/8] Granting passwordless sudo to $NEW_USER…"
 SUDOERS_FILE="/etc/sudoers.d/90-$NEW_USER"
 cat > "$SUDOERS_FILE" <<EOF
 # Bootstrap-installed: $NEW_USER may run any command without a password.
@@ -117,9 +129,9 @@ chmod 0440 "$SUDOERS_FILE"
 # visudo -cf bails out non-zero on syntax errors
 visudo -cf "$SUDOERS_FILE" >/dev/null
 
-# ---- 4. SSH public key -----------------------------------------------------
+# ---- 5. SSH public key -----------------------------------------------------
 echo
-echo "[4/7] Installing SSH public key for $NEW_USER…"
+echo "[5/8] Installing SSH public key for $NEW_USER…"
 USER_HOME="/home/$NEW_USER"
 USER_SSH_DIR="$USER_HOME/.ssh"
 AUTH_KEYS="$USER_SSH_DIR/authorized_keys"
@@ -135,25 +147,25 @@ fi
 chmod 0600 "$AUTH_KEYS"
 chown "$NEW_USER:$NEW_USER" "$AUTH_KEYS"
 
-# ---- 5. Firewalld ----------------------------------------------------------
+# ---- 6. Firewalld ----------------------------------------------------------
 echo
-echo "[5/7] Opening firewall port $NEW_SSH_PORT/tcp (port 22 is left open"
+echo "[6/8] Opening firewall port $NEW_SSH_PORT/tcp (port 22 is left open"
 echo "      until you confirm the new port works — see banner at the end)…"
 firewall-cmd --permanent --add-port="$NEW_SSH_PORT/tcp" >/dev/null
 firewall-cmd --reload >/dev/null
 
-# ---- 6. SELinux ssh_port_t label ------------------------------------------
+# ---- 7. SELinux ssh_port_t label ------------------------------------------
 echo
-echo "[6/7] Labeling port $NEW_SSH_PORT as ssh_port_t in SELinux…"
+echo "[7/8] Labeling port $NEW_SSH_PORT as ssh_port_t in SELinux…"
 if semanage port -l | grep -qE "ssh_port_t\s+tcp\s+.*\b$NEW_SSH_PORT\b"; then
     echo "  port $NEW_SSH_PORT already labeled ssh_port_t — skipping"
 else
     semanage port -a -t ssh_port_t -p tcp "$NEW_SSH_PORT"
 fi
 
-# ---- 7. sshd hardening drop-in --------------------------------------------
+# ---- 8. sshd hardening drop-in --------------------------------------------
 echo
-echo "[7/7] Writing sshd hardening drop-in and restarting sshd…"
+echo "[8/8] Writing sshd hardening drop-in and restarting sshd…"
 SSHD_DROPIN="/etc/ssh/sshd_config.d/99-bootstrap.conf"
 cat > "$SSHD_DROPIN" <<EOF
 # Bootstrap-installed sshd hardening (see scripts/bootstrap-host.sh).
