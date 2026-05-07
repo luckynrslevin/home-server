@@ -253,11 +253,42 @@ read -r -p "Press Enter to continue with verification (Ctrl-C to abort)... " _
 # ---- Phase 3: verify -------------------------------------------------------
 echo
 echo "Phase 3 — verifying ssh -p $NEW_SSH_PORT $NEW_USER@$TARGET_HOST..."
-if ssh -p "$NEW_SSH_PORT" -o ConnectTimeout=10 -o StrictHostKeyChecking=accept-new \
-       -o BatchMode=yes "$NEW_USER@$TARGET_HOST" \
-       'echo "  OK as $(whoami) on $(hostnamectl --static 2>/dev/null || hostname)"' 2>&1; then
-    :
-else
+
+verify_once() {
+    ssh -p "$NEW_SSH_PORT" -o ConnectTimeout=10 \
+        -o StrictHostKeyChecking=accept-new -o BatchMode=yes \
+        "$NEW_USER@$TARGET_HOST" \
+        'echo "  OK as $(whoami) on $(hostnamectl --static 2>/dev/null || hostname)"' 2>&1
+}
+
+verify_output=$(verify_once)
+verify_rc=$?
+echo "$verify_output"
+
+# Stale known_hosts entry from a previously-reused IP shows up as
+# "REMOTE HOST IDENTIFICATION HAS CHANGED" / "Host key verification
+# failed". Offer to scrub the stale entries and retry — the user
+# almost always wants this for a fresh-install scenario.
+if (( verify_rc != 0 )) \
+   && grep -qE "REMOTE HOST IDENTIFICATION HAS CHANGED|Host key verification failed" \
+            <<<"$verify_output"; then
+    echo
+    echo "  ⚠ Stale ~/.ssh/known_hosts entry for $TARGET_HOST detected."
+    echo "    The host's SSH key has changed (typical for a freshly-installed VM"
+    echo "    that reuses an IP from a previous server)."
+    echo
+    read -r -p "  Remove the stale entry and retry verification? [Y/n] " ans
+    if [[ ! "$ans" =~ ^[Nn]$ ]]; then
+        ssh-keygen -R "[$TARGET_HOST]:$NEW_SSH_PORT" 2>&1 | sed 's/^/    /'
+        ssh-keygen -R "$TARGET_HOST"                  2>&1 | sed 's/^/    /'
+        echo "  Retrying..."
+        verify_output=$(verify_once)
+        verify_rc=$?
+        echo "$verify_output"
+    fi
+fi
+
+if (( verify_rc != 0 )); then
     cat <<EOF
 
 ==================================================================
