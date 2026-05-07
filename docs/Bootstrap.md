@@ -68,7 +68,7 @@ bootstrap-host.sh -k <ssh-pubkey> [-u <user>] [-p <port>] [-n <hostname>]
 |---|---|---|
 | `-k <pubkey>` | (required) | SSH public key (full string) to install for the new user. The script installs this in `~<user>/.ssh/authorized_keys` **before** disabling password auth. |
 | `-u <user>` | `ds` | Linux username to create. Validated against `^[a-z_][a-z0-9_-]{0,31}$`. |
-| `-p <port>` | `2343` | SSH port to harden onto. firewalld + SELinux are updated to match. Validated as an integer 1–65535. |
+| `-p <port>` | `2222` | SSH port to harden onto. firewalld + SELinux are updated to match. Validated as an integer 1–65535. |
 | `-n <hostname>` | (unchanged) | Hostname to set via `hostnamectl`. RFC 1123 charset. Omit to leave the current hostname untouched. |
 | `-h` | — | Show help and exit. |
 
@@ -160,7 +160,7 @@ Optional convenience. In `~/.ssh/config`:
 Host new-server
   HostName <ip>
   User ds
-  Port 2343
+  Port 2222
   IdentityFile ~/.ssh/id_ed25519
 ```
 

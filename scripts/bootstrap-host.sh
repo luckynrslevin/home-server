@@ -12,7 +12,7 @@
 #
 # Optional:
 #   -u <user>        Linux username to create (default: ds)
-#   -p <port>        SSH port to harden onto         (default: 2343)
+#   -p <port>        SSH port to harden onto         (default: 2222)
 #   -n <hostname>    Hostname to set                 (default: leave unchanged)
 #   -h               Show this help and exit
 #
@@ -29,16 +29,16 @@
 #   5. Installs your SSH public key for `ds` BEFORE password auth is
 #      disabled — without this you would be locked out.
 #   6. Hardens sshd via /etc/ssh/sshd_config.d/ drop-in:
-#        - port 2343
+#        - port 2222
 #        - disables root login
 #        - disables password authentication
-#   7. Opens port 2343 in firewalld and labels it ssh_port_t in SELinux.
+#   7. Opens port 2222 in firewalld and labels it ssh_port_t in SELinux.
 #
 # SELinux notes:
 #   - AlmaLinux/RHEL 9 ships with SELinux Enforcing by default. The
 #     script keeps it that way — no setenforce/setpermissive — and
 #     prints a warning if the running mode is not Enforcing.
-#   - The new SSH port (2343) gets `semanage port -a -t ssh_port_t -p tcp`
+#   - The new SSH port (2222) gets `semanage port -a -t ssh_port_t -p tcp`
 #     so sshd is allowed to bind it.
 #   - `restorecon` is run on the files we write (authorized_keys and
 #     the sshd drop-in) to ensure the labels match the policy
@@ -48,7 +48,7 @@
 # What it deliberately does NOT do:
 #   - Close port 22 in the firewall. Test the new port first from a
 #     SECOND terminal:
-#       ssh -p 2343 ds@<this-host>
+#       ssh -p 2222 ds@<this-host>
 #     If that works, lock down by removing the old port:
 #       sudo firewall-cmd --permanent --remove-service=ssh
 #       sudo firewall-cmd --reload
@@ -64,7 +64,7 @@ set -euo pipefail
 
 # ---- Defaults --------------------------------------------------------------
 NEW_USER="ds"
-NEW_SSH_PORT=2343
+NEW_SSH_PORT=2222
 NEW_KEYMAP="de"   # console (TTY) keymap — see `localectl list-keymaps`
 SSH_PUBKEY=""
 NEW_HOSTNAME=""
@@ -78,7 +78,7 @@ Required:
 
 Optional:
   -u <user>        Linux username to create  (default: ds)
-  -p <port>        SSH port to harden onto   (default: 2343)
+  -p <port>        SSH port to harden onto   (default: 2222)
   -n <hostname>    Hostname to set           (default: leave unchanged)
   -h               Show this help and exit
 
