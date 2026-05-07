@@ -123,7 +123,7 @@ NEW_SSH_PORT=$NEW_SSH_PORT
 $(cat <<'PAYLOAD'
 set -euo pipefail
 
-[[ "\$EUID" -eq 0 ]] || { echo "Error: must run as root on the target." >&2; exit 1; }
+[[ "$EUID" -eq 0 ]] || { echo "Error: must run as root on the target." >&2; exit 1; }
 
 # ---- 0. Distro sanity check ----
 # Accept anything in the RHEL-family tree (rhel/centos/fedora as ID
@@ -135,17 +135,17 @@ else
     echo "Error: /etc/os-release missing — can't identify distro." >&2
     exit 1
 fi
-case " \${ID:-} \${ID_LIKE:-} " in
+case " ${ID:-} ${ID_LIKE:-} " in
     *" rhel "*|*" centos "*|*" fedora "*|*" rocky "*|*" almalinux "*|*" ol "*) ;;
     *)
         echo "Error: unsupported distro." >&2
-        echo "  ID=\${ID:-?} ID_LIKE=\${ID_LIKE:-?}" >&2
+        echo "  ID=${ID:-?} ID_LIKE=${ID_LIKE:-?}" >&2
         echo "  This script supports RHEL family only" \
              "(RHEL/AlmaLinux/Rocky/CentOS Stream/Oracle Linux/Fedora)." >&2
         exit 1
         ;;
 esac
-echo "Detected: \${PRETTY_NAME:-\$ID \$VERSION_ID}"
+echo "Detected: ${PRETTY_NAME:-$ID $VERSION_ID}"
 
 # ---- 1. Prerequisites ----
 # python3, firewalld, and SELinux's `semanage` are the bare minimum to do
@@ -155,9 +155,9 @@ missing=()
 command -v python3       >/dev/null 2>&1 || missing+=(python3)
 command -v firewall-cmd  >/dev/null 2>&1 || missing+=(firewalld)
 command -v semanage      >/dev/null 2>&1 || missing+=(policycoreutils-python-utils)
-if (( \${#missing[@]} )); then
-    echo "  installing: \${missing[*]}"
-    dnf -y install "\${missing[@]}"
+if (( ${#missing[@]} )); then
+    echo "  installing: ${missing[*]}"
+    dnf -y install "${missing[@]}"
 else
     echo "  all prerequisites present"
 fi
@@ -167,58 +167,58 @@ echo "[2/6] Ensuring firewalld is enabled and running…"
 systemctl enable --now firewalld
 
 # ---- 3. User + sudoers ----
-echo "[3/6] Creating user \$NEW_USER with passwordless sudo…"
-if id "\$NEW_USER" >/dev/null 2>&1; then
-    echo "  user \$NEW_USER already exists — skipping useradd"
+echo "[3/6] Creating user $NEW_USER with passwordless sudo…"
+if id "$NEW_USER" >/dev/null 2>&1; then
+    echo "  user $NEW_USER already exists — skipping useradd"
 else
-    useradd -m -s /bin/bash "\$NEW_USER"
+    useradd -m -s /bin/bash "$NEW_USER"
 fi
-SUDOERS_FILE="/etc/sudoers.d/90-\$NEW_USER"
-cat > "\$SUDOERS_FILE" <<SUDO
-# Bootstrap-installed: \$NEW_USER may run any command without a password.
-\$NEW_USER ALL=(ALL) NOPASSWD:ALL
+SUDOERS_FILE="/etc/sudoers.d/90-$NEW_USER"
+cat > "$SUDOERS_FILE" <<SUDO
+# Bootstrap-installed: $NEW_USER may run any command without a password.
+$NEW_USER ALL=(ALL) NOPASSWD:ALL
 SUDO
-chmod 0440 "\$SUDOERS_FILE"
-visudo -cf "\$SUDOERS_FILE" >/dev/null
+chmod 0440 "$SUDOERS_FILE"
+visudo -cf "$SUDOERS_FILE" >/dev/null
 
 # ---- 4. SSH public key ----
 echo "[4/6] Installing SSH public key…"
-USER_SSH_DIR="/home/\$NEW_USER/.ssh"
-AUTH_KEYS="\$USER_SSH_DIR/authorized_keys"
-install -d -m 0700 -o "\$NEW_USER" -g "\$NEW_USER" "\$USER_SSH_DIR"
-touch "\$AUTH_KEYS"
-if grep -qxF "\$SSH_PUBKEY" "\$AUTH_KEYS"; then
+USER_SSH_DIR="/home/$NEW_USER/.ssh"
+AUTH_KEYS="$USER_SSH_DIR/authorized_keys"
+install -d -m 0700 -o "$NEW_USER" -g "$NEW_USER" "$USER_SSH_DIR"
+touch "$AUTH_KEYS"
+if grep -qxF "$SSH_PUBKEY" "$AUTH_KEYS"; then
     echo "  key already present — skipping"
 else
-    echo "\$SSH_PUBKEY" >> "\$AUTH_KEYS"
-    echo "  key appended to \$AUTH_KEYS"
+    echo "$SSH_PUBKEY" >> "$AUTH_KEYS"
+    echo "  key appended to $AUTH_KEYS"
 fi
-chmod 0600 "\$AUTH_KEYS"
-chown "\$NEW_USER:\$NEW_USER" "\$AUTH_KEYS"
-command -v restorecon >/dev/null && restorecon -R "\$USER_SSH_DIR"
+chmod 0600 "$AUTH_KEYS"
+chown "$NEW_USER:$NEW_USER" "$AUTH_KEYS"
+command -v restorecon >/dev/null && restorecon -R "$USER_SSH_DIR"
 
 # ---- 5. Open new SSH port (firewalld + SELinux) ----
-echo "[5/6] Opening port \$NEW_SSH_PORT/tcp in firewalld and labeling ssh_port_t in SELinux…"
-firewall-cmd --permanent --add-port="\$NEW_SSH_PORT/tcp" >/dev/null
+echo "[5/6] Opening port $NEW_SSH_PORT/tcp in firewalld and labeling ssh_port_t in SELinux…"
+firewall-cmd --permanent --add-port="$NEW_SSH_PORT/tcp" >/dev/null
 firewall-cmd --reload >/dev/null
-if semanage port -l | grep -qE "ssh_port_t\s+tcp\s+.*\b\$NEW_SSH_PORT\b"; then
-    echo "  port \$NEW_SSH_PORT already labeled ssh_port_t — skipping"
+if semanage port -l | grep -qE "ssh_port_t\s+tcp\s+.*\b$NEW_SSH_PORT\b"; then
+    echo "  port $NEW_SSH_PORT already labeled ssh_port_t — skipping"
 else
-    semanage port -a -t ssh_port_t -p tcp "\$NEW_SSH_PORT"
+    semanage port -a -t ssh_port_t -p tcp "$NEW_SSH_PORT"
 fi
 
 # ---- 6. sshd drop-in + restart ----
 echo "[6/6] Writing sshd hardening drop-in and restarting sshd…"
 SSHD_DROPIN="/etc/ssh/sshd_config.d/99-bootstrap.conf"
-cat > "\$SSHD_DROPIN" <<SSHD
+cat > "$SSHD_DROPIN" <<SSHD
 # Bootstrap-installed sshd hardening (see scripts/bootstrap-host.sh).
-Port \$NEW_SSH_PORT
+Port $NEW_SSH_PORT
 PermitRootLogin no
 PasswordAuthentication no
 KbdInteractiveAuthentication no
 SSHD
-chmod 0600 "\$SSHD_DROPIN"
-command -v restorecon >/dev/null && restorecon "\$SSHD_DROPIN"
+chmod 0600 "$SSHD_DROPIN"
+command -v restorecon >/dev/null && restorecon "$SSHD_DROPIN"
 sshd -t
 systemctl restart sshd
 
