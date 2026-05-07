@@ -261,8 +261,11 @@ verify_once() {
         'echo "  OK as $(whoami) on $(hostnamectl --static 2>/dev/null || hostname)"' 2>&1
 }
 
-verify_output=$(verify_once)
-verify_rc=$?
+# `set -e` would otherwise kill the script on a non-zero substitution
+# rc before we reach `verify_rc=$?` and the recovery branch below —
+# wrap the assignment in `|| ...` so it can't trigger set -e.
+verify_rc=0
+verify_output=$(verify_once) || verify_rc=$?
 echo "$verify_output"
 
 # Stale known_hosts entry from a previously-reused IP shows up as
@@ -282,8 +285,8 @@ if (( verify_rc != 0 )) \
         ssh-keygen -R "[$TARGET_HOST]:$NEW_SSH_PORT" 2>&1 | sed 's/^/    /'
         ssh-keygen -R "$TARGET_HOST"                  2>&1 | sed 's/^/    /'
         echo "  Retrying..."
-        verify_output=$(verify_once)
-        verify_rc=$?
+        verify_rc=0
+        verify_output=$(verify_once) || verify_rc=$?
         echo "$verify_output"
     fi
 fi
