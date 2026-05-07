@@ -15,7 +15,7 @@ roles. Idempotent — safe to re-run.
 ## Quick start
 
 ```bash
-bash scripts/bootstrap-host.sh -H 1.2.3.4 -k "$(cat ~/.ssh/id_ed25519.pub)"
+bash scripts/bootstrap-host.sh -H 1.2.3.4 -k "$(cat ~/.ssh/id_ed25519.pub)" -p 2222
 ```
 
 The script SSHs from your laptop to `root@1.2.3.4:22` (password or key
