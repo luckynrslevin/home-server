@@ -5,14 +5,20 @@
 # Run as root on a fresh install. Idempotent — safe to re-run.
 #
 # Usage:
-#   bash scripts/bootstrap-host.sh "<ssh-pubkey>" [hostname]
+#   bash scripts/bootstrap-host.sh -k <ssh-pubkey> [-u <user>] [-p <port>] [-n <hostname>]
+#
+# Required:
+#   -k <pubkey>      SSH public key (string) to install for the new user
+#
+# Optional:
+#   -u <user>        Linux username to create (default: ds)
+#   -p <port>        SSH port to harden onto         (default: 2343)
+#   -n <hostname>    Hostname to set                 (default: leave unchanged)
+#   -h               Show this help and exit
 #
 # Examples:
-#   bash scripts/bootstrap-host.sh "$(cat ~/.ssh/id_ed25519.pub)"
-#   bash scripts/bootstrap-host.sh "$(cat ~/.ssh/id_ed25519.pub)" dnsvserver
-#
-# The hostname argument is optional; if omitted, the current hostname is
-# kept.
+#   bash scripts/bootstrap-host.sh -k "$(cat ~/.ssh/id_ed25519.pub)"
+#   bash scripts/bootstrap-host.sh -k "$(cat key.pub)" -u admin -p 2222 -n dnsvserver
 #
 # What it does:
 #   1. Enables EPEL, updates the system, installs prerequisites
@@ -56,33 +62,75 @@
 
 set -euo pipefail
 
-# ---- Config ----------------------------------------------------------------
+# ---- Defaults --------------------------------------------------------------
 NEW_USER="ds"
 NEW_SSH_PORT=2343
 NEW_KEYMAP="de"   # console (TTY) keymap — see `localectl list-keymaps`
+SSH_PUBKEY=""
+NEW_HOSTNAME=""
 
-# ---- Args ------------------------------------------------------------------
-SSH_PUBKEY="${1:-}"
-NEW_HOSTNAME="${2:-}"
+usage() {
+    cat <<'EOF'
+Usage: bootstrap-host.sh -k <ssh-pubkey> [-u <user>] [-p <port>] [-n <hostname>]
 
-if [[ -z "$SSH_PUBKEY" ]]; then
-    cat <<'EOF' >&2
-Error: SSH public key required.
+Required:
+  -k <pubkey>      SSH public key (string) to install for the new user
 
-Usage:
-  bash scripts/bootstrap-host.sh "<ssh-public-key>" [hostname]
+Optional:
+  -u <user>        Linux username to create  (default: ds)
+  -p <port>        SSH port to harden onto   (default: 2343)
+  -n <hostname>    Hostname to set           (default: leave unchanged)
+  -h               Show this help and exit
 
 Examples:
-  bash scripts/bootstrap-host.sh "$(cat ~/.ssh/id_ed25519.pub)"
-  bash scripts/bootstrap-host.sh "$(cat ~/.ssh/id_ed25519.pub)" dnsvserver
-
-The key is installed for the new user BEFORE password auth is disabled.
-Without this, you would be locked out as soon as sshd is restarted.
+  bash bootstrap-host.sh -k "$(cat ~/.ssh/id_ed25519.pub)"
+  bash bootstrap-host.sh -k "$(cat key.pub)" -u admin -p 2222 -n dnsvserver
 EOF
+}
+
+# ---- Args ------------------------------------------------------------------
+while getopts ":k:u:p:n:h" opt; do
+    case "$opt" in
+        k) SSH_PUBKEY="$OPTARG" ;;
+        u) NEW_USER="$OPTARG" ;;
+        p) NEW_SSH_PORT="$OPTARG" ;;
+        n) NEW_HOSTNAME="$OPTARG" ;;
+        h) usage; exit 0 ;;
+        \?) echo "Error: invalid option -$OPTARG" >&2; usage >&2; exit 1 ;;
+        :)  echo "Error: option -$OPTARG requires an argument" >&2; exit 1 ;;
+    esac
+done
+shift $((OPTIND - 1))
+if [[ $# -gt 0 ]]; then
+    echo "Error: unexpected positional arguments: $*" >&2
+    usage >&2
     exit 1
 fi
 
-# Hostname format: letters, digits, dashes; dots allowed for FQDN-style.
+# Required: pubkey
+if [[ -z "$SSH_PUBKEY" ]]; then
+    echo "Error: -k <ssh-pubkey> is required." >&2
+    echo
+    usage >&2
+    exit 1
+fi
+
+# Validate username (POSIX/RHEL-friendly subset)
+if ! [[ "$NEW_USER" =~ ^[a-z_][a-z0-9_-]{0,31}$ ]]; then
+    echo "Error: invalid username '$NEW_USER'." >&2
+    echo "       Must start with a lowercase letter or underscore," >&2
+    echo "       contain only [a-z0-9_-], and be 1-32 characters." >&2
+    exit 1
+fi
+
+# Validate SSH port (integer 1-65535)
+if ! [[ "$NEW_SSH_PORT" =~ ^[0-9]+$ ]] \
+    || [[ "$NEW_SSH_PORT" -lt 1 || "$NEW_SSH_PORT" -gt 65535 ]]; then
+    echo "Error: invalid SSH port '$NEW_SSH_PORT' (must be 1-65535)." >&2
+    exit 1
+fi
+
+# Validate hostname (RFC 1123) if one was provided
 if [[ -n "$NEW_HOSTNAME" ]] \
     && ! [[ "$NEW_HOSTNAME" =~ ^[a-zA-Z0-9]([a-zA-Z0-9.-]*[a-zA-Z0-9])?$ ]]; then
     echo "Error: hostname '$NEW_HOSTNAME' contains characters not allowed (RFC 1123)." >&2
