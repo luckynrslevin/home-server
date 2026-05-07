@@ -86,7 +86,7 @@ ansible-playbook -i inventory/hosts.yml playbooks/site.yml --limit new-server
 |          |   bootstrap-host.sh   +------------------+
 |          |  ───────────────────► | managed host #2  |
 +----------+                       +------------------+
-     ↑                                      │
+     │                                      │
      └─────── ansible playbooks ────────────┘
             (ssh -p <port> ansible@host)
 ```
