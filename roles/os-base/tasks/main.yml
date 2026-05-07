@@ -120,6 +120,20 @@
   when: os_base_needs_podman_copr
 
 # ---------------------------------------------------------------- 3
+# Cap retained kernels. Default `installonly_limit=3` is fine on
+# roomy hosts but eats ~500 MB per extra kernel — relevant on small
+# vservers with 8-10 GB root disks.
+- name: Cap retained kernels
+  become: true
+  community.general.ini_file:
+    path: /etc/dnf/dnf.conf
+    section: main
+    option: installonly_limit
+    value: "{{ os_base_installonly_limit }}"
+    no_extra_spaces: true
+    mode: "0644"
+  when: os_base_installonly_limit | int > 0
+
 # dnf-automatic — apply only security updates by default. Persistent
 # across reboots via the systemd timer.
 - name: Install dnf-automatic

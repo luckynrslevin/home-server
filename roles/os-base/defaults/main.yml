@@ -32,6 +32,10 @@ os_base_packages:
 os_base_podman_extra_repo: ""
 
 # Automatic security updates via dnf-automatic.
+# Number of kernels to keep installed. Default in dnf is 3 (current
+# + 2 fallbacks). Set lower on disk-tight hosts; 0 disables the cap.
+os_base_installonly_limit: 2
+
 os_base_dnf_automatic_enabled: true
 os_base_dnf_automatic_apply: security        # vs default which includes everything
 os_base_dnf_automatic_email: ""              # empty -> log to journal only
