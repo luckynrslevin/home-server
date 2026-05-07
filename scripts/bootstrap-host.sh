@@ -5,23 +5,28 @@
 # Run as root on a fresh install. Idempotent — safe to re-run.
 #
 # Usage:
-#   bash scripts/bootstrap-host.sh "$(cat ~/.ssh/id_ed25519.pub)"
+#   bash scripts/bootstrap-host.sh "<ssh-pubkey>" [hostname]
 #
-# Or pass the key directly:
-#   bash scripts/bootstrap-host.sh "ssh-ed25519 AAAA... user@laptop"
+# Examples:
+#   bash scripts/bootstrap-host.sh "$(cat ~/.ssh/id_ed25519.pub)"
+#   bash scripts/bootstrap-host.sh "$(cat ~/.ssh/id_ed25519.pub)" dnsvserver
+#
+# The hostname argument is optional; if omitted, the current hostname is
+# kept.
 #
 # What it does:
-#   1. Updates the system and installs prerequisites (Python for Ansible,
-#      Podman, firewalld, SELinux tooling).
-#   2. Sets the console keymap to German (configurable via NEW_KEYMAP).
-#   3. Creates user `ds` with passwordless sudo.
-#   4. Installs your SSH public key for `ds` BEFORE password auth is
+#   1. Enables EPEL, updates the system, installs prerequisites
+#      (Python for Ansible, Podman, firewalld, SELinux tooling, bpytop).
+#   2. Sets the hostname (if a second argument was passed).
+#   3. Sets the console keymap to German (configurable via NEW_KEYMAP).
+#   4. Creates user `ds` with passwordless sudo.
+#   5. Installs your SSH public key for `ds` BEFORE password auth is
 #      disabled — without this you would be locked out.
-#   5. Hardens sshd via /etc/ssh/sshd_config.d/ drop-in:
+#   6. Hardens sshd via /etc/ssh/sshd_config.d/ drop-in:
 #        - port 2343
 #        - disables root login
 #        - disables password authentication
-#   6. Opens port 2343 in firewalld and labels it ssh_port_t in SELinux.
+#   7. Opens port 2343 in firewalld and labels it ssh_port_t in SELinux.
 #
 # SELinux notes:
 #   - AlmaLinux/RHEL 9 ships with SELinux Enforcing by default. The
@@ -58,20 +63,29 @@ NEW_KEYMAP="de"   # console (TTY) keymap — see `localectl list-keymaps`
 
 # ---- Args ------------------------------------------------------------------
 SSH_PUBKEY="${1:-}"
+NEW_HOSTNAME="${2:-}"
 
 if [[ -z "$SSH_PUBKEY" ]]; then
     cat <<'EOF' >&2
 Error: SSH public key required.
 
 Usage:
-  bash scripts/bootstrap-host.sh "<ssh-public-key-string>"
+  bash scripts/bootstrap-host.sh "<ssh-public-key>" [hostname]
 
-Example:
+Examples:
   bash scripts/bootstrap-host.sh "$(cat ~/.ssh/id_ed25519.pub)"
+  bash scripts/bootstrap-host.sh "$(cat ~/.ssh/id_ed25519.pub)" dnsvserver
 
 The key is installed for the new user BEFORE password auth is disabled.
 Without this, you would be locked out as soon as sshd is restarted.
 EOF
+    exit 1
+fi
+
+# Hostname format: letters, digits, dashes; dots allowed for FQDN-style.
+if [[ -n "$NEW_HOSTNAME" ]] \
+    && ! [[ "$NEW_HOSTNAME" =~ ^[a-zA-Z0-9]([a-zA-Z0-9.-]*[a-zA-Z0-9])?$ ]]; then
+    echo "Error: hostname '$NEW_HOSTNAME' contains characters not allowed (RFC 1123)." >&2
     exit 1
 fi
 
@@ -92,6 +106,7 @@ echo " Home-server host bootstrap"
 echo "   user:           $NEW_USER  (passwordless sudo)"
 echo "   ssh port:       $NEW_SSH_PORT"
 echo "   keymap:         $NEW_KEYMAP"
+echo "   hostname:       ${NEW_HOSTNAME:-<unchanged>}"
 echo "   pubkey:         ${SSH_PUBKEY:0:50}…"
 echo "=================================================================="
 
@@ -114,38 +129,54 @@ fi
 
 # ---- 1. System update + prerequisites --------------------------------------
 echo
-echo "[1/8] Updating system and installing prerequisites…"
+echo "[1/9] Enabling EPEL, updating, installing prerequisites…"
+# EPEL provides bpytop (and a few other niceties); harmless to enable
+# even if bpytop is the only package we draw from it.
+dnf -y install epel-release
 dnf -y update
 dnf -y install \
     sudo openssh-server \
     python3 python3-pip \
     policycoreutils-python-utils \
     firewalld \
-    podman
+    podman \
+    bpytop
 
 systemctl enable --now firewalld
 
-# ---- 2. Console keymap -----------------------------------------------------
+# ---- 2. Hostname -----------------------------------------------------------
 echo
-echo "[2/8] Setting console keymap to $NEW_KEYMAP…"
+echo "[2/9] Setting hostname…"
+if [[ -z "$NEW_HOSTNAME" ]]; then
+    echo "  (no hostname argument given — keeping current: $(hostname))"
+elif [[ "$(hostnamectl --static 2>/dev/null)" == "$NEW_HOSTNAME" ]]; then
+    echo "  hostname already $NEW_HOSTNAME — skipping"
+else
+    hostnamectl set-hostname "$NEW_HOSTNAME"
+    echo "  hostname set to $NEW_HOSTNAME"
+fi
+
+# ---- 3. Console keymap -----------------------------------------------------
+echo
+echo "[3/9] Setting console keymap to $NEW_KEYMAP…"
 if localectl status 2>/dev/null | grep -q "^ *VC Keymap: $NEW_KEYMAP$"; then
     echo "  already set to $NEW_KEYMAP — skipping"
 else
     localectl set-keymap "$NEW_KEYMAP"
 fi
 
-# ---- 3. Create user --------------------------------------------------------
+# ---- 4. Create user --------------------------------------------------------
 echo
-echo "[3/8] Creating user $NEW_USER…"
+echo "[4/9] Creating user $NEW_USER…"
 if id "$NEW_USER" >/dev/null 2>&1; then
     echo "  user $NEW_USER already exists — skipping"
 else
     useradd -m -s /bin/bash "$NEW_USER"
 fi
 
-# ---- 4. Sudo rights --------------------------------------------------------
+# ---- 5. Sudo rights --------------------------------------------------------
 echo
-echo "[4/8] Granting passwordless sudo to $NEW_USER…"
+echo "[5/9] Granting passwordless sudo to $NEW_USER…"
 SUDOERS_FILE="/etc/sudoers.d/90-$NEW_USER"
 cat > "$SUDOERS_FILE" <<EOF
 # Bootstrap-installed: $NEW_USER may run any command without a password.
@@ -157,9 +188,9 @@ chmod 0440 "$SUDOERS_FILE"
 # visudo -cf bails out non-zero on syntax errors
 visudo -cf "$SUDOERS_FILE" >/dev/null
 
-# ---- 5. SSH public key -----------------------------------------------------
+# ---- 6. SSH public key -----------------------------------------------------
 echo
-echo "[5/8] Installing SSH public key for $NEW_USER…"
+echo "[6/9] Installing SSH public key for $NEW_USER…"
 USER_HOME="/home/$NEW_USER"
 USER_SSH_DIR="$USER_HOME/.ssh"
 AUTH_KEYS="$USER_SSH_DIR/authorized_keys"
@@ -184,25 +215,25 @@ if command -v restorecon >/dev/null 2>&1; then
     restorecon -R "$USER_SSH_DIR"
 fi
 
-# ---- 6. Firewalld ----------------------------------------------------------
+# ---- 7. Firewalld ----------------------------------------------------------
 echo
-echo "[6/8] Opening firewall port $NEW_SSH_PORT/tcp (port 22 is left open"
+echo "[7/9] Opening firewall port $NEW_SSH_PORT/tcp (port 22 is left open"
 echo "      until you confirm the new port works — see banner at the end)…"
 firewall-cmd --permanent --add-port="$NEW_SSH_PORT/tcp" >/dev/null
 firewall-cmd --reload >/dev/null
 
-# ---- 7. SELinux ssh_port_t label ------------------------------------------
+# ---- 8. SELinux ssh_port_t label ------------------------------------------
 echo
-echo "[7/8] Labeling port $NEW_SSH_PORT as ssh_port_t in SELinux…"
+echo "[8/9] Labeling port $NEW_SSH_PORT as ssh_port_t in SELinux…"
 if semanage port -l | grep -qE "ssh_port_t\s+tcp\s+.*\b$NEW_SSH_PORT\b"; then
     echo "  port $NEW_SSH_PORT already labeled ssh_port_t — skipping"
 else
     semanage port -a -t ssh_port_t -p tcp "$NEW_SSH_PORT"
 fi
 
-# ---- 8. sshd hardening drop-in --------------------------------------------
+# ---- 9. sshd hardening drop-in --------------------------------------------
 echo
-echo "[8/8] Writing sshd hardening drop-in and restarting sshd…"
+echo "[9/9] Writing sshd hardening drop-in and restarting sshd…"
 SSHD_DROPIN="/etc/ssh/sshd_config.d/99-bootstrap.conf"
 cat > "$SSHD_DROPIN" <<EOF
 # Bootstrap-installed sshd hardening (see scripts/bootstrap-host.sh).
