@@ -34,7 +34,7 @@
 #            (ensure prereqs, create user+sudoers, install key, open port
 #            in firewalld+SELinux, write sshd drop-in, restart sshd).
 #   Phase 2: local prompt — update any EXTERNAL firewall (cloud security
-#            group, edge router, …) — open new port, close 22 — Enter.
+#            group, edge router, ...) — open new port, close 22 — Enter.
 #   Phase 3: ssh -p <new-port> <user>@<host> → verify.
 #   Phase 4: optional — close port 22 in the target's local firewalld.
 # ============================================================================
@@ -105,7 +105,7 @@ echo " Open Ansible path on a fresh host"
 echo "   target:         root@$TARGET_HOST:22"
 echo "   new user:       $NEW_USER  (passwordless sudo)"
 echo "   new ssh port:   $NEW_SSH_PORT"
-echo "   pubkey:         ${SSH_PUBKEY:0:50}…"
+echo "   pubkey:         ${SSH_PUBKEY:0:50}..."
 echo "=================================================================="
 
 # ---- Phase 1: SSH root@host:22 and run the hardening payload ---------------
@@ -150,7 +150,7 @@ echo "Detected: ${PRETTY_NAME:-$ID $VERSION_ID}"
 # ---- 1. Prerequisites ----
 # python3, firewalld, and SELinux's `semanage` are the bare minimum to do
 # the rest of the steps below and let Ansible take over from here.
-echo "[1/6] Ensuring prerequisites (python3, firewalld, semanage) are installed…"
+echo "[1/6] Ensuring prerequisites (python3, firewalld, semanage) are installed..."
 missing=()
 command -v python3       >/dev/null 2>&1 || missing+=(python3)
 command -v firewall-cmd  >/dev/null 2>&1 || missing+=(firewalld)
@@ -163,11 +163,11 @@ else
 fi
 
 # ---- 2. firewalld active ----
-echo "[2/6] Ensuring firewalld is enabled and running…"
+echo "[2/6] Ensuring firewalld is enabled and running..."
 systemctl enable --now firewalld
 
 # ---- 3. User + sudoers ----
-echo "[3/6] Creating user $NEW_USER with passwordless sudo…"
+echo "[3/6] Creating user $NEW_USER with passwordless sudo..."
 if id "$NEW_USER" >/dev/null 2>&1; then
     echo "  user $NEW_USER already exists — skipping useradd"
 else
@@ -182,7 +182,7 @@ chmod 0440 "$SUDOERS_FILE"
 visudo -cf "$SUDOERS_FILE" >/dev/null
 
 # ---- 4. SSH public key ----
-echo "[4/6] Installing SSH public key…"
+echo "[4/6] Installing SSH public key..."
 USER_SSH_DIR="/home/$NEW_USER/.ssh"
 AUTH_KEYS="$USER_SSH_DIR/authorized_keys"
 install -d -m 0700 -o "$NEW_USER" -g "$NEW_USER" "$USER_SSH_DIR"
@@ -198,7 +198,7 @@ chown "$NEW_USER:$NEW_USER" "$AUTH_KEYS"
 command -v restorecon >/dev/null && restorecon -R "$USER_SSH_DIR"
 
 # ---- 5. Open new SSH port (firewalld + SELinux) ----
-echo "[5/6] Opening port $NEW_SSH_PORT/tcp in firewalld and labeling ssh_port_t in SELinux…"
+echo "[5/6] Opening port $NEW_SSH_PORT/tcp in firewalld and labeling ssh_port_t in SELinux..."
 firewall-cmd --permanent --add-port="$NEW_SSH_PORT/tcp" >/dev/null
 firewall-cmd --reload >/dev/null
 if semanage port -l | grep -qE "ssh_port_t\s+tcp\s+.*\b$NEW_SSH_PORT\b"; then
@@ -208,7 +208,7 @@ else
 fi
 
 # ---- 6. sshd drop-in + restart ----
-echo "[6/6] Writing sshd hardening drop-in and restarting sshd…"
+echo "[6/6] Writing sshd hardening drop-in and restarting sshd..."
 SSHD_DROPIN="/etc/ssh/sshd_config.d/99-bootstrap.conf"
 cat > "$SSHD_DROPIN" <<SSHD
 # Bootstrap-installed sshd hardening (see scripts/bootstrap-host.sh).
@@ -252,7 +252,7 @@ read -r -p "Press Enter to continue with verification (Ctrl-C to abort)... " _
 
 # ---- Phase 3: verify -------------------------------------------------------
 echo
-echo "Phase 3 — verifying ssh -p $NEW_SSH_PORT $NEW_USER@$TARGET_HOST…"
+echo "Phase 3 — verifying ssh -p $NEW_SSH_PORT $NEW_USER@$TARGET_HOST..."
 if ssh -p "$NEW_SSH_PORT" -o ConnectTimeout=10 -o StrictHostKeyChecking=accept-new \
        -o BatchMode=yes "$NEW_USER@$TARGET_HOST" \
        'echo "  OK as $(whoami) on $(hostnamectl --static 2>/dev/null || hostname)"' 2>&1; then
@@ -285,7 +285,7 @@ fi
 echo
 read -r -p "Close port 22 in the target's LOCAL firewalld now? [y/N] " close22
 if [[ "$close22" =~ ^[Yy]$ ]]; then
-    echo "  Closing port 22 via $NEW_USER@$TARGET_HOST:$NEW_SSH_PORT…"
+    echo "  Closing port 22 via $NEW_USER@$TARGET_HOST:$NEW_SSH_PORT..."
     ssh -p "$NEW_SSH_PORT" "$NEW_USER@$TARGET_HOST" \
         'sudo firewall-cmd --permanent --remove-service=ssh && sudo firewall-cmd --reload' \
         | sed 's/^/  /'
