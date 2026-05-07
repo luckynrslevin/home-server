@@ -8,7 +8,7 @@ root:
 | Script | Run on | What it does |
 |---|---|---|
 | `setup.sh` | The **control machine** | Installs Ansible, clones the repo, walks you through inventory + vault + first deploy. |
-| `scripts/bootstrap-host.sh` | A **fresh managed host** | Creates the `ds` user, installs your SSH key, hardens sshd, installs Python (for Ansible) and Podman. |
+| `scripts/bootstrap-host.sh` | A **fresh managed host** | Creates the `myuser` user, installs your SSH key, hardens sshd, installs Python (for Ansible) and Podman. |
 
 The script is idempotent — safe to re-run.
 
@@ -67,7 +67,7 @@ bootstrap-host.sh -k <ssh-pubkey> [-u <user>] [-p <port>] [-n <hostname>]
 | Flag | Default | Description |
 |---|---|---|
 | `-k <pubkey>` | (required) | SSH public key (full string) to install for the new user. The script installs this in `~<user>/.ssh/authorized_keys` **before** disabling password auth. |
-| `-u <user>` | `ds` | Linux username to create. Validated against `^[a-z_][a-z0-9_-]{0,31}$`. |
+| `-u <user>` | `myuser` | Linux username to create. Validated against `^[a-z_][a-z0-9_-]{0,31}$`. |
 | `-p <port>` | `2222` | SSH port to harden onto. firewalld + SELinux are updated to match. Validated as an integer 1–65535. |
 | `-n <hostname>` | (unchanged) | Hostname to set via `hostnamectl`. RFC 1123 charset. Omit to leave the current hostname untouched. |
 | `-h` | — | Show help and exit. |
@@ -84,7 +84,7 @@ layout, edit `NEW_KEYMAP` at the top of the script.
 | 1 | Enables EPEL, runs `dnf -y update`, installs prerequisites: `sudo`, `openssh-server`, `python3`, `python3-pip`, `policycoreutils-python-utils`, `firewalld`, `podman`, `bpytop`. Enables and starts `firewalld`. |
 | 2 | Sets the hostname (only if `-n` was passed). |
 | 3 | Sets the console keymap to `de` via `localectl`. |
-| 4 | Creates the user (default `ds`) with a home directory and bash login shell. |
+| 4 | Creates the user (default `myuser`) with a home directory and bash login shell. |
 | 5 | Drops `/etc/sudoers.d/90-<user>` granting passwordless sudo. Validated with `visudo -cf` before being made effective. |
 | 6 | Creates `~<user>/.ssh/`, installs the public key into `authorized_keys` (idempotent — appended only if not already present), and runs `restorecon -R` on the directory to ensure SELinux labels are correct. |
 | 7 | Opens the new SSH port in firewalld (`firewall-cmd --permanent --add-port=<port>/tcp`) and reloads. **Port 22 stays open** until you manually close it after verifying the new port works. |
@@ -159,7 +159,7 @@ Optional convenience. In `~/.ssh/config`:
 ```
 Host new-server
   HostName <ip>
-  User ds
+  User myuser
   Port 2222
   IdentityFile ~/.ssh/id_ed25519
 ```

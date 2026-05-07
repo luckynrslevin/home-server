@@ -11,7 +11,7 @@
 #   -k <pubkey>      SSH public key (string) to install for the new user
 #
 # Optional:
-#   -u <user>        Linux username to create (default: ds)
+#   -u <user>        Linux username to create (default: myuser)
 #   -p <port>        SSH port to harden onto         (default: 2222)
 #   -n <hostname>    Hostname to set                 (default: leave unchanged)
 #   -h               Show this help and exit
@@ -25,8 +25,8 @@
 #      (Python for Ansible, Podman, firewalld, SELinux tooling, bpytop).
 #   2. Sets the hostname (if a second argument was passed).
 #   3. Sets the console keymap to German (configurable via NEW_KEYMAP).
-#   4. Creates user `ds` with passwordless sudo.
-#   5. Installs your SSH public key for `ds` BEFORE password auth is
+#   4. Creates user `myuser` with passwordless sudo.
+#   5. Installs your SSH public key for `myuser` BEFORE password auth is
 #      disabled — without this you would be locked out.
 #   6. Hardens sshd via /etc/ssh/sshd_config.d/ drop-in:
 #        - port 2222
@@ -48,7 +48,7 @@
 # What it deliberately does NOT do:
 #   - Close port 22 in the firewall. Test the new port first from a
 #     SECOND terminal:
-#       ssh -p 2222 ds@<this-host>
+#       ssh -p 2222 myuser@<this-host>
 #     If that works, lock down by removing the old port:
 #       sudo firewall-cmd --permanent --remove-service=ssh
 #       sudo firewall-cmd --reload
@@ -63,7 +63,7 @@
 set -euo pipefail
 
 # ---- Defaults --------------------------------------------------------------
-NEW_USER="ds"
+NEW_USER="myuser"
 NEW_SSH_PORT=2222
 NEW_KEYMAP="de"   # console (TTY) keymap — see `localectl list-keymaps`
 SSH_PUBKEY=""
@@ -77,7 +77,7 @@ Required:
   -k <pubkey>      SSH public key (string) to install for the new user
 
 Optional:
-  -u <user>        Linux username to create  (default: ds)
+  -u <user>        Linux username to create  (default: myuser)
   -p <port>        SSH port to harden onto   (default: 2222)
   -n <hostname>    Hostname to set           (default: leave unchanged)
   -h               Show this help and exit
