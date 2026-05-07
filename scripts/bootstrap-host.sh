@@ -279,7 +279,11 @@ echo "Phase 3 — verifying ssh -p $NEW_SSH_PORT $NEW_USER@$TARGET_HOST..."
 set +e
 
 verify_once() {
-    ssh -p "$NEW_SSH_PORT" -o ConnectTimeout=10 \
+    # `-n` redirects ssh's stdin from /dev/null. Without this, ssh
+    # inherits the script's stdin (the curl pipe in `curl|bash -s`
+    # invocations) and drains the remaining script bytes when it
+    # exits — bash then hits EOF mid-script and disappears silently.
+    ssh -n -p "$NEW_SSH_PORT" -o ConnectTimeout=10 \
         -o StrictHostKeyChecking=accept-new -o BatchMode=yes \
         "$NEW_USER@$TARGET_HOST" \
         'echo "  OK as $(whoami) on $(hostnamectl --static 2>/dev/null || hostname)"' 2>&1
@@ -355,7 +359,7 @@ else
 fi
 if [[ "$close22" =~ ^[Yy]$ ]]; then
     echo "  Closing port 22 via $NEW_USER@$TARGET_HOST:$NEW_SSH_PORT..."
-    ssh -p "$NEW_SSH_PORT" "$NEW_USER@$TARGET_HOST" \
+    ssh -n -p "$NEW_SSH_PORT" "$NEW_USER@$TARGET_HOST" \
         'sudo firewall-cmd --permanent --remove-service=ssh && sudo firewall-cmd --reload' \
         | sed 's/^/  /'
     echo "  Port 22 removed from local firewalld."
