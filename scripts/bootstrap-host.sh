@@ -1,6 +1,11 @@
 #!/bin/bash
 # ============================================================================
-# Open a path for Ansible to reach a fresh AlmaLinux 9 / RHEL 9 / Rocky 9 host.
+# Open a path for Ansible to reach a fresh RHEL-family host.
+#
+# Supported targets: RHEL 8/9, AlmaLinux 8/9, Rocky 8/9, CentOS Stream 8/9,
+# Oracle Linux 8/9, and Fedora (upstream of the family). The script
+# checks `/etc/os-release` on the target and bails out on anything
+# else (Debian/Ubuntu/Arch/etc).
 #
 # Run this from the Ansible control machine. The script SSHs to the target
 # as root on port 22, hardens sshd, creates an `ansible` user with sudo,
@@ -119,6 +124,28 @@ $(cat <<'PAYLOAD'
 set -euo pipefail
 
 [[ "\$EUID" -eq 0 ]] || { echo "Error: must run as root on the target." >&2; exit 1; }
+
+# ---- 0. Distro sanity check ----
+# Accept anything in the RHEL-family tree (rhel/centos/fedora as ID
+# or anywhere in ID_LIKE). dnf, firewalld, SELinux, semanage, and
+# restorecon below all assume that family.
+if [[ -r /etc/os-release ]]; then
+    . /etc/os-release
+else
+    echo "Error: /etc/os-release missing — can't identify distro." >&2
+    exit 1
+fi
+case " \${ID:-} \${ID_LIKE:-} " in
+    *" rhel "*|*" centos "*|*" fedora "*|*" rocky "*|*" almalinux "*|*" ol "*) ;;
+    *)
+        echo "Error: unsupported distro." >&2
+        echo "  ID=\${ID:-?} ID_LIKE=\${ID_LIKE:-?}" >&2
+        echo "  This script supports RHEL family only" \
+             "(RHEL/AlmaLinux/Rocky/CentOS Stream/Oracle Linux/Fedora)." >&2
+        exit 1
+        ;;
+esac
+echo "Detected: \${PRETTY_NAME:-\$ID \$VERSION_ID}"
 
 # ---- 1. Prerequisites ----
 # python3, firewalld, and SELinux's `semanage` are the bare minimum to do

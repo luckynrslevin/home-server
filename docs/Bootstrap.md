@@ -1,8 +1,12 @@
 # Open an Ansible path to a fresh host
 
 `scripts/bootstrap-host.sh` runs from your **laptop** and prepares a
-freshly-installed AlmaLinux 9 / RHEL 9 / Rocky 9 host so Ansible can
-take over. It does only what's needed for that handoff:
+freshly-installed RHEL-family host so Ansible can take over. Supported
+targets: RHEL, AlmaLinux, Rocky, CentOS Stream, Oracle Linux (8 or 9),
+and Fedora. The script checks `/etc/os-release` and refuses to run on
+anything else (Debian/Ubuntu/Arch/…).
+
+It does only what's needed for the handoff:
 
 - creates an `ansible` user with passwordless sudo
 - installs your SSH public key for that user
