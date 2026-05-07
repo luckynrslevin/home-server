@@ -1,47 +1,37 @@
 #!/bin/bash
 # ============================================================================
-# Bootstrap a fresh AlmaLinux 9 (or RHEL/Rocky 9) host as an Ansible target.
+# Open a path for Ansible to reach a fresh AlmaLinux 9 / RHEL 9 / Rocky 9 host.
 #
-# Run this script from your LAPTOP (or any Ansible-control machine).
-# It SSHs to the target as root on port 22 and performs all hardening
-# remotely. You never need to log into the host's console manually.
+# Run this from the Ansible control machine. The script SSHs to the target
+# as root on port 22, hardens sshd, creates an `ansible` user with sudo,
+# installs your SSH key, then verifies the new connection. Everything else
+# (packages, hostname, services) is the Ansible playbook's job from there.
 #
 # Prerequisites on the target:
 #   - Fresh OS install with sshd listening on port 22
-#   - Root login enabled with either a password or a key you control
+#   - Root login enabled (password or key — the script handles both)
+#   - python3 in /usr/bin (default on AlmaLinux 9; the script installs it
+#     if missing)
 #
 # Prerequisites on this machine:
 #   - bash, ssh
 #
 # Usage:
 #   bash scripts/bootstrap-host.sh -H <host> -k <ssh-pubkey> \
-#        [-u <user>] [-p <port>] [-n <hostname>]
-#
-# Required:
-#   -H <host>        Target hostname or IP (the new server)
-#   -k <pubkey>      SSH public key to install for the new user
-#
-# Optional:
-#   -u <user>        Linux username to create  (default: myuser)
-#   -p <port>        SSH port to harden onto   (default: 2222)
-#   -n <hostname>    Hostname to set on target (default: leave unchanged)
-#   -h               Show this help and exit
+#        [-u <user>] [-p <port>]
 #
 # Examples:
 #   bash bootstrap-host.sh -H 1.2.3.4 -k "$(cat ~/.ssh/id_ed25519.pub)"
-#   bash bootstrap-host.sh -H new.example.com -k "$(cat key.pub)" \
-#                          -u admin -p 2200 -n dnsvserver
+#   bash bootstrap-host.sh -H new.example.com -k "$(cat key.pub)" -p 2200
 #
 # Flow:
-#   1. ssh root@<host>:22 → run hardening payload (system update,
-#      EPEL+bpytop, hostname, keymap, user+sudo, key install, firewalld
-#      open new port, SELinux port label, sshd hardening drop-in,
-#      restart sshd).
-#   2. Local prompt: "Update any external/provider firewall now —
-#      open <new-port>, close 22 — then press Enter."
-#   3. ssh -p <new-port> <user>@<host> → verify the hardened
-#      configuration works.
-#   4. Optionally close port 22 in the target's local firewalld.
+#   Phase 1: ssh root@<host>:22 → run the six-step hardening payload
+#            (ensure prereqs, create user+sudoers, install key, open port
+#            in firewalld+SELinux, write sshd drop-in, restart sshd).
+#   Phase 2: local prompt — update any EXTERNAL firewall (cloud security
+#            group, edge router, …) — open new port, close 22 — Enter.
+#   Phase 3: ssh -p <new-port> <user>@<host> → verify.
+#   Phase 4: optional — close port 22 in the target's local firewalld.
 # ============================================================================
 
 set -euo pipefail
@@ -49,86 +39,56 @@ set -euo pipefail
 # ---- Defaults --------------------------------------------------------------
 TARGET_HOST=""
 SSH_PUBKEY=""
-NEW_USER="myuser"
+NEW_USER="ansible"
 NEW_SSH_PORT=2222
-NEW_KEYMAP="de"
-NEW_HOSTNAME=""
 
 usage() {
     cat <<'EOF'
-Usage: bootstrap-host.sh -H <host> -k <ssh-pubkey> [-u <user>] [-p <port>] [-n <hostname>]
+Usage: bootstrap-host.sh -H <host> -k <ssh-pubkey> [-u <user>] [-p <port>]
 
 Required:
-  -H <host>        Target hostname or IP (the new server)
-  -k <pubkey>      SSH public key (string) to install for the new user
+  -H <host>      Target hostname or IP
+  -k <pubkey>    SSH public key (string) to install for the new user
 
 Optional:
-  -u <user>        Linux username to create  (default: myuser)
-  -p <port>        SSH port to harden onto   (default: 2222)
-  -n <hostname>    Hostname to set on target (default: leave unchanged)
-  -h               Show this help and exit
+  -u <user>      Linux username to create  (default: ansible)
+  -p <port>      SSH port to harden onto   (default: 2222)
+  -h             Show this help and exit
 
 Examples:
   bash bootstrap-host.sh -H 1.2.3.4 -k "$(cat ~/.ssh/id_ed25519.pub)"
-  bash bootstrap-host.sh -H new.example.com -k "$(cat key.pub)" -u admin -p 2200 -n dnsvserver
+  bash bootstrap-host.sh -H new.example.com -k "$(cat key.pub)" -p 2200
 EOF
 }
 
 # ---- Args ------------------------------------------------------------------
-while getopts ":H:k:u:p:n:h" opt; do
+while getopts ":H:k:u:p:h" opt; do
     case "$opt" in
         H) TARGET_HOST="$OPTARG" ;;
         k) SSH_PUBKEY="$OPTARG" ;;
         u) NEW_USER="$OPTARG" ;;
         p) NEW_SSH_PORT="$OPTARG" ;;
-        n) NEW_HOSTNAME="$OPTARG" ;;
         h) usage; exit 0 ;;
         \?) echo "Error: invalid option -$OPTARG" >&2; usage >&2; exit 1 ;;
         :)  echo "Error: option -$OPTARG requires an argument" >&2; exit 1 ;;
     esac
 done
 shift $((OPTIND - 1))
-if [[ $# -gt 0 ]]; then
-    echo "Error: unexpected positional arguments: $*" >&2
-    usage >&2
-    exit 1
-fi
+[[ $# -gt 0 ]] && {
+    echo "Error: unexpected positional arguments: $*" >&2; usage >&2; exit 1
+}
 
-# Required
-if [[ -z "$TARGET_HOST" ]]; then
-    echo "Error: -H <host> is required." >&2
-    echo
-    usage >&2
-    exit 1
-fi
-if [[ -z "$SSH_PUBKEY" ]]; then
-    echo "Error: -k <ssh-pubkey> is required." >&2
-    echo
-    usage >&2
-    exit 1
-fi
+# ---- Validation ------------------------------------------------------------
+[[ -z "$TARGET_HOST" ]] && { echo "Error: -H <host> is required." >&2; usage >&2; exit 1; }
+[[ -z "$SSH_PUBKEY"  ]] && { echo "Error: -k <ssh-pubkey> is required." >&2; usage >&2; exit 1; }
 
-# Validate username
 if ! [[ "$NEW_USER" =~ ^[a-z_][a-z0-9_-]{0,31}$ ]]; then
     echo "Error: invalid username '$NEW_USER' (must match ^[a-z_][a-z0-9_-]{0,31}\$)." >&2
     exit 1
 fi
-
-# Validate SSH port
-if ! [[ "$NEW_SSH_PORT" =~ ^[0-9]+$ ]] \
-    || [[ "$NEW_SSH_PORT" -lt 1 || "$NEW_SSH_PORT" -gt 65535 ]]; then
-    echo "Error: invalid SSH port '$NEW_SSH_PORT' (must be 1-65535)." >&2
-    exit 1
+if ! [[ "$NEW_SSH_PORT" =~ ^[0-9]+$ ]] || (( NEW_SSH_PORT < 1 || NEW_SSH_PORT > 65535 )); then
+    echo "Error: invalid SSH port '$NEW_SSH_PORT' (must be 1-65535)." >&2; exit 1
 fi
-
-# Validate hostname (RFC 1123) if one was provided
-if [[ -n "$NEW_HOSTNAME" ]] \
-    && ! [[ "$NEW_HOSTNAME" =~ ^[a-zA-Z0-9]([a-zA-Z0-9.-]*[a-zA-Z0-9])?$ ]]; then
-    echo "Error: hostname '$NEW_HOSTNAME' contains characters not allowed (RFC 1123)." >&2
-    exit 1
-fi
-
-# Sanity-check the pubkey looks like one
 if ! [[ "$SSH_PUBKEY" =~ ^(ssh-(rsa|ed25519|ecdsa-sha2-nistp[0-9]+)|sk-(ssh-ed25519|ecdsa-sha2-nistp[0-9]+))@?[a-z0-9-]*\ [A-Za-z0-9+/=]+ ]]; then
     echo "Error: SSH_PUBKEY does not look like a valid public key." >&2
     echo "       Got: ${SSH_PUBKEY:0:60}..." >&2
@@ -136,168 +96,107 @@ if ! [[ "$SSH_PUBKEY" =~ ^(ssh-(rsa|ed25519|ecdsa-sha2-nistp[0-9]+)|sk-(ssh-ed25
 fi
 
 echo "=================================================================="
-echo " Home-server host bootstrap (remote driver)"
+echo " Open Ansible path on a fresh host"
 echo "   target:         root@$TARGET_HOST:22"
 echo "   new user:       $NEW_USER  (passwordless sudo)"
 echo "   new ssh port:   $NEW_SSH_PORT"
-echo "   keymap:         $NEW_KEYMAP"
-echo "   hostname:       ${NEW_HOSTNAME:-<unchanged>}"
 echo "   pubkey:         ${SSH_PUBKEY:0:50}…"
 echo "=================================================================="
 
-# ---- Phase 1: connect to root@host:22 and run the payload ------------------
-SSH_OPTS=(
-    -p 22
-    -o ConnectTimeout=10
-    -o StrictHostKeyChecking=accept-new
-    -o ServerAliveInterval=15
-)
+# ---- Phase 1: SSH root@host:22 and run the hardening payload ---------------
+SSH_OPTS=(-p 22 -o ConnectTimeout=10 -o StrictHostKeyChecking=accept-new -o ServerAliveInterval=15)
 
 echo
 echo "Phase 1 — connecting to root@$TARGET_HOST:22 to run the hardening payload."
-echo "(If you don't have key auth as root, you'll be prompted for the password."
-echo " sshd is restarted onto port $NEW_SSH_PORT at the end of phase 1; the"
-echo " existing connection on port 22 stays alive even after the restart.)"
+echo "(If you don't have key auth as root, you'll be prompted for the password.)"
 echo
 
-# The remote payload uses these variables, set as a preamble. We use
-# printf %q to safely quote the values so any whitespace, quotes, or
-# special characters in the pubkey survive intact across SSH.
 ssh "${SSH_OPTS[@]}" "root@$TARGET_HOST" bash -s <<EOF
 SSH_PUBKEY=$(printf %q "$SSH_PUBKEY")
 NEW_USER=$(printf %q "$NEW_USER")
 NEW_SSH_PORT=$NEW_SSH_PORT
-NEW_HOSTNAME=$(printf %q "$NEW_HOSTNAME")
-NEW_KEYMAP=$(printf %q "$NEW_KEYMAP")
 $(cat <<'PAYLOAD'
 set -euo pipefail
 
-if [[ "\$EUID" -ne 0 ]]; then
-    echo "Error: must run as root on the target." >&2
-    exit 1
+[[ "\$EUID" -eq 0 ]] || { echo "Error: must run as root on the target." >&2; exit 1; }
+
+# ---- 1. Prerequisites ----
+# python3, firewalld, and SELinux's `semanage` are the bare minimum to do
+# the rest of the steps below and let Ansible take over from here.
+echo "[1/6] Ensuring prerequisites (python3, firewalld, semanage) are installed…"
+missing=()
+command -v python3       >/dev/null 2>&1 || missing+=(python3)
+command -v firewall-cmd  >/dev/null 2>&1 || missing+=(firewalld)
+command -v semanage      >/dev/null 2>&1 || missing+=(policycoreutils-python-utils)
+if (( \${#missing[@]} )); then
+    echo "  installing: \${missing[*]}"
+    dnf -y install "\${missing[@]}"
+else
+    echo "  all prerequisites present"
 fi
 
-# SELinux pre-flight (warn-only)
-if command -v getenforce >/dev/null 2>&1; then
-    selinux_mode=\$(getenforce 2>/dev/null || true)
-    if [[ "\$selinux_mode" != "Enforcing" ]]; then
-        echo
-        echo "  WARNING: SELinux is '\$selinux_mode' (expected Enforcing)."
-        echo "           Continuing anyway, but the system is less protected."
-        echo
-    fi
-fi
-
-# ---- 1. System update + prerequisites ----
-echo
-echo "[1/9] Enabling EPEL, updating, installing prerequisites…"
-dnf -y install epel-release
-dnf -y update
-dnf -y install \
-    sudo openssh-server \
-    python3 python3-pip \
-    policycoreutils-python-utils \
-    firewalld \
-    podman \
-    bpytop
+# ---- 2. firewalld active ----
+echo "[2/6] Ensuring firewalld is enabled and running…"
 systemctl enable --now firewalld
 
-# ---- 2. Hostname ----
-echo
-echo "[2/9] Setting hostname…"
-if [[ -z "\$NEW_HOSTNAME" ]]; then
-    echo "  (no hostname argument given — keeping current: \$(hostname))"
-elif [[ "\$(hostnamectl --static 2>/dev/null)" == "\$NEW_HOSTNAME" ]]; then
-    echo "  hostname already \$NEW_HOSTNAME — skipping"
-else
-    hostnamectl set-hostname "\$NEW_HOSTNAME"
-    echo "  hostname set to \$NEW_HOSTNAME"
-fi
-
-# ---- 3. Console keymap ----
-echo
-echo "[3/9] Setting console keymap to \$NEW_KEYMAP…"
-if localectl status 2>/dev/null | grep -q "^ *VC Keymap: \$NEW_KEYMAP\$"; then
-    echo "  already set to \$NEW_KEYMAP — skipping"
-else
-    localectl set-keymap "\$NEW_KEYMAP"
-fi
-
-# ---- 4. Create user ----
-echo
-echo "[4/9] Creating user \$NEW_USER…"
+# ---- 3. User + sudoers ----
+echo "[3/6] Creating user \$NEW_USER with passwordless sudo…"
 if id "\$NEW_USER" >/dev/null 2>&1; then
-    echo "  user \$NEW_USER already exists — skipping"
+    echo "  user \$NEW_USER already exists — skipping useradd"
 else
     useradd -m -s /bin/bash "\$NEW_USER"
 fi
-
-# ---- 5. Sudo rights ----
-echo
-echo "[5/9] Granting passwordless sudo to \$NEW_USER…"
 SUDOERS_FILE="/etc/sudoers.d/90-\$NEW_USER"
-cat > "\$SUDOERS_FILE" <<SUDOEOF
+cat > "\$SUDOERS_FILE" <<SUDO
 # Bootstrap-installed: \$NEW_USER may run any command without a password.
 \$NEW_USER ALL=(ALL) NOPASSWD:ALL
-SUDOEOF
+SUDO
 chmod 0440 "\$SUDOERS_FILE"
 visudo -cf "\$SUDOERS_FILE" >/dev/null
 
-# ---- 6. SSH public key ----
-echo
-echo "[6/9] Installing SSH public key for \$NEW_USER…"
+# ---- 4. SSH public key ----
+echo "[4/6] Installing SSH public key…"
 USER_SSH_DIR="/home/\$NEW_USER/.ssh"
 AUTH_KEYS="\$USER_SSH_DIR/authorized_keys"
 install -d -m 0700 -o "\$NEW_USER" -g "\$NEW_USER" "\$USER_SSH_DIR"
 touch "\$AUTH_KEYS"
-if ! grep -qxF "\$SSH_PUBKEY" "\$AUTH_KEYS"; then
+if grep -qxF "\$SSH_PUBKEY" "\$AUTH_KEYS"; then
+    echo "  key already present — skipping"
+else
     echo "\$SSH_PUBKEY" >> "\$AUTH_KEYS"
     echo "  key appended to \$AUTH_KEYS"
-else
-    echo "  key already present — skipping"
 fi
 chmod 0600 "\$AUTH_KEYS"
 chown "\$NEW_USER:\$NEW_USER" "\$AUTH_KEYS"
-if command -v restorecon >/dev/null 2>&1; then
-    restorecon -R "\$USER_SSH_DIR"
-fi
+command -v restorecon >/dev/null && restorecon -R "\$USER_SSH_DIR"
 
-# ---- 7. Firewalld ----
-echo
-echo "[7/9] Opening firewall port \$NEW_SSH_PORT/tcp (port 22 stays open as a"
-echo "      safety net until you verify the new port works)…"
+# ---- 5. Open new SSH port (firewalld + SELinux) ----
+echo "[5/6] Opening port \$NEW_SSH_PORT/tcp in firewalld and labeling ssh_port_t in SELinux…"
 firewall-cmd --permanent --add-port="\$NEW_SSH_PORT/tcp" >/dev/null
 firewall-cmd --reload >/dev/null
-
-# ---- 8. SELinux ssh_port_t label ----
-echo
-echo "[8/9] Labeling port \$NEW_SSH_PORT as ssh_port_t in SELinux…"
 if semanage port -l | grep -qE "ssh_port_t\s+tcp\s+.*\b\$NEW_SSH_PORT\b"; then
     echo "  port \$NEW_SSH_PORT already labeled ssh_port_t — skipping"
 else
     semanage port -a -t ssh_port_t -p tcp "\$NEW_SSH_PORT"
 fi
 
-# ---- 9. sshd hardening drop-in ----
-echo
-echo "[9/9] Writing sshd hardening drop-in and restarting sshd…"
+# ---- 6. sshd drop-in + restart ----
+echo "[6/6] Writing sshd hardening drop-in and restarting sshd…"
 SSHD_DROPIN="/etc/ssh/sshd_config.d/99-bootstrap.conf"
-cat > "\$SSHD_DROPIN" <<SSHDEOF
+cat > "\$SSHD_DROPIN" <<SSHD
 # Bootstrap-installed sshd hardening (see scripts/bootstrap-host.sh).
 Port \$NEW_SSH_PORT
 PermitRootLogin no
 PasswordAuthentication no
 KbdInteractiveAuthentication no
-SSHDEOF
+SSHD
 chmod 0600 "\$SSHD_DROPIN"
-if command -v restorecon >/dev/null 2>&1; then
-    restorecon "\$SSHD_DROPIN"
-fi
+command -v restorecon >/dev/null && restorecon "\$SSHD_DROPIN"
 sshd -t
 systemctl restart sshd
 
 echo
-echo "Remote hardening complete."
+echo "Remote hardening complete. Port 22 in local firewalld stays open as a fallback."
 PAYLOAD
 )
 EOF
@@ -310,38 +209,28 @@ cat <<EOF
 ==================================================================
 
  sshd on $TARGET_HOST is now listening on port $NEW_SSH_PORT.
- Local firewalld already has the new port open.
+ The host's local firewalld already has the new port open.
 
- If your host has an EXTERNAL firewall (cloud provider security
- group, edge router rules, hosting-panel firewall, etc.):
+ If the host has an EXTERNAL firewall (cloud provider security
+ group, edge router, hosting-panel firewall):
 
      • OPEN  port $NEW_SSH_PORT/tcp
      • CLOSE port 22/tcp
 
- If you have no external firewall, just press Enter — local
- firewalld already covers port $NEW_SSH_PORT, and you can close
- port 22 in local firewalld in phase 4.
+ If you have no external firewall, just press Enter — port 22 in
+ local firewalld stays open until phase 4.
 
 EOF
-
 read -r -p "Press Enter to continue with verification (Ctrl-C to abort)... " _
 
-# ---- Phase 3: verify new port works as the new user -----------------------
+# ---- Phase 3: verify -------------------------------------------------------
 echo
-echo "Phase 3 — verifying SSH on port $NEW_SSH_PORT as $NEW_USER@$TARGET_HOST …"
-if ssh -p "$NEW_SSH_PORT" \
-       -o ConnectTimeout=10 \
-       -o StrictHostKeyChecking=accept-new \
-       -o BatchMode=yes \
-       "$NEW_USER@$TARGET_HOST" \
-       'echo OK; hostnamectl --static 2>/dev/null | head -1' 2>&1 \
-    | sed 's/^/  /'; then
-    verified=true
+echo "Phase 3 — verifying ssh -p $NEW_SSH_PORT $NEW_USER@$TARGET_HOST…"
+if ssh -p "$NEW_SSH_PORT" -o ConnectTimeout=10 -o StrictHostKeyChecking=accept-new \
+       -o BatchMode=yes "$NEW_USER@$TARGET_HOST" \
+       'echo "  OK as $(whoami) on $(hostnamectl --static 2>/dev/null || hostname)"' 2>&1; then
+    :
 else
-    verified=false
-fi
-
-if ! "$verified"; then
     cat <<EOF
 
 ==================================================================
@@ -350,17 +239,17 @@ if ! "$verified"; then
 
  Couldn't connect to $NEW_USER@$TARGET_HOST on port $NEW_SSH_PORT.
 
- Possible causes:
+ Likely causes:
    - External firewall not yet open on port $NEW_SSH_PORT
-   - Routing not yet propagated; wait a few seconds and retry
-   - Your private key isn't loaded; try: ssh-add -l
+   - Your private key isn't in your ssh-agent (try: ssh-add -l)
+   - Routing/IP propagation delay; wait and retry
 
  Try manually:
      ssh -p $NEW_SSH_PORT $NEW_USER@$TARGET_HOST
 
- Port 22 on the target is still open as a fallback. If everything
- is broken, SSH back as root@$TARGET_HOST:22 and remove
- /etc/ssh/sshd_config.d/99-bootstrap.conf.
+ Port 22 on the target is still open as a fallback. SSH back as
+ root@$TARGET_HOST:22 and remove /etc/ssh/sshd_config.d/99-bootstrap.conf
+ to undo if needed.
 EOF
     exit 1
 fi
@@ -369,7 +258,7 @@ fi
 echo
 read -r -p "Close port 22 in the target's LOCAL firewalld now? [y/N] " close22
 if [[ "$close22" =~ ^[Yy]$ ]]; then
-    echo "  Closing port 22 via $NEW_USER@$TARGET_HOST:$NEW_SSH_PORT …"
+    echo "  Closing port 22 via $NEW_USER@$TARGET_HOST:$NEW_SSH_PORT…"
     ssh -p "$NEW_SSH_PORT" "$NEW_USER@$TARGET_HOST" \
         'sudo firewall-cmd --permanent --remove-service=ssh && sudo firewall-cmd --reload' \
         | sed 's/^/  /'
@@ -382,10 +271,8 @@ fi
 cat <<EOF
 
 ==================================================================
- ✓ Done.
+ ✓ Done. Hand off to Ansible from here.
 ==================================================================
-
- The host is now ready as an Ansible target.
 
  Suggested ~/.ssh/config entry on this machine:
 
@@ -395,6 +282,8 @@ cat <<EOF
      Port $NEW_SSH_PORT
      IdentityFile ~/.ssh/id_ed25519
 
- Then add to your inventory and deploy services with ansible-playbook.
+ Sanity check:
+   ansible -i <inventory> -m ping <host>
 
+ Then deploy with ansible-playbook.
 EOF
