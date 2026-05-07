@@ -17,11 +17,6 @@ machine, it SSHs to the new host as root, runs the hardening, prompts
 you to update any external firewall, then verifies via the new
 connection.
 
-| Script | Run on | What it does |
-|---|---|---|
-| `setup.sh` | Control machine | Installs Ansible, clones the repo, walks you through inventory + vault + first deploy. |
-| `scripts/bootstrap-host.sh` | Control machine | SSHs to a fresh managed host as root and prepares it for Ansible. |
-
 Idempotent — safe to re-run.
 
 ---
@@ -165,21 +160,12 @@ ansible-playbook -i inventory/hosts.yml playbooks/site.yml --limit new-server
 
 ---
 
-## When to use this vs setup.sh
-
-- Use **`setup.sh`** to turn a Fedora Server into the Ansible *control
-  machine* (the one that runs `ansible-playbook`).
-- Use **`scripts/bootstrap-host.sh`** to add a new *managed host* the
-  control machine will then reach over SSH.
-
-Some servers will be both — your control machine is also the host
-running services. That's fine; run `setup.sh` and skip the bootstrap
-script.
+## Topology
 
 ```
 +--------------+    bootstrap-host.sh    +-------------------+
 | control host |  ─────────────────────► | managed host #1   |
-| (setup.sh)   |    bootstrap-host.sh    | (sshd hardened    |
+|              |    bootstrap-host.sh    | (sshd hardened    |
 |              |  ─────────────────────► | + ansible user)   |
 |              |                         +-------------------+
 |              |    bootstrap-host.sh    +-------------------+
