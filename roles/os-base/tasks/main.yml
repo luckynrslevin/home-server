@@ -198,6 +198,33 @@
 # ---------------------------------------------------------------- 9
 # system DNS via systemd-resolved. Use 10-os-base-dns.conf so the
 # pihole role's 20-pihole.conf can outrank it on Pi-hole hosts.
+# AlmaLinux/Rocky/CentOS 9 don't ship systemd-resolved enabled (or
+# even installed) by default — install + enable it so the drop-in
+# below actually does something. Fedora already has it active.
+- name: Install systemd-resolved
+  become: true
+  ansible.builtin.dnf:
+    name: systemd-resolved
+    state: present
+  when: os_base_dns_servers | length > 0
+
+- name: Enable and start systemd-resolved
+  become: true
+  ansible.builtin.systemd_service:
+    name: systemd-resolved
+    enabled: true
+    state: started
+  when: os_base_dns_servers | length > 0
+
+- name: Point /etc/resolv.conf at systemd-resolved stub
+  become: true
+  ansible.builtin.file:
+    src: /run/systemd/resolve/stub-resolv.conf
+    dest: /etc/resolv.conf
+    state: link
+    force: true
+  when: os_base_dns_servers | length > 0
+
 - name: Ensure systemd-resolved drop-in directory
   become: true
   ansible.builtin.file:

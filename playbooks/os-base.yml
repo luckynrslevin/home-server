@@ -1,0 +1,18 @@
+---
+# Apply only the os-base role.
+#
+# Useful for:
+#   - First-touch on a freshly-bootstrapped host before any service
+#     roles get involved
+#   - Re-running just the baseline (security updates config, common
+#     packages, system DNS, locale) without touching service state
+#
+# Targets every host in inventory by default. Use --limit to scope:
+#
+#   ansible-playbook -i inventory/hosts.yml playbooks/os-base.yml --limit dnsvserver
+- name: Apply os-base baseline
+  hosts: all
+  become: false
+  gather_facts: true
+  roles:
+    - { role: os-base }

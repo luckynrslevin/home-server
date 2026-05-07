@@ -7,7 +7,7 @@
 
 [Resolve]
 {% if os_base_dns_over_tls and os_base_dns_hostname %}
-DNS={{ os_base_dns_servers | map('regex_replace', '^(.*)$', '\1#' ~ os_base_dns_hostname) | join(' ') }}
+DNS={{ os_base_dns_servers | map('regex_replace', '^(.*)$', '\\1#' ~ os_base_dns_hostname) | join(' ') }}
 DNSOverTLS=yes
 {% else %}
 DNS={{ os_base_dns_servers | join(' ') }}
@@ -15,4 +15,8 @@ DNS={{ os_base_dns_servers | join(' ') }}
 DNSOverTLS=yes
 {% endif %}
 {% endif %}
+# Route every query through the global DNS above. Without this, any
+# per-link DNS NetworkManager picked up via DHCP would win for non-
+# search-domain queries — which defeats the point of pinning Mullvad.
+Domains=~.
 DNSStubListener=yes
