@@ -24,12 +24,12 @@ os_base_packages:
   - git
   - podman
 
-# Source for podman 5 on AlmaLinux/Rocky/CentOS 9. Default repo on
-# those distros only ships podman 4.x; this COPR (run by the upstream
-# Podman team) provides 5.x. Skipped on Fedora (already 5.x). Set
-# to empty string to disable (e.g. host has podman 5 from elsewhere,
-# or you want to stay on 4.x).
-os_base_podman_extra_repo: "rhcontainerbot/podman-next"
+# Extra podman repo on AlmaLinux/Rocky/CentOS 9. Empty by default:
+# AL9.4+ ships podman 5.x in stock `appstream`, so no COPR needed.
+# Set to e.g. "rhcontainerbot/podman-next" only if you specifically
+# want pre-release builds — note that COPR ships 6.0.0-dev now, not
+# stable 5.x. Skipped on Fedora regardless (already has podman 5).
+os_base_podman_extra_repo: ""
 
 # Automatic security updates via dnf-automatic.
 os_base_dnf_automatic_enabled: true

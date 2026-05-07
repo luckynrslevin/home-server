@@ -17,12 +17,14 @@ guarantee.
 | Distro | Notes |
 |---|---|
 | **Fedora Server** (any current release) | Default repo already ships podman 5; nothing extra needed. |
-| **AlmaLinux 9 / Rocky 9 / CentOS Stream 9 / RHEL 9** | Default repo only has podman 4.x. Role enables the upstream `rhcontainerbot/podman-next` COPR so `dnf install podman` resolves to 5.x — keeps quadlet / AutoUpdate behavior consistent with Fedora hosts. |
+| **AlmaLinux 9 / Rocky 9 / CentOS Stream 9 / RHEL 9** | 9.4+ ships podman 5.x in stock `appstream`. No extra repo needed by default. Set `os_base_podman_extra_repo: "rhcontainerbot/podman-next"` only if you want the upstream pre-release COPR (currently 6.0.0-dev). |
 
 ## Tasks (in order, all idempotent)
 
-1. **podman 5 source** — enable `rhcontainerbot/podman-next` COPR on
-   AlmaLinux/Rocky/CentOS 9. Skipped on Fedora.
+1. **podman 5 source** — only when `os_base_podman_extra_repo` is
+   set. Off by default (AL9.4+ stock repo already has 5.x). Set
+   the variable to e.g. `rhcontainerbot/podman-next` to opt into
+   the upstream pre-release COPR.
 2. **Common packages** — `bash-completion`, `vim-enhanced`, `tmux`,
    `tree`, `jq`, `wget`, `curl`, `rsync`, `git`, `podman`.
    Configurable list. (`bpytop` lives in EPEL; intentionally not in
@@ -49,7 +51,7 @@ See `defaults/main.yml`. Notable knobs:
 | Variable | Default | Purpose |
 |---|---|---|
 | `os_base_packages` | listed above | Override or extend in host_vars. |
-| `os_base_podman_extra_repo` | `rhcontainerbot/podman-next` | Set to `""` to skip COPR on RHEL-family (stay on podman 4.x). |
+| `os_base_podman_extra_repo` | `""` | Set to e.g. `rhcontainerbot/podman-next` to enable the upstream pre-release COPR on RHEL-family. Stock repo on AL9.4+ already has podman 5.x. |
 | `os_base_dnf_automatic_enabled` | `true` | Set to `false` per-host to opt out of auto security updates. |
 | `os_base_dnf_automatic_apply` | `security` | Or `default` for everything. |
 | `os_base_dns_servers` | Mullvad base IPv4+IPv6 | Set to `[]` to skip the resolved drop-in. |
