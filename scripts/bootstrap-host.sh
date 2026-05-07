@@ -271,6 +271,13 @@ fi
 echo
 echo "Phase 3 — verifying ssh -p $NEW_SSH_PORT $NEW_USER@$TARGET_HOST..."
 
+# Disable set -e for the whole verification block — we have explicit
+# rc handling via $verify_rc, and Mac's bash 3.2 doesn't reliably
+# suppress set -e for `var=$(cmd) || handler` (the substitution
+# subshell inherits set -e and exits before the outer || sees the
+# failure). A `set +e` window is bulletproof across bash versions.
+set +e
+
 verify_once() {
     ssh -p "$NEW_SSH_PORT" -o ConnectTimeout=10 \
         -o StrictHostKeyChecking=accept-new -o BatchMode=yes \
@@ -278,11 +285,8 @@ verify_once() {
         'echo "  OK as $(whoami) on $(hostnamectl --static 2>/dev/null || hostname)"' 2>&1
 }
 
-# `set -e` would otherwise kill the script on a non-zero substitution
-# rc before we reach `verify_rc=$?` and the recovery branch below —
-# wrap the assignment in `|| ...` so it can't trigger set -e.
-verify_rc=0
-verify_output=$(verify_once) || verify_rc=$?
+verify_output=$(verify_once)
+verify_rc=$?
 echo "$verify_output"
 
 # Stale known_hosts entry from a previously-reused IP shows up as
@@ -308,11 +312,14 @@ if (( verify_rc != 0 )) \
         ssh-keygen -R "[$TARGET_HOST]:$NEW_SSH_PORT" 2>&1 | sed 's/^/    /'
         ssh-keygen -R "$TARGET_HOST"                  2>&1 | sed 's/^/    /'
         echo "  Retrying..."
-        verify_rc=0
-        verify_output=$(verify_once) || verify_rc=$?
+        verify_output=$(verify_once)
+        verify_rc=$?
         echo "$verify_output"
     fi
 fi
+
+# Re-enable set -e now that the rc-sensitive verification is done.
+set -e
 
 if (( verify_rc != 0 )); then
     cat <<EOF
