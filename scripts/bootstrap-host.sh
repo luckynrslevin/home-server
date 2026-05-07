@@ -34,7 +34,7 @@
 #            (ensure prereqs, create user+sudoers, install key, open port
 #            in firewalld+SELinux, write sshd drop-in, restart sshd).
 #   Phase 2: local prompt — update any EXTERNAL firewall (cloud security
-#            group, edge router, …) — open new port, close 22 — Enter.
+#            group, edge router, ...) — open new port, close 22 — Enter.
 #   Phase 3: ssh -p <new-port> <user>@<host> → verify.
 #   Phase 4: optional — close port 22 in the target's local firewalld.
 # ============================================================================
@@ -105,7 +105,7 @@ echo " Open Ansible path on a fresh host"
 echo "   target:         root@$TARGET_HOST:22"
 echo "   new user:       $NEW_USER  (passwordless sudo)"
 echo "   new ssh port:   $NEW_SSH_PORT"
-echo "   pubkey:         ${SSH_PUBKEY:0:50}…"
+echo "   pubkey:         ${SSH_PUBKEY:0:50}..."
 echo "=================================================================="
 
 # ---- Phase 1: SSH root@host:22 and run the hardening payload ---------------
@@ -123,7 +123,7 @@ NEW_SSH_PORT=$NEW_SSH_PORT
 $(cat <<'PAYLOAD'
 set -euo pipefail
 
-[[ "\$EUID" -eq 0 ]] || { echo "Error: must run as root on the target." >&2; exit 1; }
+[[ "$EUID" -eq 0 ]] || { echo "Error: must run as root on the target." >&2; exit 1; }
 
 # ---- 0. Distro sanity check ----
 # Accept anything in the RHEL-family tree (rhel/centos/fedora as ID
@@ -135,90 +135,90 @@ else
     echo "Error: /etc/os-release missing — can't identify distro." >&2
     exit 1
 fi
-case " \${ID:-} \${ID_LIKE:-} " in
+case " ${ID:-} ${ID_LIKE:-} " in
     *" rhel "*|*" centos "*|*" fedora "*|*" rocky "*|*" almalinux "*|*" ol "*) ;;
     *)
         echo "Error: unsupported distro." >&2
-        echo "  ID=\${ID:-?} ID_LIKE=\${ID_LIKE:-?}" >&2
+        echo "  ID=${ID:-?} ID_LIKE=${ID_LIKE:-?}" >&2
         echo "  This script supports RHEL family only" \
              "(RHEL/AlmaLinux/Rocky/CentOS Stream/Oracle Linux/Fedora)." >&2
         exit 1
         ;;
 esac
-echo "Detected: \${PRETTY_NAME:-\$ID \$VERSION_ID}"
+echo "Detected: ${PRETTY_NAME:-$ID $VERSION_ID}"
 
 # ---- 1. Prerequisites ----
 # python3, firewalld, and SELinux's `semanage` are the bare minimum to do
 # the rest of the steps below and let Ansible take over from here.
-echo "[1/6] Ensuring prerequisites (python3, firewalld, semanage) are installed…"
+echo "[1/6] Ensuring prerequisites (python3, firewalld, semanage) are installed..."
 missing=()
 command -v python3       >/dev/null 2>&1 || missing+=(python3)
 command -v firewall-cmd  >/dev/null 2>&1 || missing+=(firewalld)
 command -v semanage      >/dev/null 2>&1 || missing+=(policycoreutils-python-utils)
-if (( \${#missing[@]} )); then
-    echo "  installing: \${missing[*]}"
-    dnf -y install "\${missing[@]}"
+if (( ${#missing[@]} )); then
+    echo "  installing: ${missing[*]}"
+    dnf -y install "${missing[@]}"
 else
     echo "  all prerequisites present"
 fi
 
 # ---- 2. firewalld active ----
-echo "[2/6] Ensuring firewalld is enabled and running…"
+echo "[2/6] Ensuring firewalld is enabled and running..."
 systemctl enable --now firewalld
 
 # ---- 3. User + sudoers ----
-echo "[3/6] Creating user \$NEW_USER with passwordless sudo…"
-if id "\$NEW_USER" >/dev/null 2>&1; then
-    echo "  user \$NEW_USER already exists — skipping useradd"
+echo "[3/6] Creating user $NEW_USER with passwordless sudo..."
+if id "$NEW_USER" >/dev/null 2>&1; then
+    echo "  user $NEW_USER already exists — skipping useradd"
 else
-    useradd -m -s /bin/bash "\$NEW_USER"
+    useradd -m -s /bin/bash "$NEW_USER"
 fi
-SUDOERS_FILE="/etc/sudoers.d/90-\$NEW_USER"
-cat > "\$SUDOERS_FILE" <<SUDO
-# Bootstrap-installed: \$NEW_USER may run any command without a password.
-\$NEW_USER ALL=(ALL) NOPASSWD:ALL
+SUDOERS_FILE="/etc/sudoers.d/90-$NEW_USER"
+cat > "$SUDOERS_FILE" <<SUDO
+# Bootstrap-installed: $NEW_USER may run any command without a password.
+$NEW_USER ALL=(ALL) NOPASSWD:ALL
 SUDO
-chmod 0440 "\$SUDOERS_FILE"
-visudo -cf "\$SUDOERS_FILE" >/dev/null
+chmod 0440 "$SUDOERS_FILE"
+visudo -cf "$SUDOERS_FILE" >/dev/null
 
 # ---- 4. SSH public key ----
-echo "[4/6] Installing SSH public key…"
-USER_SSH_DIR="/home/\$NEW_USER/.ssh"
-AUTH_KEYS="\$USER_SSH_DIR/authorized_keys"
-install -d -m 0700 -o "\$NEW_USER" -g "\$NEW_USER" "\$USER_SSH_DIR"
-touch "\$AUTH_KEYS"
-if grep -qxF "\$SSH_PUBKEY" "\$AUTH_KEYS"; then
+echo "[4/6] Installing SSH public key..."
+USER_SSH_DIR="/home/$NEW_USER/.ssh"
+AUTH_KEYS="$USER_SSH_DIR/authorized_keys"
+install -d -m 0700 -o "$NEW_USER" -g "$NEW_USER" "$USER_SSH_DIR"
+touch "$AUTH_KEYS"
+if grep -qxF "$SSH_PUBKEY" "$AUTH_KEYS"; then
     echo "  key already present — skipping"
 else
-    echo "\$SSH_PUBKEY" >> "\$AUTH_KEYS"
-    echo "  key appended to \$AUTH_KEYS"
+    echo "$SSH_PUBKEY" >> "$AUTH_KEYS"
+    echo "  key appended to $AUTH_KEYS"
 fi
-chmod 0600 "\$AUTH_KEYS"
-chown "\$NEW_USER:\$NEW_USER" "\$AUTH_KEYS"
-command -v restorecon >/dev/null && restorecon -R "\$USER_SSH_DIR"
+chmod 0600 "$AUTH_KEYS"
+chown "$NEW_USER:$NEW_USER" "$AUTH_KEYS"
+command -v restorecon >/dev/null && restorecon -R "$USER_SSH_DIR"
 
 # ---- 5. Open new SSH port (firewalld + SELinux) ----
-echo "[5/6] Opening port \$NEW_SSH_PORT/tcp in firewalld and labeling ssh_port_t in SELinux…"
-firewall-cmd --permanent --add-port="\$NEW_SSH_PORT/tcp" >/dev/null
+echo "[5/6] Opening port $NEW_SSH_PORT/tcp in firewalld and labeling ssh_port_t in SELinux..."
+firewall-cmd --permanent --add-port="$NEW_SSH_PORT/tcp" >/dev/null
 firewall-cmd --reload >/dev/null
-if semanage port -l | grep -qE "ssh_port_t\s+tcp\s+.*\b\$NEW_SSH_PORT\b"; then
-    echo "  port \$NEW_SSH_PORT already labeled ssh_port_t — skipping"
+if semanage port -l | grep -qE "ssh_port_t\s+tcp\s+.*\b$NEW_SSH_PORT\b"; then
+    echo "  port $NEW_SSH_PORT already labeled ssh_port_t — skipping"
 else
-    semanage port -a -t ssh_port_t -p tcp "\$NEW_SSH_PORT"
+    semanage port -a -t ssh_port_t -p tcp "$NEW_SSH_PORT"
 fi
 
 # ---- 6. sshd drop-in + restart ----
-echo "[6/6] Writing sshd hardening drop-in and restarting sshd…"
+echo "[6/6] Writing sshd hardening drop-in and restarting sshd..."
 SSHD_DROPIN="/etc/ssh/sshd_config.d/99-bootstrap.conf"
-cat > "\$SSHD_DROPIN" <<SSHD
+cat > "$SSHD_DROPIN" <<SSHD
 # Bootstrap-installed sshd hardening (see scripts/bootstrap-host.sh).
-Port \$NEW_SSH_PORT
+Port $NEW_SSH_PORT
 PermitRootLogin no
 PasswordAuthentication no
 KbdInteractiveAuthentication no
 SSHD
-chmod 0600 "\$SSHD_DROPIN"
-command -v restorecon >/dev/null && restorecon "\$SSHD_DROPIN"
+chmod 0600 "$SSHD_DROPIN"
+command -v restorecon >/dev/null && restorecon "$SSHD_DROPIN"
 sshd -t
 systemctl restart sshd
 
@@ -248,16 +248,84 @@ cat <<EOF
  local firewalld stays open until phase 4.
 
 EOF
-read -r -p "Press Enter to continue with verification (Ctrl-C to abort)... " _
+
+# Detect interactive vs non-interactive (curl|bash). If stdin isn't a
+# TTY, all `read` calls would EOF immediately and (with set -e) kill
+# the script. Skip prompts in non-interactive mode and use sensible
+# defaults: proceed past the firewall pause, decline destructive
+# actions (close-22), but auto-clean stale known_hosts (typical for
+# the fresh-install scenario where curl|bash is invoked).
+if [[ -t 0 ]]; then
+    INTERACTIVE=1
+else
+    INTERACTIVE=0
+fi
+
+if (( INTERACTIVE )); then
+    read -r -p "Press Enter to continue with verification (Ctrl-C to abort)... " _ || true
+else
+    echo "  (non-interactive run — proceeding to verification)"
+fi
 
 # ---- Phase 3: verify -------------------------------------------------------
 echo
-echo "Phase 3 — verifying ssh -p $NEW_SSH_PORT $NEW_USER@$TARGET_HOST…"
-if ssh -p "$NEW_SSH_PORT" -o ConnectTimeout=10 -o StrictHostKeyChecking=accept-new \
-       -o BatchMode=yes "$NEW_USER@$TARGET_HOST" \
-       'echo "  OK as $(whoami) on $(hostnamectl --static 2>/dev/null || hostname)"' 2>&1; then
-    :
-else
+echo "Phase 3 — verifying ssh -p $NEW_SSH_PORT $NEW_USER@$TARGET_HOST..."
+
+# Disable set -e for the whole verification block — we have explicit
+# rc handling via $verify_rc, and Mac's bash 3.2 doesn't reliably
+# suppress set -e for `var=$(cmd) || handler` (the substitution
+# subshell inherits set -e and exits before the outer || sees the
+# failure). A `set +e` window is bulletproof across bash versions.
+set +e
+
+verify_once() {
+    # `-n` redirects ssh's stdin from /dev/null. Without this, ssh
+    # inherits the script's stdin (the curl pipe in `curl|bash -s`
+    # invocations) and drains the remaining script bytes when it
+    # exits — bash then hits EOF mid-script and disappears silently.
+    ssh -n -p "$NEW_SSH_PORT" -o ConnectTimeout=10 \
+        -o StrictHostKeyChecking=accept-new -o BatchMode=yes \
+        "$NEW_USER@$TARGET_HOST" \
+        'echo "  OK as $(whoami) on $(hostnamectl --static 2>/dev/null || hostname)"' 2>&1
+}
+
+verify_output=$(verify_once)
+verify_rc=$?
+echo "$verify_output"
+
+# Stale known_hosts entry from a previously-reused IP shows up as
+# "REMOTE HOST IDENTIFICATION HAS CHANGED" / "Host key verification
+# failed". Offer to scrub the stale entries and retry — the user
+# almost always wants this for a fresh-install scenario.
+if (( verify_rc != 0 )) \
+   && grep -qE "REMOTE HOST IDENTIFICATION HAS CHANGED|Host key verification failed" \
+            <<<"$verify_output"; then
+    echo
+    echo "  ⚠ Stale ~/.ssh/known_hosts entry for $TARGET_HOST detected."
+    echo "    The host's SSH key has changed (typical for a freshly-installed VM"
+    echo "    that reuses an IP from a previous server)."
+    echo
+    if (( INTERACTIVE )); then
+        ans=""
+        read -r -p "  Remove the stale entry and retry verification? [Y/n] " ans || true
+    else
+        ans=""   # auto-Y in non-interactive: fresh-install context, safe to clean
+        echo "  (non-interactive run — auto-cleaning and retrying)"
+    fi
+    if [[ ! "$ans" =~ ^[Nn]$ ]]; then
+        ssh-keygen -R "[$TARGET_HOST]:$NEW_SSH_PORT" 2>&1 | sed 's/^/    /'
+        ssh-keygen -R "$TARGET_HOST"                  2>&1 | sed 's/^/    /'
+        echo "  Retrying..."
+        verify_output=$(verify_once)
+        verify_rc=$?
+        echo "$verify_output"
+    fi
+fi
+
+# Re-enable set -e now that the rc-sensitive verification is done.
+set -e
+
+if (( verify_rc != 0 )); then
     cat <<EOF
 
 ==================================================================
@@ -283,10 +351,15 @@ fi
 
 # ---- Phase 4: optionally close port 22 in local firewalld -----------------
 echo
-read -r -p "Close port 22 in the target's LOCAL firewalld now? [y/N] " close22
+close22=""
+if (( INTERACTIVE )); then
+    read -r -p "Close port 22 in the target's LOCAL firewalld now? [y/N] " close22 || true
+else
+    echo "(non-interactive run — leaving port 22 in local firewalld open; close it later)"
+fi
 if [[ "$close22" =~ ^[Yy]$ ]]; then
-    echo "  Closing port 22 via $NEW_USER@$TARGET_HOST:$NEW_SSH_PORT…"
-    ssh -p "$NEW_SSH_PORT" "$NEW_USER@$TARGET_HOST" \
+    echo "  Closing port 22 via $NEW_USER@$TARGET_HOST:$NEW_SSH_PORT..."
+    ssh -n -p "$NEW_SSH_PORT" "$NEW_USER@$TARGET_HOST" \
         'sudo firewall-cmd --permanent --remove-service=ssh && sudo firewall-cmd --reload' \
         | sed 's/^/  /'
     echo "  Port 22 removed from local firewalld."
