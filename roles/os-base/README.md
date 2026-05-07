@@ -24,8 +24,10 @@ guarantee.
 1. **podman 5 source** — enable `rhcontainerbot/podman-next` COPR on
    AlmaLinux/Rocky/CentOS 9. Skipped on Fedora.
 2. **Common packages** — `bash-completion`, `vim-enhanced`, `tmux`,
-   `bpytop`, `tree`, `jq`, `wget`, `curl`, `rsync`, `git`, `podman`.
-   Configurable list.
+   `tree`, `jq`, `wget`, `curl`, `rsync`, `git`, `podman`.
+   Configurable list. (`bpytop` lives in EPEL; intentionally not in
+   the default set so this role doesn't drag EPEL onto every host.
+   Add it per-host via `os_base_packages: ["{{ os_base_packages | default([]) }} + ['bpytop']" }}` after enabling EPEL yourself if you want it.)
 3. **dnf-automatic** — installs and enables, configured for
    security-only updates, log to journal.
 4. **Shell aliases** — `/etc/profile.d/zz-aliases.sh` (ll, la, ..,

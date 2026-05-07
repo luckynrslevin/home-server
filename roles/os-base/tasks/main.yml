@@ -4,6 +4,79 @@
 # common tools, and a working resolver are in place by the time they
 # run.
 
+# ---------------------------------------------------------------- 0
+# Swap. Goes BEFORE any dnf operation — small (1 GB) vservers
+# happily OOM-kill sshd while dnf is unpacking a big transaction.
+# Skipped when `os_base_swap_size_mb` is 0 or existing swap already
+# meets the threshold.
+- name: Check if swap file is already active
+  ansible.builtin.shell: |
+    set -o pipefail
+    grep -E "^{{ os_base_swap_file | regex_escape }} " /proc/swaps || true
+  args:
+    executable: /bin/bash
+  register: os_base_swap_active_line
+  changed_when: false
+
+- name: Decide whether to provision swap
+  ansible.builtin.set_fact:
+    os_base_swap_needs_provision: >-
+      {{
+        os_base_swap_size_mb | int > 0
+        and (ansible_facts['swaptotal_mb'] | int) < (os_base_swap_size_mb | int)
+        and os_base_swap_active_line.stdout | length == 0
+      }}
+
+- name: Create swap file
+  become: true
+  ansible.builtin.command:
+    cmd: "fallocate -l {{ os_base_swap_size_mb }}M {{ os_base_swap_file }}"
+    creates: "{{ os_base_swap_file }}"
+  when: os_base_swap_needs_provision
+
+- name: Lock down swap file permissions
+  become: true
+  ansible.builtin.file:
+    path: "{{ os_base_swap_file }}"
+    owner: root
+    group: root
+    mode: "0600"
+  when: os_base_swap_needs_provision
+
+- name: Format swap file
+  become: true
+  ansible.builtin.command:
+    cmd: "mkswap {{ os_base_swap_file }}"
+  when: os_base_swap_needs_provision
+  changed_when: true
+
+- name: Activate swap file
+  become: true
+  ansible.builtin.command:
+    cmd: "swapon {{ os_base_swap_file }}"
+  when: os_base_swap_needs_provision
+  changed_when: true
+
+- name: Persist swap in /etc/fstab
+  become: true
+  ansible.posix.mount:
+    path: none
+    src: "{{ os_base_swap_file }}"
+    fstype: swap
+    opts: defaults
+    state: present
+  when: os_base_swap_size_mb | int > 0
+
+- name: Set vm.swappiness
+  become: true
+  ansible.posix.sysctl:
+    name: vm.swappiness
+    value: "{{ os_base_swappiness }}"
+    state: present
+    sysctl_set: true
+    reload: true
+  when: os_base_swap_size_mb | int > 0
+
 # ---------------------------------------------------------------- 1
 # podman 5 source on AlmaLinux 9 (and other RHEL-9 derivatives).
 # Fedora's default repo already ships podman 5.x; AL9/Rocky/CentOS 9

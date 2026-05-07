@@ -2,11 +2,20 @@
 # Common packages to install on every host. Override / extend in
 # host_vars to add or remove. The defaults aim for "useful CLI tools
 # any homelab host would want."
+# Swap. On small vservers (~1 GB RAM) dnf transactions and podman
+# can spike RAM and trigger the OOM-killer, taking out sshd or other
+# essential services. Ensure a swap file at `os_base_swap_file` of at
+# least `os_base_swap_size_mb` MB. Set the size to 0 to skip swap
+# management entirely (recommended for hosts with plenty of RAM where
+# you'd prefer no swap at all).
+os_base_swap_size_mb: 512
+os_base_swap_file: /swapfile
+os_base_swappiness: 10        # default 60 is too aggressive on a swap-file backend
+
 os_base_packages:
   - bash-completion
   - vim-enhanced
   - tmux
-  - bpytop
   - tree
   - jq
   - wget
