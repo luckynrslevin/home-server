@@ -1,0 +1,55 @@
+---
+# Common packages to install on every host. Override / extend in
+# host_vars to add or remove. The defaults aim for "useful CLI tools
+# any homelab host would want."
+os_base_packages:
+  - bash-completion
+  - vim-enhanced
+  - tmux
+  - bpytop
+  - tree
+  - jq
+  - wget
+  - curl
+  - rsync
+  - git
+  - podman
+
+# Source for podman 5 on AlmaLinux/Rocky/CentOS 9. Default repo on
+# those distros only ships podman 4.x; this COPR (run by the upstream
+# Podman team) provides 5.x. Skipped on Fedora (already 5.x). Set
+# to empty string to disable (e.g. host has podman 5 from elsewhere,
+# or you want to stay on 4.x).
+os_base_podman_extra_repo: "rhcontainerbot/podman-next"
+
+# Automatic security updates via dnf-automatic.
+os_base_dnf_automatic_enabled: true
+os_base_dnf_automatic_apply: security        # vs default which includes everything
+os_base_dnf_automatic_email: ""              # empty -> log to journal only
+
+# System DNS via systemd-resolved. Default: Mullvad base DNS (privacy +
+# basic ad-blocking, DoT-capable). The pihole role overrides this with
+# a higher-priority drop-in pointing at 127.0.0.1:1053 wherever Pi-hole
+# is deployed. Set to [] to skip the drop-in (host then uses whatever
+# DHCP / NetworkManager pushed).
+os_base_dns_servers:
+  - "194.242.2.4"           # base.dns.mullvad.net (IPv4)
+  - "2a07:e340::4"          # base.dns.mullvad.net (IPv6)
+os_base_dns_hostname: "base.dns.mullvad.net"   # for DoT SNI
+os_base_dns_over_tls: true                     # set false to skip DoT
+
+# Drop /etc/profile.d/zz-aliases.sh with a small set of sensible
+# defaults (ll, la, .., ls/grep colors).
+os_base_aliases_enabled: true
+
+# Timezone. Override per-host if a server lives in a different region.
+os_base_timezone: "Europe/Berlin"
+
+# Console keymap. Cosmetic on headless servers but matches the
+# bootstrap script's default for consistency.
+os_base_keymap: "de"
+
+# Hostname to set via hostnamectl. Leave unset to fall back to
+# `inventory_hostname` (most hosts). Override in host_vars when the
+# OS hostname should differ from the Ansible inventory name.
+# os_base_hostname: ""

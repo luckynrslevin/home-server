@@ -1,0 +1,159 @@
+---
+# Universal OS-baseline configuration. Runs on every host in
+# playbooks/site.yml unconditionally; service roles assume podman,
+# common tools, and a working resolver are in place by the time they
+# run.
+
+# ---------------------------------------------------------------- 1
+# podman 5 source on AlmaLinux 9 (and other RHEL-9 derivatives).
+# Fedora's default repo already ships podman 5.x; AL9/Rocky/CentOS 9
+# only have 4.x. The COPR run by the upstream Podman team provides
+# 5.x for el9.
+- name: Detect distro family for podman repo decision
+  ansible.builtin.set_fact:
+    os_base_needs_podman_copr: >-
+      {{
+        os_base_podman_extra_repo | length > 0
+        and ansible_distribution in ['AlmaLinux', 'Rocky', 'CentOS', 'RedHat']
+        and ansible_distribution_major_version == '9'
+      }}
+
+- name: Ensure dnf-plugins-core (provides `dnf copr`) on RHEL-9 family
+  become: true
+  ansible.builtin.dnf:
+    name: dnf-plugins-core
+    state: present
+  when: os_base_needs_podman_copr
+
+- name: Enable rhcontainerbot/podman-next COPR for podman 5 on RHEL-9 family
+  become: true
+  ansible.builtin.command:
+    cmd: "dnf -y copr enable {{ os_base_podman_extra_repo }}"
+    creates: "/etc/yum.repos.d/_copr:copr.fedorainfracloud.org:{{ os_base_podman_extra_repo | replace('/', ':') }}.repo"
+  when: os_base_needs_podman_copr
+
+# ---------------------------------------------------------------- 2
+- name: Install common packages
+  become: true
+  ansible.builtin.dnf:
+    name: "{{ os_base_packages }}"
+    state: present
+
+- name: Ensure podman is upgraded to 5.x where the COPR provides it
+  become: true
+  ansible.builtin.dnf:
+    name: podman
+    state: latest
+  when: os_base_needs_podman_copr
+
+# ---------------------------------------------------------------- 3
+# dnf-automatic — apply only security updates by default. Persistent
+# across reboots via the systemd timer.
+- name: Install dnf-automatic
+  become: true
+  ansible.builtin.dnf:
+    name: dnf-automatic
+    state: present
+  when: os_base_dnf_automatic_enabled
+
+- name: Configure dnf-automatic
+  become: true
+  ansible.builtin.copy:
+    src: automatic.conf
+    dest: /etc/dnf/automatic.conf
+    owner: root
+    group: root
+    mode: "0644"
+  when: os_base_dnf_automatic_enabled
+  notify: Restart dnf-automatic-install timer
+
+- name: Enable and start dnf-automatic-install.timer
+  become: true
+  ansible.builtin.systemd_service:
+    name: dnf-automatic-install.timer
+    enabled: true
+    state: started
+  when: os_base_dnf_automatic_enabled
+
+# ---------------------------------------------------------------- 4
+- name: Drop /etc/profile.d/zz-aliases.sh
+  become: true
+  ansible.builtin.copy:
+    src: zz-aliases.sh
+    dest: /etc/profile.d/zz-aliases.sh
+    owner: root
+    group: root
+    mode: "0644"
+  when: os_base_aliases_enabled
+
+# ---------------------------------------------------------------- 5
+- name: Set timezone
+  become: true
+  community.general.timezone:
+    name: "{{ os_base_timezone }}"
+
+# ---------------------------------------------------------------- 6
+- name: Read current console keymap
+  ansible.builtin.command: localectl status
+  register: os_base_localectl_status
+  changed_when: false
+
+- name: Set console keymap
+  become: true
+  ansible.builtin.command:
+    cmd: "localectl set-keymap {{ os_base_keymap }}"
+  when: "'VC Keymap: ' ~ os_base_keymap not in os_base_localectl_status.stdout"
+  changed_when: true
+
+# ---------------------------------------------------------------- 7
+- name: Set hostname
+  become: true
+  ansible.builtin.hostname:
+    name: "{{ os_base_hostname | default(inventory_hostname) }}"
+
+# ---------------------------------------------------------------- 8
+# System-level (rootful) podman-auto-update timer. Service roles still
+# install their own per-rootless-user timer; this one covers any
+# rootful container the host might run later.
+- name: Enable rootful podman-auto-update.timer
+  become: true
+  ansible.builtin.systemd_service:
+    name: podman-auto-update.timer
+    enabled: true
+    state: started
+
+# ---------------------------------------------------------------- 9
+# system DNS via systemd-resolved. Use 10-os-base-dns.conf so the
+# pihole role's 20-pihole.conf can outrank it on Pi-hole hosts.
+- name: Ensure systemd-resolved drop-in directory
+  become: true
+  ansible.builtin.file:
+    path: /etc/systemd/resolved.conf.d
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  when: os_base_dns_servers | length > 0
+
+- name: Configure systemd-resolved DNS (Mullvad / configurable)
+  become: true
+  ansible.builtin.template:
+    src: os-base-dns.conf.j2
+    dest: /etc/systemd/resolved.conf.d/10-os-base-dns.conf
+    owner: root
+    group: root
+    mode: "0644"
+  when: os_base_dns_servers | length > 0
+  notify:
+    - Restart systemd-resolved
+    - Flush systemd-resolved cache
+
+- name: Remove os-base DNS drop-in if disabled
+  become: true
+  ansible.builtin.file:
+    path: /etc/systemd/resolved.conf.d/10-os-base-dns.conf
+    state: absent
+  when: os_base_dns_servers | length == 0
+  notify:
+    - Restart systemd-resolved
+    - Flush systemd-resolved cache

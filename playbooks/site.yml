@@ -39,6 +39,7 @@
           web UI becomes unreachable.
 
   roles:
+    - { role: os-base }
     - { role: caddy }
     - { role: dashboard,     when: "'dashboard' in (deploy_services | default([]))" }
     - { role: pihole,        when: "'pihole' in (deploy_services | default([]))" }
