@@ -248,7 +248,24 @@ cat <<EOF
  local firewalld stays open until phase 4.
 
 EOF
-read -r -p "Press Enter to continue with verification (Ctrl-C to abort)... " _
+
+# Detect interactive vs non-interactive (curl|bash). If stdin isn't a
+# TTY, all `read` calls would EOF immediately and (with set -e) kill
+# the script. Skip prompts in non-interactive mode and use sensible
+# defaults: proceed past the firewall pause, decline destructive
+# actions (close-22), but auto-clean stale known_hosts (typical for
+# the fresh-install scenario where curl|bash is invoked).
+if [[ -t 0 ]]; then
+    INTERACTIVE=1
+else
+    INTERACTIVE=0
+fi
+
+if (( INTERACTIVE )); then
+    read -r -p "Press Enter to continue with verification (Ctrl-C to abort)... " _ || true
+else
+    echo "  (non-interactive run — proceeding to verification)"
+fi
 
 # ---- Phase 3: verify -------------------------------------------------------
 echo
@@ -280,7 +297,13 @@ if (( verify_rc != 0 )) \
     echo "    The host's SSH key has changed (typical for a freshly-installed VM"
     echo "    that reuses an IP from a previous server)."
     echo
-    read -r -p "  Remove the stale entry and retry verification? [Y/n] " ans
+    if (( INTERACTIVE )); then
+        ans=""
+        read -r -p "  Remove the stale entry and retry verification? [Y/n] " ans || true
+    else
+        ans=""   # auto-Y in non-interactive: fresh-install context, safe to clean
+        echo "  (non-interactive run — auto-cleaning and retrying)"
+    fi
     if [[ ! "$ans" =~ ^[Nn]$ ]]; then
         ssh-keygen -R "[$TARGET_HOST]:$NEW_SSH_PORT" 2>&1 | sed 's/^/    /'
         ssh-keygen -R "$TARGET_HOST"                  2>&1 | sed 's/^/    /'
@@ -317,7 +340,12 @@ fi
 
 # ---- Phase 4: optionally close port 22 in local firewalld -----------------
 echo
-read -r -p "Close port 22 in the target's LOCAL firewalld now? [y/N] " close22
+close22=""
+if (( INTERACTIVE )); then
+    read -r -p "Close port 22 in the target's LOCAL firewalld now? [y/N] " close22 || true
+else
+    echo "(non-interactive run — leaving port 22 in local firewalld open; close it later)"
+fi
 if [[ "$close22" =~ ^[Yy]$ ]]; then
     echo "  Closing port 22 via $NEW_USER@$TARGET_HOST:$NEW_SSH_PORT..."
     ssh -p "$NEW_SSH_PORT" "$NEW_USER@$TARGET_HOST" \
