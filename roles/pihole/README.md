@@ -210,9 +210,13 @@ the old container is stopped, so Pi-hole keeps serving DNS while the
 new images are fetched — without this ordering, stopping Pi-hole first
 would break DNS resolution and make the pull fail.
 
-After deploy the role also writes `/etc/systemd/resolved.conf.d/pihole.conf`
-so the host points at `127.0.0.1:1053` for DNS, and wipes a stray
-bootstrap drop-in (`temp-dns.conf`) if one exists — see [#37](https://github.com/luckynrslevin/home-server/issues/37).
+After deploy the role also writes `/etc/systemd/resolved.conf.d/20-pihole.conf`
+so the host points at `127.0.0.1:1053` for DNS, and wipes:
+- the stray bootstrap drop-in (`temp-dns.conf`) if it exists — see [#37](https://github.com/luckynrslevin/home-server/issues/37)
+- the legacy unprefixed `pihole.conf` from before drop-in ordering was made explicit (#79)
+
+The `20-` prefix sorts after `os-base`'s `10-os-base-dns.conf` so on
+hosts running both roles, Pi-hole always wins for DNS routing.
 
 ## Post-install behaviour
 

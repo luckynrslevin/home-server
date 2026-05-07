@@ -1,0 +1,22 @@
+# Managed by Ansible role os-base. Edits will be overwritten.
+#
+# This is the *baseline* drop-in. On hosts running Pi-hole, the
+# pihole role drops a 20-pihole.conf alongside this file with a
+# higher-priority DNS=127.0.0.1:1053 entry that supersedes the
+# baseline below.
+
+[Resolve]
+{% if os_base_dns_over_tls and os_base_dns_hostname %}
+DNS={{ os_base_dns_servers | map('regex_replace', '^(.*)$', '\\1#' ~ os_base_dns_hostname) | join(' ') }}
+DNSOverTLS=yes
+{% else %}
+DNS={{ os_base_dns_servers | join(' ') }}
+{% if os_base_dns_over_tls %}
+DNSOverTLS=yes
+{% endif %}
+{% endif %}
+# Route every query through the global DNS above. Without this, any
+# per-link DNS NetworkManager picked up via DHCP would win for non-
+# search-domain queries — which defeats the point of pinning Mullvad.
+Domains=~.
+DNSStubListener=yes

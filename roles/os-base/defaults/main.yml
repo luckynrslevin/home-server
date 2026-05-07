@@ -1,0 +1,68 @@
+---
+# Common packages to install on every host. Override / extend in
+# host_vars to add or remove. The defaults aim for "useful CLI tools
+# any homelab host would want."
+# Swap. On small vservers (~1 GB RAM) dnf transactions and podman
+# can spike RAM and trigger the OOM-killer, taking out sshd or other
+# essential services. Ensure a swap file at `os_base_swap_file` of at
+# least `os_base_swap_size_mb` MB. Set the size to 0 to skip swap
+# management entirely (recommended for hosts with plenty of RAM where
+# you'd prefer no swap at all).
+os_base_swap_size_mb: 512
+os_base_swap_file: /swapfile
+os_base_swappiness: 10        # default 60 is too aggressive on a swap-file backend
+
+os_base_packages:
+  - bash-completion
+  - vim-enhanced
+  - tmux
+  - tree
+  - jq
+  - wget
+  - curl
+  - rsync
+  - git
+  - podman
+
+# Extra podman repo on AlmaLinux/Rocky/CentOS 9. Empty by default:
+# AL9.4+ ships podman 5.x in stock `appstream`, so no COPR needed.
+# Set to e.g. "rhcontainerbot/podman-next" only if you specifically
+# want pre-release builds — note that COPR ships 6.0.0-dev now, not
+# stable 5.x. Skipped on Fedora regardless (already has podman 5).
+os_base_podman_extra_repo: ""
+
+# Automatic security updates via dnf-automatic.
+# Number of kernels to keep installed. Default in dnf is 3 (current
+# + 2 fallbacks). Set lower on disk-tight hosts; 0 disables the cap.
+os_base_installonly_limit: 2
+
+os_base_dnf_automatic_enabled: true
+os_base_dnf_automatic_apply: security        # vs default which includes everything
+os_base_dnf_automatic_email: ""              # empty -> log to journal only
+
+# System DNS via systemd-resolved. Default: Mullvad base DNS (privacy +
+# basic ad-blocking, DoT-capable). The pihole role overrides this with
+# a higher-priority drop-in pointing at 127.0.0.1:1053 wherever Pi-hole
+# is deployed. Set to [] to skip the drop-in (host then uses whatever
+# DHCP / NetworkManager pushed).
+os_base_dns_servers:
+  - "194.242.2.4"           # base.dns.mullvad.net (IPv4)
+  - "2a07:e340::4"          # base.dns.mullvad.net (IPv6)
+os_base_dns_hostname: "base.dns.mullvad.net"   # for DoT SNI
+os_base_dns_over_tls: true                     # set false to skip DoT
+
+# Drop /etc/profile.d/zz-aliases.sh with a small set of sensible
+# defaults (ll, la, .., ls/grep colors).
+os_base_aliases_enabled: true
+
+# Timezone. Override per-host if a server lives in a different region.
+os_base_timezone: "Europe/Berlin"
+
+# Console keymap. Cosmetic on headless servers but matches the
+# bootstrap script's default for consistency.
+os_base_keymap: "de"
+
+# Hostname to set via hostnamectl. Leave unset to fall back to
+# `inventory_hostname` (most hosts). Override in host_vars when the
+# OS hostname should differ from the Ansible inventory name.
+# os_base_hostname: ""

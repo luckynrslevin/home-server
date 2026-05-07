@@ -97,17 +97,29 @@
 # all drop-ins additively — leaving this one behind adds 9.9.9.9 alongside
 # our 127.0.0.1:1053, and resolved freely round-robins between them, which
 # silently bypasses Pi-hole's blocking for whichever queries land on Quad9.
-- name: Remove bootstrap DNS drop-in (superseded by pihole.conf)
+- name: Remove bootstrap DNS drop-in (superseded by 20-pihole.conf)
   become: true
   ansible.builtin.file:
     path: /etc/systemd/resolved.conf.d/temp-dns.conf
     state: absent
   register: pihole_resolved_bootstrap_removed
 
+# Drop-in is named 20-pihole.conf so it sorts after os-base's
+# 10-os-base-dns.conf in /etc/systemd/resolved.conf.d/. systemd-resolved
+# loads drop-ins in lexical order; later wins for repeated keys. This
+# explicit ordering means a Pi-hole host always uses 127.0.0.1:1053 even
+# when os-base also writes a baseline DNS drop-in.
+- name: Remove legacy unprefixed pihole.conf drop-in
+  become: true
+  ansible.builtin.file:
+    path: /etc/systemd/resolved.conf.d/pihole.conf
+    state: absent
+  register: pihole_resolved_legacy_removed
+
 - name: Configure systemd-resolved to use Pi-hole
   become: true
   ansible.builtin.copy:
-    dest: /etc/systemd/resolved.conf.d/pihole.conf
+    dest: /etc/systemd/resolved.conf.d/20-pihole.conf
     content: |
       [Resolve]
       DNS=127.0.0.1:1053
@@ -120,7 +132,10 @@
   ansible.builtin.systemd_service:
     name: systemd-resolved
     state: restarted
-  when: pihole_resolved_config.changed or pihole_resolved_bootstrap_removed.changed
+  when: >-
+    pihole_resolved_config.changed
+    or pihole_resolved_bootstrap_removed.changed
+    or pihole_resolved_legacy_removed.changed
 
 # Even after restart, clients that previously queried a given name may see
 # stale answers until their own DNS caches expire. Flushing resolved's
@@ -130,7 +145,10 @@
   become: true
   ansible.builtin.command: resolvectl flush-caches
   changed_when: false
-  when: pihole_resolved_config.changed or pihole_resolved_bootstrap_removed.changed
+  when: >-
+    pihole_resolved_config.changed
+    or pihole_resolved_bootstrap_removed.changed
+    or pihole_resolved_legacy_removed.changed
 
 - name: Run post-install configuration
   ansible.builtin.import_tasks: postinstall.yml
