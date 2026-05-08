@@ -1,0 +1,20 @@
+---
+# Apply only the os-tailscale role.
+#
+# Useful for:
+#   - Onboarding a host onto the tailnet without re-running every
+#     other role (e.g. when adding Tailscale to a host that's
+#     already up and serving).
+#   - Drift-correcting Tailscale runtime settings (advertised
+#     routes, exit-node mode, accept-dns, ssh) — `tailscale set`
+#     fires on every apply.
+#
+# Targets every host by default. Use --limit to scope:
+#
+#   ansible-playbook -i inventory/hosts.yml playbooks/os-tailscale.yml --limit dnsvserver
+- name: Apply os-tailscale role
+  hosts: all
+  become: false
+  gather_facts: true
+  roles:
+    - { role: os-tailscale }
