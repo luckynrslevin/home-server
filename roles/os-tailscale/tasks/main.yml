@@ -1,0 +1,139 @@
+---
+# os-tailscale — install Tailscale and join the tailnet. Idempotent:
+# on re-runs, only `tailscale set` flags drift through, so changes to
+# advertised routes / exit-node / accept-dns are picked up without
+# disconnecting the host.
+
+# ---------------------------------------------------------------- 1
+# Pick the right tailscale repo for the distro. Tailscale publishes
+# RPMs for Fedora and the RHEL-9 family at the same hostname, with
+# distinct paths.
+- name: Decide tailscale repo URL
+  ansible.builtin.set_fact:
+    os_tailscale_repo_url: >-
+      {%- if ansible_distribution == 'Fedora' -%}
+      https://pkgs.tailscale.com/stable/fedora/tailscale.repo
+      {%- elif ansible_distribution in ['AlmaLinux', 'Rocky', 'CentOS', 'RedHat']
+              and ansible_distribution_major_version == '9' -%}
+      https://pkgs.tailscale.com/stable/rhel/9/tailscale.repo
+      {%- else -%}
+      {%- endif -%}
+
+- name: Fail when distro is not supported
+  ansible.builtin.fail:
+    msg: >-
+      os-tailscale supports Fedora and RHEL-9-family hosts only.
+      Got {{ ansible_distribution }} {{ ansible_distribution_major_version }}.
+  when: os_tailscale_repo_url | length == 0
+
+- name: Ensure dnf-plugins-core (provides `dnf config-manager`)
+  become: true
+  ansible.builtin.dnf:
+    name: dnf-plugins-core
+    state: present
+
+- name: Add tailscale repo
+  become: true
+  ansible.builtin.command:
+    cmd: "dnf -y config-manager addrepo --from-repofile={{ os_tailscale_repo_url }}"
+    creates: /etc/yum.repos.d/tailscale.repo
+
+# ---------------------------------------------------------------- 2
+- name: Install tailscale
+  become: true
+  ansible.builtin.dnf:
+    name: tailscale
+    state: present
+
+- name: Enable and start tailscaled
+  become: true
+  ansible.builtin.systemd_service:
+    name: tailscaled
+    enabled: true
+    state: started
+
+# ---------------------------------------------------------------- 3
+# Detect login state. `tailscale status --json` returns BackendState
+# "Running" when authenticated, "NeedsLogin" or "Stopped" otherwise.
+- name: Read current tailscale state
+  become: true
+  ansible.builtin.command:
+    cmd: tailscale status --json
+  register: os_tailscale_status_raw
+  changed_when: false
+  failed_when: false
+
+- name: Parse tailscale state
+  ansible.builtin.set_fact:
+    os_tailscale_backend_state: >-
+      {{ (os_tailscale_status_raw.stdout | from_json).BackendState
+         if os_tailscale_status_raw.rc == 0 else 'Unknown' }}
+
+- name: Decide whether to perform initial `tailscale up`
+  ansible.builtin.set_fact:
+    os_tailscale_needs_up: >-
+      {{ os_tailscale_backend_state in ['NeedsLogin', 'Stopped', 'NoState', 'Unknown'] }}
+
+# ---------------------------------------------------------------- 4
+# Initial login. Requires an auth key from vault. Without one, the
+# role stops short and prints instructions for interactive login.
+- name: Warn when login is required but no auth key is set
+  ansible.builtin.debug:
+    msg: >-
+      Tailscale is not logged in on {{ inventory_hostname }} and
+      `os_tailscale_auth_key` is empty. Complete login manually:
+        ssh {{ inventory_hostname }} sudo tailscale up
+      then re-run this role to apply route / DNS / tag settings.
+  when:
+    - os_tailscale_needs_up
+    - os_tailscale_auth_key | length == 0
+
+- name: Run `tailscale up` (initial login with auth key)
+  become: true
+  ansible.builtin.command:
+    cmd: >-
+      tailscale up
+      --auth-key={{ os_tailscale_auth_key }}
+      --hostname={{ os_tailscale_hostname }}
+      {% if os_tailscale_advertise_routes | length > 0 %}
+      --advertise-routes={{ os_tailscale_advertise_routes | join(',') }}
+      {% endif %}
+      {% if os_tailscale_tags | length > 0 %}
+      --advertise-tags={{ os_tailscale_tags | join(',') }}
+      {% endif %}
+      {% if os_tailscale_advertise_exit_node %}
+      --advertise-exit-node
+      {% endif %}
+      --accept-dns={{ 'true' if os_tailscale_accept_dns else 'false' }}
+      --accept-routes={{ 'true' if os_tailscale_accept_routes else 'false' }}
+      --ssh={{ 'true' if os_tailscale_ssh else 'false' }}
+  no_log: true                       # keep the auth key out of logs
+  changed_when: true
+  when:
+    - os_tailscale_needs_up
+    - os_tailscale_auth_key | length > 0
+
+# ---------------------------------------------------------------- 5
+# Drift correction on subsequent runs. `tailscale set` adjusts the
+# running daemon without re-authenticating. Tags can't be changed via
+# `set` — they need `up --reset`, which we leave manual.
+- name: Apply runtime settings via `tailscale set`
+  become: true
+  ansible.builtin.command:
+    cmd: >-
+      tailscale set
+      {% if os_tailscale_advertise_routes | length > 0 %}
+      --advertise-routes={{ os_tailscale_advertise_routes | join(',') }}
+      {% else %}
+      --advertise-routes=
+      {% endif %}
+      {% if os_tailscale_advertise_exit_node %}
+      --advertise-exit-node=true
+      {% else %}
+      --advertise-exit-node=false
+      {% endif %}
+      --accept-dns={{ 'true' if os_tailscale_accept_dns else 'false' }}
+      --accept-routes={{ 'true' if os_tailscale_accept_routes else 'false' }}
+      --ssh={{ 'true' if os_tailscale_ssh else 'false' }}
+  changed_when: false                # `tailscale set` is idempotent server-side
+  when: not os_tailscale_needs_up
