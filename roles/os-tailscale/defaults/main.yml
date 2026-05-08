@@ -1,0 +1,43 @@
+---
+# Authentication key for unattended `tailscale up`. When set (typically
+# from vault), the role will run `tailscale up --auth-key=...` once if
+# the host isn't already logged in. When empty, complete login
+# interactively after the role applies:
+#
+#   ssh <host> sudo tailscale up
+#
+# (the command prints a URL to authenticate from any browser).
+os_tailscale_auth_key: ""
+
+# Hostname this node advertises inside the tailnet. Defaults to the
+# inventory hostname; override only if you want a different label
+# in the admin console.
+os_tailscale_hostname: "{{ inventory_hostname }}"
+
+# Subnet routes this node advertises. Empty list = node-only mode.
+# Example for a home-LAN router: ["192.168.1.0/24"]. Routes also need
+# to be approved manually in the Tailscale admin console after the
+# first connect.
+os_tailscale_advertise_routes: []
+
+# Tags applied to the node, e.g. ["tag:server"]. Tags must be
+# pre-declared in the tailnet ACL. Empty = untagged. Tags are only
+# applied at first `tailscale up`; changing them later requires
+# `tailscale up --reset` (potentially disruptive — do it manually).
+os_tailscale_tags: []
+
+# Advertise this node as an exit node. Off by default.
+os_tailscale_advertise_exit_node: false
+
+# Accept the tailnet's MagicDNS / global DNS push. Default: yes — lets
+# the admin-console DNS config propagate to this node so e.g. an
+# eddie-hosted Pi-hole becomes the tailnet resolver.
+os_tailscale_accept_dns: true
+
+# Accept routes advertised by other tailnet nodes. Default: yes —
+# required for nodes that want to reach subnet-routed LANs.
+os_tailscale_accept_routes: true
+
+# SSH-via-Tailscale (Tailscale SSH). Off by default — opt in per host
+# if you want to drop authorized_keys management for this node.
+os_tailscale_ssh: false

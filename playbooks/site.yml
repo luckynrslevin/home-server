@@ -40,6 +40,10 @@
 
   roles:
     - { role: os-base }
+    - role: os-tailscale
+      when: >-
+        (os_tailscale_auth_key | default('') | length > 0)
+        or ('os-tailscale' in (deploy_services | default([])))
     - { role: caddy }
     - { role: dashboard,     when: "'dashboard' in (deploy_services | default([]))" }
     - { role: pihole,        when: "'pihole' in (deploy_services | default([]))" }
