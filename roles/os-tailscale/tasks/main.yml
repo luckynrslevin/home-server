@@ -26,17 +26,14 @@
       Got {{ ansible_distribution }} {{ ansible_distribution_major_version }}.
   when: os_tailscale_repo_url | length == 0
 
-- name: Ensure dnf-plugins-core (provides `dnf config-manager`)
-  become: true
-  ansible.builtin.dnf:
-    name: dnf-plugins-core
-    state: present
-
 - name: Add tailscale repo
   become: true
-  ansible.builtin.command:
-    cmd: "dnf -y config-manager addrepo --from-repofile={{ os_tailscale_repo_url }}"
-    creates: /etc/yum.repos.d/tailscale.repo
+  ansible.builtin.get_url:
+    url: "{{ os_tailscale_repo_url }}"
+    dest: /etc/yum.repos.d/tailscale.repo
+    owner: root
+    group: root
+    mode: "0644"
 
 # ---------------------------------------------------------------- 2
 - name: Install tailscale
