@@ -49,7 +49,7 @@ See `defaults/main.yml`. Common knobs:
 | `os_tailscale_advertise_routes` | `[]` | List of CIDRs to advertise as subnet routes (e.g. `["192.168.1.0/24"]`). Routes also need approval in the admin console. |
 | `os_tailscale_tags` | `[]` | Tags to apply at first login, e.g. `["tag:server"]`. Must be pre-declared in the tailnet ACL. |
 | `os_tailscale_advertise_exit_node` | `false` | Set true to offer this node as an exit node. |
-| `os_tailscale_accept_dns` | `true` | Accept the tailnet's DNS push (MagicDNS, override resolvers). Lets eddie-hosted Pi-hole serve the whole tailnet when configured in admin DNS settings. |
+| `os_tailscale_accept_dns` | `true` | Accept the tailnet's DNS push (MagicDNS, override resolvers). Lets homeserver-hosted Pi-hole serve the whole tailnet when configured in admin DNS settings. |
 | `os_tailscale_accept_routes` | `true` | Accept routes advertised by other nodes. Required if you want to reach LANs subnet-routed through other tailnet nodes. |
 | `os_tailscale_ssh` | `false` | Enable Tailscale-mediated SSH (replaces public-key auth with tailnet identity). Off by default — opt in per host. |
 
@@ -72,9 +72,9 @@ See `defaults/main.yml`. Common knobs:
    default role list once added) or with a one-off:
    ```bash
    ansible-playbook -i ../home-server-private/inventory/hosts.yml \
-     playbooks/site.yml --limit eddie --tags os-tailscale
+     playbooks/site.yml --limit homeserver --tags os-tailscale
    ```
-5. **Approve routes** in the admin console under Machines → eddie →
+5. **Approve routes** in the admin console under Machines → homeserver →
    Edit route settings (subnet routes don't enable themselves).
 
 ## Manual login (no auth key)
@@ -83,7 +83,7 @@ If you'd rather not put an auth key in vault, leave the variable
 empty and complete login interactively after the role applies:
 
 ```bash
-ssh eddie sudo tailscale up
+ssh homeserver sudo tailscale up
 ```
 
 The command prints a `https://login.tailscale.com/a/...` URL — open
@@ -93,25 +93,25 @@ Re-run the role afterwards to push the runtime settings.
 ## Verification
 
 ```bash
-ssh eddie tailscale status      # node listed, status "active"
-ssh eddie tailscale ip          # prints the 100.x.y.z IP
+ssh homeserver tailscale status      # node listed, status "active"
+ssh homeserver tailscale ip          # prints the 100.x.y.z IP
 # from any other tailnet device:
-tailscale ping eddie            # round-trip succeeds
-ssh user@eddie                  # if --ssh enabled, no password prompt
+tailscale ping homeserver            # round-trip succeeds
+ssh user@homeserver                  # if --ssh enabled, no password prompt
 ```
 
 If Tailscale's MagicDNS is enabled in the admin console, the node is
-also reachable as `eddie.<your-tailnet>.ts.net` from every tailnet
+also reachable as `homeserver.<your-tailnet>.ts.net` from every tailnet
 device.
 
 ## Common follow-ups
 
-- **Use eddie's Pi-hole as the tailnet resolver** — admin console →
-  DNS → add eddie's Tailscale IP → "Override local DNS." Now
-  `*.eddie.lan` resolves on every tailnet device, anywhere.
+- **Use homeserver's Pi-hole as the tailnet resolver** — admin console →
+  DNS → add homeserver's Tailscale IP → "Override local DNS." Now
+  `*.homeserver.lan` resolves on every tailnet device, anywhere.
 - **Subnet routing for the home LAN** — set
   `os_tailscale_advertise_routes: ["192.168.1.0/24"]`, run the
   role, approve in admin console. Mac/iPhone via Tailscale can
   then reach `192.168.1.x` directly.
-- **Replace `caddy_domain: eddie.lan` with a real public name** —
+- **Replace `caddy_domain: homeserver.lan` with a real public name** —
   not required, just an option once tailnet covers all clients.

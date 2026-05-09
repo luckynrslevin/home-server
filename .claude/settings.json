@@ -30,6 +30,7 @@
       "Bash(stat *)",
       "Bash(ping *)",
       "Bash(scp *)",
+      "Bash(ssh homeserver *)",
       "Bash(ssh eddie *)",
       "Bash(ssh ans-test *)",
       "Bash(ssh -i ~/.ssh/ds ds@192.168.65.2 *)",

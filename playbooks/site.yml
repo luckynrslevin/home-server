@@ -34,7 +34,7 @@
           - caddy_domain is defined
           - caddy_domain | length > 0
         fail_msg: >-
-          caddy_domain must be set in host_vars (e.g. 'eddie.lan').
+          caddy_domain must be set in host_vars (e.g. 'homeserver.lan').
           Without it, Caddy serves no reverse-proxy routes and every
           web UI becomes unreachable.
 

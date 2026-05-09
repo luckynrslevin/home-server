@@ -149,7 +149,7 @@ silent deployment of an unreachable endpoint.
 | Setting | Value |
 |---------|-------|
 | Protocol | SFTP |
-| Host | your paperless host (e.g. `paperless.eddie.lan` or the IP) |
+| Host | your paperless host (e.g. `paperless.homeserver.lan` or the IP) |
 | Port | `2222` (default `paperless_sftp_port`) |
 | User | `paperless-scanner` |
 | Authentication | SSH public key (password auth is disabled) |

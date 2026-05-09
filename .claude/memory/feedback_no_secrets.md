@@ -4,7 +4,7 @@ description: CRITICAL — never push credentials, passwords, keys, OR host-speci
 type: feedback
 ---
 
-NEVER push to the public `home-server` repo: (a) any security-relevant information — passwords, API keys, tokens, private keys, vault passwords — OR (b) any host-specific identifiers — real hostnames (e.g. `ds9`, `eddie`), LAN IPs (e.g. `192.168.1.184`), real URLs, NAS volume paths, etc.
+NEVER push to the public `home-server` repo: (a) any security-relevant information — passwords, API keys, tokens, private keys, vault passwords — OR (b) any host-specific identifiers — real LAN IPs (e.g. `192.168.1.184`), real public domain names, real URLs, NAS volume paths, real Wi-Fi SSIDs, etc. Generic, role-shaped names that double as Ansible inventory keys (`homeserver`, `dnsvserver`, `nas`) are intentional placeholders and are *not* considered identifying — they describe a role, not a specific deployment.
 
 **Why:** The repo is public on GitHub. Credentials in version control are a direct security risk; host-specific values leak LAN topology and break the repo's reusability for other users cloning it. The repo has a private overlay at `home-server-private/` containing `inventory/host_vars/homeserver.yml` and `roles/dashboard/files/dashboard-config.yaml` for exactly this purpose.
 
@@ -21,4 +21,4 @@ Before writing or committing any file in the public repo, scan for:
 
 When auditing at commit time, grep the staged diff for literal strings that look like LAN IPs (`192.168.`, `10.`, `172.16.`) and for any hostname you've seen in conversation. A clean public repo should grep-match zero of them.
 
-**Known pre-existing exception:** `.claude/strategy.md` mentions the hostname `eddie` from the initial commit. Don't touch without user direction — it's a strategy doc the user wrote intentionally.
+(Historical note: an earlier version of this rule called out `eddie` as a real hostname leaked in `.claude/strategy.md`. The 2026-05-09 rename collapsed `eddie` → `homeserver` everywhere in the public repo, removing that exception.)
