@@ -40,6 +40,10 @@ Pi-hole is mirrored on GHCR to sidestep Docker Hub's anonymous-pull rate limit. 
 | `pihole_adlists`           | one Turtlecute list                  | **Extra** lists. StevenBlack is auto-added by Pi-hole on first run.    |
 | `pihole_local_dns_records` | `[]`                                 | Custom A records (`{ip, hostname}` dicts) written to `pihole.toml`.    |
 
+> Pin every IP listed in `pihole_local_dns_records` via a router
+> DHCP reservation. Lease drift will silently leave Pi-hole
+> answering with stale IPs.
+
 ## Secrets
 
 | Variable              | Purpose                              |

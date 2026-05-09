@@ -140,6 +140,33 @@ The guiding principle is **rebuild over repair**: if the system drifts, it shoul
 
 ## Getting Started
 
+### Network prerequisites
+
+Several roles assume specific LAN IPs are stable: `backup_nas_ip`
+pins the NAS IP into `/etc/hosts`, `pihole_local_dns_records` map
+hostnames to per-host IPs, and any service the dashboard links to
+sits at the home-server's address. None of this survives DHCP lease
+drift.
+
+**Pin each device's IP via a router-side DHCP reservation** (admin
+UI → DHCP → "Address reservation" / "Static lease" — exact menu
+varies by vendor). Bind each device's MAC to the IP it currently
+holds. Two devices need this:
+
+- **The home server** — IP referenced as `caddy_domain`'s
+  resolution target and as the host every Caddy reverse-proxy
+  hostname points at.
+- **The NAS** (if you back up to one) — IP referenced as
+  `backup_nas_ip` in the backup role.
+
+The host stays on DHCP; the router always answers with the same
+address. Single source of truth, survives NIC swaps. If you'd
+rather not use your router for this, Pi-hole can also act as the
+DHCP server; the project doesn't require it either way.
+
+Without reservations, lease drift will eventually break backups,
+Pi-hole local DNS, and any service that hardcodes a LAN IP.
+
 ### Repository structure
 
 This repo is designed to be used alongside a **private overlay** that holds
