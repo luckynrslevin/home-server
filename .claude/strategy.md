@@ -46,7 +46,7 @@ See also:
 
 ## What's done
 
-### Service roles deployed on eddie (homeserver)
+### Service roles deployed on homeserver (homeserver)
 
 - shairport-sync (rootful — rootless broke mDNS, documented why)
 - pi-hole (rootless, port forwarding 53 → 1053)
@@ -86,7 +86,7 @@ Unique features vs. `linux-system-roles/podman`:
 ## Backlog — roadmap
 
 Prioritized by a mix of **personal value** (does the user need this for
-eddie?) and **uniqueness** (is this a genuine gap competitors lack?).
+homeserver?) and **uniqueness** (is this a genuine gap competitors lack?).
 
 ### Tier 1 — Cross-cutting tooling (highest leverage)
 
@@ -153,7 +153,7 @@ small — mostly figuring out the right quadlet template and config.
 
 - Reverse proxy role (Traefik or Caddy) — currently each service exposes
   its own port; a proxy would consolidate to 80/443 and enable HTTPS
-  via Let's Encrypt. High personal value if eddie gets accessed remotely.
+  via Let's Encrypt. High personal value if homeserver gets accessed remotely.
 - A way to generate vault secrets automatically on first deploy (currently
   manual `openssl rand` + `ansible-vault encrypt_string`). Could be a
   helper playbook.
@@ -176,7 +176,7 @@ Items needing a call before implementation:
   playbook, or manual / on-demand only?
 - **Retention**: how many historical backups to keep?
 - **Vault file backup**: where does `inventory/host_vars/homeserver.yml`
-  go? Can't be on eddie (chicken-and-egg for rebuild). Options:
+  go? Can't be on homeserver (chicken-and-egg for rebuild). Options:
   another machine, encrypted off-site storage, printed paper?
 
 ### Removal tooling design

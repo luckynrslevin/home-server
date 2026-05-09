@@ -20,7 +20,7 @@ empty value will cause `playbooks/site.yml` to fail fast.
 |---------------------------------|---------|---------|
 | `caddy_listen_port`             | `9080`  | Internal HTTP port. Firewall forwards `80 → caddy_listen_port`. |
 | `caddy_listen_port_https`       | `9443`  | Internal HTTPS port. Firewall forwards `443 → caddy_listen_port_https` (only when `caddy_domain` is set). |
-| `caddy_domain`                  | `""`    | Server domain (e.g. `eddie.lan`). Enables reverse proxy + HTTPS. Empty = simple dashboard mode. |
+| `caddy_domain`                  | `""`    | Server domain (e.g. `homeserver.lan`). Enables reverse proxy + HTTPS. Empty = simple dashboard mode. |
 | `caddy_reverse_proxy_services`  | `[]`    | List of `{subdomain, port, proto?}` dicts — one per proxied service. |
 | `caddy_seed_internal_ca`        | `false` | Stage the internal ACME CA (root + intermediate cert/key) from the private overlay on deploy. See [Internal CA persistence](#internal-ca-persistence). |
 
@@ -28,7 +28,7 @@ empty value will cause `playbooks/site.yml` to fail fast.
 
 ```yaml
 # In host_vars:
-caddy_domain: "eddie.lan"
+caddy_domain: "homeserver.lan"
 caddy_reverse_proxy_services:
   - { subdomain: pihole, port: 8443, proto: https }
   - { subdomain: syncthing, port: 8384, proto: https }
@@ -38,10 +38,10 @@ caddy_reverse_proxy_services:
 ```
 
 This creates:
-- `https://eddie.lan` → dashboard
-- `https://pihole.eddie.lan` → Pi-hole admin (proxied from HTTPS upstream)
-- `https://syncthing.eddie.lan` → Syncthing
-- `https://jukebox.eddie.lan` → Jukebox
+- `https://homeserver.lan` → dashboard
+- `https://pihole.homeserver.lan` → Pi-hole admin (proxied from HTTPS upstream)
+- `https://syncthing.homeserver.lan` → Syncthing
+- `https://jukebox.homeserver.lan` → Jukebox
 - etc.
 
 ### DNS records
@@ -51,9 +51,9 @@ them to Pi-hole via `pihole_local_dns_records` in host_vars:
 
 ```yaml
 pihole_local_dns_records:
-  - { ip: "192.168.1.231", hostname: "eddie.lan" }
-  - { ip: "192.168.1.231", hostname: "pihole.eddie.lan" }
-  - { ip: "192.168.1.231", hostname: "syncthing.eddie.lan" }
+  - { ip: "192.168.1.231", hostname: "homeserver.lan" }
+  - { ip: "192.168.1.231", hostname: "pihole.homeserver.lan" }
+  - { ip: "192.168.1.231", hostname: "syncthing.homeserver.lan" }
   # ... etc
 ```
 

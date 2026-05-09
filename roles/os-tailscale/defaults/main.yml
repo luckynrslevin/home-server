@@ -31,7 +31,7 @@ os_tailscale_advertise_exit_node: false
 
 # Accept the tailnet's MagicDNS / global DNS push. Default: yes — lets
 # the admin-console DNS config propagate to this node so e.g. an
-# eddie-hosted Pi-hole becomes the tailnet resolver.
+# the homeserver-hosted Pi-hole becomes the tailnet resolver.
 os_tailscale_accept_dns: true
 
 # Accept routes advertised by other tailnet nodes. Default: yes —
