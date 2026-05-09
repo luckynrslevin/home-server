@@ -58,7 +58,7 @@ jellyfin_extra_media_mounts: []
 #
 # Example (in host_vars):
 #   jellyfin_nas_mounts:
-#     - { src: "ds9:/volume1/video", path: /srv/jellyfin-video,
+#     - { src: "nas:/volume1/video", path: /srv/jellyfin-video,
 #         opts: "ro,noatime,vers=4,_netdev" }
 jellyfin_nas_mounts: []
 
