@@ -135,11 +135,26 @@
   when: os_base_installonly_limit | int > 0
 
 # dnf-automatic — apply only security updates by default. Persistent
-# across reboots via the systemd timer.
+# across reboots via the systemd timer. Fedora 41+ ships dnf5 which
+# packages it as `dnf5-plugin-automatic` and exposes a single timer
+# `dnf5-automatic.timer` (the .install variant from dnf4 is gone —
+# behavior is driven entirely by /etc/dnf/automatic.conf). RHEL 9
+# family stays on dnf4 with the classic split.
+- name: Pick dnf-automatic package + timer for this distro
+  ansible.builtin.set_fact:
+    os_base_dnf_automatic_pkg: >-
+      {{ 'dnf5-plugin-automatic' if (ansible_distribution == 'Fedora'
+         and ansible_distribution_major_version | int >= 41)
+         else 'dnf-automatic' }}
+    os_base_dnf_automatic_timer: >-
+      {{ 'dnf5-automatic.timer' if (ansible_distribution == 'Fedora'
+         and ansible_distribution_major_version | int >= 41)
+         else 'dnf-automatic-install.timer' }}
+
 - name: Install dnf-automatic
   become: true
   ansible.builtin.dnf:
-    name: dnf-automatic
+    name: "{{ os_base_dnf_automatic_pkg }}"
     state: present
   when: os_base_dnf_automatic_enabled
 
@@ -152,12 +167,12 @@
     group: root
     mode: "0644"
   when: os_base_dnf_automatic_enabled
-  notify: Restart dnf-automatic-install timer
+  notify: Restart dnf-automatic timer
 
-- name: Enable and start dnf-automatic-install.timer
+- name: Enable and start the dnf-automatic timer
   become: true
   ansible.builtin.systemd_service:
-    name: dnf-automatic-install.timer
+    name: "{{ os_base_dnf_automatic_timer }}"
     enabled: true
     state: started
   when: os_base_dnf_automatic_enabled
