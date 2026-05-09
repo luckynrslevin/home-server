@@ -24,6 +24,10 @@ rootless container volumes via `podman unshare`.
 
 Override all NAS variables per-host in inventory.
 
+> **`backup_nas_ip` must be a reserved address** — pin it on your
+> router (DHCP reservation by MAC). Lease drift will silently
+> break the NFS mount and abort the backup at the first volume.
+
 ## Secrets
 
 None.
