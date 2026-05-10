@@ -4,9 +4,17 @@
 # pull rate limit (unlike Docker Hub).
 music_assistant_server_image: "ghcr.io/music-assistant/server:latest"
 
-# Squeezelite player image — same as the jukebox role uses for LMS.
-# Music Assistant has a built-in SlimProto server, so this player
-# connects to MA over the pod-local network.
+# Whether to deploy the local Squeezelite player container alongside
+# the MA server. Squeezelite needs a real ALSA device on the host
+# (USB DAC, on-board audio, …); on a headless box without any sound
+# card the container starts and exits immediately ("no soundcards
+# found"). Set to false on hosts that should only run the MA server
+# and drive *external* players (AirPlay / Cast / UPnP / other
+# Squeezelite devices on the LAN).
+music_assistant_player_enabled: true
+
+# Squeezelite player image. Music Assistant has a built-in SlimProto
+# server, so this player connects to MA over the pod-local network.
 music_assistant_player_image: "docker.io/giof71/squeezelite"
 
 # Squeezelite preset selecting the audio output device. The
