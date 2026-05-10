@@ -2,76 +2,79 @@
 # ============================================================================
 # Open a path for Ansible to reach a fresh RHEL-family host.
 #
+# Run this *on the target* (you've already SSH'd or console'd in). The
+# script applies a minimal hardening payload locally so that Ansible can
+# take over from your laptop afterwards. There is no remote SSH layer.
+#
 # Supported targets: RHEL 8/9, AlmaLinux 8/9, Rocky 8/9, CentOS Stream 8/9,
-# Oracle Linux 8/9, and Fedora (upstream of the family). The script
-# checks `/etc/os-release` on the target and bails out on anything
-# else (Debian/Ubuntu/Arch/etc).
+# Oracle Linux 8/9, and Fedora. The script checks `/etc/os-release` and
+# bails on anything else (Debian/Ubuntu/Arch/etc).
 #
-# Run this from the Ansible control machine. The script SSHs to the target
-# as root on port 22, hardens sshd, creates an `ansible` user with sudo,
-# installs your SSH key, then verifies the new connection. Everything else
-# (packages, hostname, services) is the Ansible playbook's job from there.
+# Two invocation modes, decided by who runs the script:
 #
-# Prerequisites on the target:
-#   - Fresh OS install with sshd listening on port 22
-#   - Root login enabled (password or key — the script handles both)
-#   - python3 in /usr/bin (default on AlmaLinux 9; the script installs it
-#     if missing)
+#   - Running as root (e.g. you SSH'd in with the root password) →
+#     create a new sudo user (default name: ansible) and install the
+#     SSH key for that user. You should not keep using root long-term.
 #
-# Prerequisites on this machine:
-#   - bash, ssh
+#   - Running via sudo as a non-root user (e.g. cloud-init gave you
+#     `fedora` / `almalinux` / `opc` with NOPASSWD sudo) → use that
+#     user as the ansible user. The SSH key is appended to that user's
+#     authorized_keys and a NOPASSWD sudoers drop-in is written to
+#     make the privilege grant permanent. No new user is created.
+#
+# Either way the script then:
+#   - opens the new SSH port in firewalld and labels it ssh_port_t
+#   - writes /etc/ssh/sshd_config.d/99-bootstrap.conf to move sshd to
+#     the new port and disable root login + password auth
+#   - leaves port 22 open in local firewalld as a fallback (close it
+#     yourself once you've verified the new port works)
 #
 # Usage:
-#   bash scripts/bootstrap-host.sh -H <host> -k <ssh-pubkey> \
-#        [-u <user>] [-p <port>]
+#   sudo bash scripts/bootstrap-host.sh -k <ssh-pubkey> [-u <user>] [-p <port>]
 #
-# Examples:
-#   bash bootstrap-host.sh -H 1.2.3.4 -k "$(cat ~/.ssh/id_ed25519.pub)"
-#   bash bootstrap-host.sh -H new.example.com -k "$(cat key.pub)" -p 2200
+# Or directly via curl on the target:
+#   curl -fsSL https://raw.githubusercontent.com/luckynrslevin/home-server/refs/heads/main/scripts/bootstrap-host.sh \
+#     | sudo bash -s -- -k "$(cat ~/.ssh/id_ed25519.pub)"
 #
-# Flow:
-#   Phase 1: ssh root@<host>:22 → run the six-step hardening payload
-#            (ensure prereqs, create user+sudoers, install key, open port
-#            in firewalld+SELinux, write sshd drop-in, restart sshd).
-#   Phase 2: local prompt — update any EXTERNAL firewall (cloud security
-#            group, edge router, ...) — open new port, close 22 — Enter.
-#   Phase 3: ssh -p <new-port> <user>@<host> → verify.
-#   Phase 4: optional — close port 22 in the target's local firewalld.
+# After it finishes, verify from your laptop:
+#   ssh -p <port> <user>@<this-host>
 # ============================================================================
 
 set -euo pipefail
 
 # ---- Defaults --------------------------------------------------------------
-TARGET_HOST=""
 SSH_PUBKEY=""
-NEW_USER="ansible"
+NEW_USER_OVERRIDE=""    # set if -u was explicitly passed; empty otherwise
+NEW_USER_DEFAULT="ansible"
 NEW_SSH_PORT=2222
 
 usage() {
     cat <<'EOF'
-Usage: bootstrap-host.sh -H <host> -k <ssh-pubkey> [-u <user>] [-p <port>]
+Usage: bootstrap-host.sh -k <ssh-pubkey> [-u <user>] [-p <port>]
+
+Run this on the target host, as root or via sudo.
 
 Required:
-  -H <host>      Target hostname or IP
-  -k <pubkey>    SSH public key (string) to install for the new user
+  -k <pubkey>    SSH public key (string) to install for the ansible user
 
 Optional:
-  -u <user>      Linux username to create  (default: ansible)
+  -u <user>      Username to create (root-mode only; default: ansible).
+                 Ignored when invoked via sudo by a non-root user — that
+                 user is used as the ansible user instead.
   -p <port>      SSH port to harden onto   (default: 2222)
   -h             Show this help and exit
 
 Examples:
-  bash bootstrap-host.sh -H 1.2.3.4 -k "$(cat ~/.ssh/id_ed25519.pub)"
-  bash bootstrap-host.sh -H new.example.com -k "$(cat key.pub)" -p 2200
+  sudo bash bootstrap-host.sh -k "$(cat ~/.ssh/id_ed25519.pub)"
+  sudo bash bootstrap-host.sh -k "$(cat key.pub)" -p 2200
 EOF
 }
 
 # ---- Args ------------------------------------------------------------------
-while getopts ":H:k:u:p:h" opt; do
+while getopts ":k:u:p:h" opt; do
     case "$opt" in
-        H) TARGET_HOST="$OPTARG" ;;
         k) SSH_PUBKEY="$OPTARG" ;;
-        u) NEW_USER="$OPTARG" ;;
+        u) NEW_USER_OVERRIDE="$OPTARG" ;;
         p) NEW_SSH_PORT="$OPTARG" ;;
         h) usage; exit 0 ;;
         \?) echo "Error: invalid option -$OPTARG" >&2; usage >&2; exit 1 ;;
@@ -84,11 +87,11 @@ shift $((OPTIND - 1))
 }
 
 # ---- Validation ------------------------------------------------------------
-[[ -z "$TARGET_HOST" ]] && { echo "Error: -H <host> is required." >&2; usage >&2; exit 1; }
-[[ -z "$SSH_PUBKEY"  ]] && { echo "Error: -k <ssh-pubkey> is required." >&2; usage >&2; exit 1; }
+[[ -z "$SSH_PUBKEY" ]] && { echo "Error: -k <ssh-pubkey> is required." >&2; usage >&2; exit 1; }
 
-if ! [[ "$NEW_USER" =~ ^[a-z_][a-z0-9_-]{0,31}$ ]]; then
-    echo "Error: invalid username '$NEW_USER' (must match ^[a-z_][a-z0-9_-]{0,31}\$)." >&2
+USERNAME_RE='^[a-z_][a-z0-9_-]{0,31}$'
+if [[ -n "$NEW_USER_OVERRIDE" ]] && ! [[ "$NEW_USER_OVERRIDE" =~ $USERNAME_RE ]]; then
+    echo "Error: invalid username '$NEW_USER_OVERRIDE' (must match $USERNAME_RE)." >&2
     exit 1
 fi
 if ! [[ "$NEW_SSH_PORT" =~ ^[0-9]+$ ]] || (( NEW_SSH_PORT < 1 || NEW_SSH_PORT > 65535 )); then
@@ -100,36 +103,46 @@ if ! [[ "$SSH_PUBKEY" =~ ^(ssh-(rsa|ed25519|ecdsa-sha2-nistp[0-9]+)|sk-(ssh-ed25
     exit 1
 fi
 
+# ---- Privilege + mode detection -------------------------------------------
+# Must be root. The two modes differ on whether sudo brought us here:
+#   - $SUDO_USER unset (or 'root')   → mode=root, create a new user
+#   - $SUDO_USER set to a non-root   → mode=sudo, that user is the target
+if (( EUID != 0 )); then
+    echo "Error: must run as root. Re-run with sudo, e.g.:" >&2
+    echo "  sudo bash $0 $*" >&2
+    exit 1
+fi
+
+if [[ -n "${SUDO_USER:-}" && "$SUDO_USER" != "root" ]]; then
+    MODE="sudo"
+    TARGET_USER="$SUDO_USER"
+    if [[ -n "$NEW_USER_OVERRIDE" && "$NEW_USER_OVERRIDE" != "$TARGET_USER" ]]; then
+        echo "Warning: -u '$NEW_USER_OVERRIDE' ignored — using invoking sudo user '$TARGET_USER' as the ansible user." >&2
+    fi
+else
+    MODE="root"
+    TARGET_USER="${NEW_USER_OVERRIDE:-$NEW_USER_DEFAULT}"
+fi
+
+if ! [[ "$TARGET_USER" =~ $USERNAME_RE ]]; then
+    echo "Error: target username '$TARGET_USER' is invalid (must match $USERNAME_RE)." >&2
+    exit 1
+fi
+
 echo "=================================================================="
-echo " Open Ansible path on a fresh host"
-echo "   target:         root@$TARGET_HOST:22"
-echo "   new user:       $NEW_USER  (passwordless sudo)"
+echo " On-target bootstrap"
+echo "   mode:           $MODE"
+echo "   target user:    $TARGET_USER"
 echo "   new ssh port:   $NEW_SSH_PORT"
 echo "   pubkey:         ${SSH_PUBKEY:0:50}..."
 echo "=================================================================="
-
-# ---- Phase 1: SSH root@host:22 and run the hardening payload ---------------
-SSH_OPTS=(-p 22 -o ConnectTimeout=10 -o StrictHostKeyChecking=accept-new -o ServerAliveInterval=15)
-
-echo
-echo "Phase 1 — connecting to root@$TARGET_HOST:22 to run the hardening payload."
-echo "(If you don't have key auth as root, you'll be prompted for the password.)"
-echo
-
-ssh "${SSH_OPTS[@]}" "root@$TARGET_HOST" bash -s <<EOF
-SSH_PUBKEY=$(printf %q "$SSH_PUBKEY")
-NEW_USER=$(printf %q "$NEW_USER")
-NEW_SSH_PORT=$NEW_SSH_PORT
-$(cat <<'PAYLOAD'
-set -euo pipefail
-
-[[ "$EUID" -eq 0 ]] || { echo "Error: must run as root on the target." >&2; exit 1; }
 
 # ---- 0. Distro sanity check ----
 # Accept anything in the RHEL-family tree (rhel/centos/fedora as ID
 # or anywhere in ID_LIKE). dnf, firewalld, SELinux, semanage, and
 # restorecon below all assume that family.
 if [[ -r /etc/os-release ]]; then
+    # shellcheck disable=SC1091
     . /etc/os-release
 else
     echo "Error: /etc/os-release missing — can't identify distro." >&2
@@ -145,7 +158,7 @@ case " ${ID:-} ${ID_LIKE:-} " in
         exit 1
         ;;
 esac
-echo "Detected: ${PRETTY_NAME:-$ID $VERSION_ID}"
+echo "Detected: ${PRETTY_NAME:-${ID:-?} ${VERSION_ID:-?}}"
 
 # ---- 1. Prerequisites ----
 # python3, firewalld, and SELinux's `semanage` are the bare minimum to do
@@ -167,25 +180,35 @@ echo "[2/6] Ensuring firewalld is enabled and running..."
 systemctl enable --now firewalld
 
 # ---- 3. User + sudoers ----
-echo "[3/6] Creating user $NEW_USER with passwordless sudo..."
-if id "$NEW_USER" >/dev/null 2>&1; then
-    echo "  user $NEW_USER already exists — skipping useradd"
+if [[ "$MODE" == "root" ]]; then
+    echo "[3/6] Creating user $TARGET_USER with passwordless sudo..."
+    if id "$TARGET_USER" >/dev/null 2>&1; then
+        echo "  user $TARGET_USER already exists — skipping useradd"
+    else
+        useradd -m -s /bin/bash "$TARGET_USER"
+    fi
 else
-    useradd -m -s /bin/bash "$NEW_USER"
+    echo "[3/6] Ensuring permanent NOPASSWD sudo for invoking user $TARGET_USER..."
 fi
-SUDOERS_FILE="/etc/sudoers.d/90-$NEW_USER"
+
+SUDOERS_FILE="/etc/sudoers.d/90-$TARGET_USER"
 cat > "$SUDOERS_FILE" <<SUDO
-# Bootstrap-installed: $NEW_USER may run any command without a password.
-$NEW_USER ALL=(ALL) NOPASSWD:ALL
+# Bootstrap-installed: $TARGET_USER may run any command without a password.
+$TARGET_USER ALL=(ALL) NOPASSWD:ALL
 SUDO
 chmod 0440 "$SUDOERS_FILE"
 visudo -cf "$SUDOERS_FILE" >/dev/null
 
 # ---- 4. SSH public key ----
-echo "[4/6] Installing SSH public key..."
-USER_SSH_DIR="/home/$NEW_USER/.ssh"
+echo "[4/6] Installing SSH public key for $TARGET_USER..."
+USER_HOME=$(getent passwd "$TARGET_USER" | cut -d: -f6)
+if [[ -z "$USER_HOME" || ! -d "$USER_HOME" ]]; then
+    echo "Error: home directory for $TARGET_USER not found (looked up: '$USER_HOME')." >&2
+    exit 1
+fi
+USER_SSH_DIR="$USER_HOME/.ssh"
 AUTH_KEYS="$USER_SSH_DIR/authorized_keys"
-install -d -m 0700 -o "$NEW_USER" -g "$NEW_USER" "$USER_SSH_DIR"
+install -d -m 0700 -o "$TARGET_USER" -g "$TARGET_USER" "$USER_SSH_DIR"
 touch "$AUTH_KEYS"
 if grep -qxF "$SSH_PUBKEY" "$AUTH_KEYS"; then
     echo "  key already present — skipping"
@@ -194,7 +217,7 @@ else
     echo "  key appended to $AUTH_KEYS"
 fi
 chmod 0600 "$AUTH_KEYS"
-chown "$NEW_USER:$NEW_USER" "$AUTH_KEYS"
+chown "$TARGET_USER:$TARGET_USER" "$AUTH_KEYS"
 command -v restorecon >/dev/null && restorecon -R "$USER_SSH_DIR"
 
 # ---- 5. Open new SSH port (firewalld + SELinux) ----
@@ -222,168 +245,39 @@ command -v restorecon >/dev/null && restorecon "$SSHD_DROPIN"
 sshd -t
 systemctl restart sshd
 
-echo
-echo "Remote hardening complete. Port 22 in local firewalld stays open as a fallback."
-PAYLOAD
-)
-EOF
-
-# ---- Phase 2: prompt user about external firewall --------------------------
-cat <<EOF
-
-==================================================================
- Phase 2 — external firewall
-==================================================================
-
- sshd on $TARGET_HOST is now listening on port $NEW_SSH_PORT.
- The host's local firewalld already has the new port open.
-
- If the host has an EXTERNAL firewall (cloud provider security
- group, edge router, hosting-panel firewall):
-
-     • OPEN  port $NEW_SSH_PORT/tcp
-     • CLOSE port 22/tcp
-
- If you have no external firewall, just press Enter — port 22 in
- local firewalld stays open until phase 4.
-
-EOF
-
-# Detect interactive vs non-interactive (curl|bash). If stdin isn't a
-# TTY, all `read` calls would EOF immediately and (with set -e) kill
-# the script. Skip prompts in non-interactive mode and use sensible
-# defaults: proceed past the firewall pause, decline destructive
-# actions (close-22), but auto-clean stale known_hosts (typical for
-# the fresh-install scenario where curl|bash is invoked).
-if [[ -t 0 ]]; then
-    INTERACTIVE=1
-else
-    INTERACTIVE=0
-fi
-
-if (( INTERACTIVE )); then
-    read -r -p "Press Enter to continue with verification (Ctrl-C to abort)... " _ || true
-else
-    echo "  (non-interactive run — proceeding to verification)"
-fi
-
-# ---- Phase 3: verify -------------------------------------------------------
-echo
-echo "Phase 3 — verifying ssh -p $NEW_SSH_PORT $NEW_USER@$TARGET_HOST..."
-
-# Disable set -e for the whole verification block — we have explicit
-# rc handling via $verify_rc, and Mac's bash 3.2 doesn't reliably
-# suppress set -e for `var=$(cmd) || handler` (the substitution
-# subshell inherits set -e and exits before the outer || sees the
-# failure). A `set +e` window is bulletproof across bash versions.
-set +e
-
-verify_once() {
-    # `-n` redirects ssh's stdin from /dev/null. Without this, ssh
-    # inherits the script's stdin (the curl pipe in `curl|bash -s`
-    # invocations) and drains the remaining script bytes when it
-    # exits — bash then hits EOF mid-script and disappears silently.
-    ssh -n -p "$NEW_SSH_PORT" -o ConnectTimeout=10 \
-        -o StrictHostKeyChecking=accept-new -o BatchMode=yes \
-        "$NEW_USER@$TARGET_HOST" \
-        'echo "  OK as $(whoami) on $(hostnamectl --static 2>/dev/null || hostname)"' 2>&1
-}
-
-verify_output=$(verify_once)
-verify_rc=$?
-echo "$verify_output"
-
-# Stale known_hosts entry from a previously-reused IP shows up as
-# "REMOTE HOST IDENTIFICATION HAS CHANGED" / "Host key verification
-# failed". Offer to scrub the stale entries and retry — the user
-# almost always wants this for a fresh-install scenario.
-if (( verify_rc != 0 )) \
-   && grep -qE "REMOTE HOST IDENTIFICATION HAS CHANGED|Host key verification failed" \
-            <<<"$verify_output"; then
-    echo
-    echo "  ⚠ Stale ~/.ssh/known_hosts entry for $TARGET_HOST detected."
-    echo "    The host's SSH key has changed (typical for a freshly-installed VM"
-    echo "    that reuses an IP from a previous server)."
-    echo
-    if (( INTERACTIVE )); then
-        ans=""
-        read -r -p "  Remove the stale entry and retry verification? [Y/n] " ans || true
-    else
-        ans=""   # auto-Y in non-interactive: fresh-install context, safe to clean
-        echo "  (non-interactive run — auto-cleaning and retrying)"
-    fi
-    if [[ ! "$ans" =~ ^[Nn]$ ]]; then
-        ssh-keygen -R "[$TARGET_HOST]:$NEW_SSH_PORT" 2>&1 | sed 's/^/    /'
-        ssh-keygen -R "$TARGET_HOST"                  2>&1 | sed 's/^/    /'
-        echo "  Retrying..."
-        verify_output=$(verify_once)
-        verify_rc=$?
-        echo "$verify_output"
-    fi
-fi
-
-# Re-enable set -e now that the rc-sensitive verification is done.
-set -e
-
-if (( verify_rc != 0 )); then
-    cat <<EOF
-
-==================================================================
- ✗ Verification failed.
-==================================================================
-
- Couldn't connect to $NEW_USER@$TARGET_HOST on port $NEW_SSH_PORT.
-
- Likely causes:
-   - External firewall not yet open on port $NEW_SSH_PORT
-   - Your private key isn't in your ssh-agent (try: ssh-add -l)
-   - Routing/IP propagation delay; wait and retry
-
- Try manually:
-     ssh -p $NEW_SSH_PORT $NEW_USER@$TARGET_HOST
-
- Port 22 on the target is still open as a fallback. SSH back as
- root@$TARGET_HOST:22 and remove /etc/ssh/sshd_config.d/99-bootstrap.conf
- to undo if needed.
-EOF
-    exit 1
-fi
-
-# ---- Phase 4: optionally close port 22 in local firewalld -----------------
-echo
-close22=""
-if (( INTERACTIVE )); then
-    read -r -p "Close port 22 in the target's LOCAL firewalld now? [y/N] " close22 || true
-else
-    echo "(non-interactive run — leaving port 22 in local firewalld open; close it later)"
-fi
-if [[ "$close22" =~ ^[Yy]$ ]]; then
-    echo "  Closing port 22 via $NEW_USER@$TARGET_HOST:$NEW_SSH_PORT..."
-    ssh -n -p "$NEW_SSH_PORT" "$NEW_USER@$TARGET_HOST" \
-        'sudo firewall-cmd --permanent --remove-service=ssh && sudo firewall-cmd --reload' \
-        | sed 's/^/  /'
-    echo "  Port 22 removed from local firewalld."
-else
-    echo "  Skipped. Close it later with:"
-    echo "    ssh -p $NEW_SSH_PORT $NEW_USER@$TARGET_HOST 'sudo firewall-cmd --permanent --remove-service=ssh && sudo firewall-cmd --reload'"
-fi
+# ---- Done ------------------------------------------------------------------
+THIS_HOST=$(hostnamectl --static 2>/dev/null || hostname)
 
 cat <<EOF
 
 ==================================================================
- ✓ Done. Hand off to Ansible from here.
+ ✓ Bootstrap done on $THIS_HOST.
 ==================================================================
 
- Suggested ~/.ssh/config entry on this machine:
+ Port 22 is still open in local firewalld as a fallback.
+ sshd is now listening on port $NEW_SSH_PORT as well.
 
-   Host $TARGET_HOST
-     HostName $TARGET_HOST
-     User $NEW_USER
-     Port $NEW_SSH_PORT
-     IdentityFile ~/.ssh/id_ed25519
+ From your laptop:
 
- Sanity check:
-   ansible -i <inventory> -m ping <host>
+  1. (If applicable) Update any external firewall:
+        OPEN  $NEW_SSH_PORT/tcp
+        CLOSE 22/tcp
 
- Then deploy with ansible-playbook.
+  2. Verify SSH on the new port:
+        ssh -p $NEW_SSH_PORT $TARGET_USER@$THIS_HOST
+
+  3. Add to ~/.ssh/config:
+        Host $THIS_HOST
+          HostName $THIS_HOST
+          User $TARGET_USER
+          Port $NEW_SSH_PORT
+          IdentityFile ~/.ssh/id_ed25519
+
+  4. Once verified, close port 22 in local firewalld here:
+        sudo firewall-cmd --permanent --remove-service=ssh \\
+          && sudo firewall-cmd --reload
+
+ Then hand off to Ansible:
+        ansible -i inventory/hosts.yml $THIS_HOST -m ping
+        ansible-playbook playbooks/site.yml --limit $THIS_HOST
 EOF
