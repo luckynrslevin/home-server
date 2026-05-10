@@ -1,4 +1,4 @@
-# Home Server — Accelerate your journey to privacy and owning your data — build your own private ecosystem.
+# Accelerate your journey to privacy and owning your data <br>Build your own private ecosystem.
 
 ## Objective
 
