@@ -44,22 +44,28 @@
       Adlist download likely failed — check `pihole -g` output and the
       addresses in pihole_adlists.
 
-- name: Verify legitimate canary ({{ pihole_verify_canary_legit }}) resolves to a real address
-  ansible.builtin.command: "getent ahosts {{ pihole_verify_canary_legit }}"
+# Query the *local* Pi-hole directly via dig instead of going through
+# the host's NSS / systemd-resolved stack. On a host with multiple DNS
+# servers configured (e.g. the LAN's DHCP-advertised resolver visible
+# on a per-link basis), getent/resolved may answer from a different
+# server entirely and tell us nothing about whether *this* Pi-hole is
+# blocking. dig @127.0.0.1:1053 always asks the local instance.
+- name: Verify legitimate canary ({{ pihole_verify_canary_legit }}) resolves to a real address (via local Pi-hole)
+  ansible.builtin.command: "dig @127.0.0.1 -p 1053 +short +time=3 +tries=2 {{ pihole_verify_canary_legit }} A"
   register: _pihole_verify_legit
   changed_when: false
   failed_when: >-
     _pihole_verify_legit.rc != 0 or
     _pihole_verify_legit.stdout | length == 0 or
-    (_pihole_verify_legit.stdout_lines | first | default('') | regex_search('^(0\.0\.0\.0|::)\s')) is not none
+    (_pihole_verify_legit.stdout_lines | first | default('') == '0.0.0.0')
 
-- name: Verify blocked canary ({{ pihole_verify_canary_blocked }}) is sinkholed
-  ansible.builtin.command: "getent ahosts {{ pihole_verify_canary_blocked }}"
+- name: Verify blocked canary ({{ pihole_verify_canary_blocked }}) is sinkholed (via local Pi-hole)
+  ansible.builtin.command: "dig @127.0.0.1 -p 1053 +short +time=3 +tries=2 {{ pihole_verify_canary_blocked }} A"
   register: _pihole_verify_blocked
   changed_when: false
   failed_when: >-
-    _pihole_verify_blocked.rc == 0 and
-    (_pihole_verify_blocked.stdout_lines | first | default('') | regex_search('^(0\.0\.0\.0|::)\s')) is none
+    _pihole_verify_blocked.rc != 0 or
+    (_pihole_verify_blocked.stdout_lines | first | default('') != '0.0.0.0')
 
 - name: Sample {{ pihole_verify_random_count }} random domains from gravity
   become: true
@@ -71,14 +77,14 @@
   register: _pihole_verify_random_sample
   changed_when: false
 
-- name: Verify each random sample is sinkholed (no upstream leaks)
-  ansible.builtin.command: "getent ahosts {{ item }}"
+- name: Verify each random sample is sinkholed by local Pi-hole
+  ansible.builtin.command: "dig @127.0.0.1 -p 1053 +short +time=3 +tries=2 {{ item }} A"
   register: _pihole_verify_random_check
   changed_when: false
   loop: "{{ _pihole_verify_random_sample.stdout_lines }}"
   failed_when: >-
-    _pihole_verify_random_check.rc == 0 and
-    (_pihole_verify_random_check.stdout_lines | first | default('') | regex_search('^(0\.0\.0\.0|::)\s')) is none
+    _pihole_verify_random_check.rc != 0 or
+    (_pihole_verify_random_check.stdout_lines | first | default('') != '0.0.0.0')
 
 # --- Unbound path (only when pihole_enable_unbound is true) ---
 
