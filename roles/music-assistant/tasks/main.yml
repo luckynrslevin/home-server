@@ -94,12 +94,20 @@
     podman_quadlet_app_name: "music-assistant-pod"
     podman_quadlet_rootless_user_name: music-assistant
     podman_quadlet_files_templates_src_path: "{{ music_assistant_role_path }}"
-    podman_quadlet_file_names:
-      - music-assistant-server.container.j2
-      - music-assistant-player.container.j2
-      - music-assistant.pod.j2
-      - music-assistant.network
-      - music-assistant-data.volume
+    # Player container is only included when music_assistant_player_enabled
+    # is true (host actually has audio hardware). On headless boxes the
+    # MA server runs alone and drives external players over the LAN.
+    podman_quadlet_file_names: >-
+      {{
+        [
+          'music-assistant-server.container.j2',
+          'music-assistant.pod.j2',
+          'music-assistant.network',
+          'music-assistant-data.volume',
+        ] +
+        (['music-assistant-player.container.j2']
+          if music_assistant_player_enabled | bool else [])
+      }}
     # Music Assistant web UI is reverse-proxied by Caddy at
     # https://music.<caddy_domain> — direct LAN access on
     # {{ music_assistant_web_port }} intentionally not exposed.
