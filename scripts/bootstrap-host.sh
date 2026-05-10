@@ -108,8 +108,22 @@ fi
 #   - $SUDO_USER unset (or 'root')   → mode=root, create a new user
 #   - $SUDO_USER set to a non-root   → mode=sudo, that user is the target
 if (( EUID != 0 )); then
-    echo "Error: must run as root. Re-run with sudo, e.g.:" >&2
-    echo "  sudo bash $0 $*" >&2
+    # Detect curl|bash invocation: $0 is the interpreter name (e.g.
+    # "bash") because the script came in over stdin, not from a real
+    # path on disk. In that case `sudo bash $0` is meaningless — point
+    # the user at `curl … | sudo bash -s -- …` instead.
+    cat >&2 <<EOF
+Error: must run as root. Re-run with sudo:
+
+EOF
+    if [[ -f "$0" ]]; then
+        echo "  sudo bash $0 $*" >&2
+    else
+        cat >&2 <<EOF
+  curl -fsSL https://raw.githubusercontent.com/luckynrslevin/home-server/refs/heads/main/scripts/bootstrap-host.sh \\
+    | sudo bash -s -- -k "<your-ssh-pubkey>" [-u <user>] [-p <port>]
+EOF
+    fi
     exit 1
 fi
 
