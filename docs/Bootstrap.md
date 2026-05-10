@@ -34,17 +34,16 @@ Run without sudo and the script bails fast with an error.
 SSH (or console) into the fresh target first, then on the target:
 
 ```bash
-# Cloud image (you're logged in as e.g. fedora/almalinux with sudo):
 curl -fsSL https://raw.githubusercontent.com/luckynrslevin/home-server/refs/heads/main/scripts/bootstrap-host.sh \
-  | sudo bash -s -- -k "$(cat ~/.ssh/id_ed25519.pub)"
-
-# Bare-metal install where you logged in as root with the root password:
-curl -fsSL https://raw.githubusercontent.com/luckynrslevin/home-server/refs/heads/main/scripts/bootstrap-host.sh \
-  | bash -s -- -k "ssh-ed25519 AAAA... you@laptop"
+  | sudo bash -s -- -k "ssh-ed25519 AAAA... you@laptop"
 ```
 
-(The `-k` value is your **laptop's** public key — paste it as a string,
-or `cat` it on the laptop and copy/paste the result.)
+Always pipe through `sudo bash` — the script needs root and `sudo` is
+a harmless no-op when you're already root. If you forget it, the
+script exits with a clear error pointing you at this exact command.
+
+The `-k` value is your **laptop's** public key — paste it as a string,
+or `cat ~/.ssh/id_ed25519.pub` on the laptop and copy the output.
 
 ## Options
 
