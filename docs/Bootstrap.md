@@ -35,15 +35,17 @@ SSH (or console) into the fresh target first, then on the target:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/luckynrslevin/home-server/refs/heads/main/scripts/bootstrap-host.sh \
-  | sudo bash -s -- -k "ssh-ed25519 AAAA... you@laptop"
+  | sudo bash -s -- -p 2222 -k "ssh-ed25519 AAAA... you@laptop"
 ```
 
 Always pipe through `sudo bash` — the script needs root and `sudo` is
 a harmless no-op when you're already root. If you forget it, the
 script exits with a clear error pointing you at this exact command.
 
-The `-k` value is your **laptop's** public key — paste it as a string,
-or `cat ~/.ssh/id_ed25519.pub` on the laptop and copy the output.
+`-p` picks the SSH port to harden onto (any 1–65535; pick something
+non-default). `-k` is your **laptop's** public key — paste it as a
+string, or `cat ~/.ssh/id_ed25519.pub` on the laptop and copy the
+output.
 
 ## Options
 
