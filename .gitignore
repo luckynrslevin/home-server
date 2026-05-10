@@ -10,6 +10,7 @@ inventory/host_vars/homeserver.yml
 # Local symlinks into the private repo
 inventory/host_vars/homeserver
 inventory/host_vars/homeserver-test
+inventory/host_vars/homeserver2
 
 # Syncthing personal config (device IDs, private key)
 roles/syncthing/files/volumes/syncthing-config/config/key.pem
