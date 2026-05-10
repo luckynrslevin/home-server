@@ -1,4 +1,4 @@
-# Home Server Installation & Automation
+# Home Server — Accelerate your journey to privacy and owning your data — build your own private ecosystem.
 
 ## Objective
 
