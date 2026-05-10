@@ -263,7 +263,9 @@ application roles below can run.
 
 
 ### Planned
-- Nextcloud (file storage and sharing)
+- [Nextcloud (file storage and sharing)](https://github.com/luckynrslevin/home-server/issues/7)
+- [Single Sign-On (e.g. Keycloak) across all installed apps](https://github.com/luckynrslevin/home-server/issues/6)
+- [Cloud-init self-provisioning — one-paste deploy to any VPS provider](https://github.com/luckynrslevin/home-server/issues/106)
 - IoT stack (Mosquitto, InfluxDB, Grafana, Telegraf)
 - Uptime Kuma
 - Home Assistant
