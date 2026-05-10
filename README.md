@@ -183,7 +183,17 @@ The guiding principle is **rebuild over repair**: if the system drifts, it shoul
 
 ---
 
-## Getting Started
+## Alternatives & Comparison
+
+There are plenty of self-hosting tools out there. The table below is
+an honest, side-by-side look at where each one shines and where it
+leaves work on your plate compared to this project's "opinionated
+end-to-end" model. Contributions welcome — open an issue or PR if
+your favourite solution is missing.
+
+| Solution | Strengths (vs. this project) | Gaps (vs. this project) |
+|---|---|---|
+| **[Coolify](https://coolify.io)** — open-source PaaS-style controller with a UI for deploying self-hosted services. | • Polished web UI for browsing and configuring services.<br>• Large library of preconfigured application templates.<br>• Several hosting providers offer ready-made Coolify VPS images — quick to spin up for evaluation.<br>• Good fit for *trying out* candidate applications before committing. | • Not actually one-click — non-trivial apps still need per-application config and container-level digging.<br>• Coolify itself runs on your server and consumes RAM/CPU that small home boxes (4–8 GB RAM mini-PC) can't really spare.<br>• No automatic container release updates, no automatic OS security updates — you're on the patch treadmill.<br>• No built-in backup/restore workflow — assemble it yourself per service. |
 
 ### Network prerequisites
 
