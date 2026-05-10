@@ -213,6 +213,22 @@
   ansible.builtin.hostname:
     name: "{{ os_base_hostname | default(inventory_hostname) }}"
 
+# Pin the NAS hostname in /etc/hosts so consumers (jellyfin NFS
+# media mounts, backup role, restore playbook) can resolve it
+# without depending on whatever DNS the host happens to be using.
+# Only the backup-related vars define this; vservers without a NAS
+# will just skip.
+- name: Pin NAS hostname in /etc/hosts
+  become: true
+  ansible.builtin.lineinfile:
+    path: /etc/hosts
+    regexp: '\s{{ backup_nas_hostname }}$'
+    line: "{{ backup_nas_ip }} {{ backup_nas_hostname }}"
+    state: present
+  when:
+    - backup_nas_hostname is defined
+    - backup_nas_ip is defined
+
 # ---------------------------------------------------------------- 8
 # System-level (rootful) podman-auto-update timer. Service roles still
 # install their own per-rootless-user timer; this one covers any
