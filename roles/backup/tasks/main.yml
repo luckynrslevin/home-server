@@ -2,12 +2,6 @@
 # Deploy standalone backup script and systemd timer.
 # After deployment, backups run autonomously — no Ansible needed.
 
-- name: Ensure nfs-utils is installed (needed for NFS backup target)
-  become: true
-  ansible.builtin.package:
-    name: nfs-utils
-    state: present
-
 - name: Ensure NAS hostname resolves via /etc/hosts
   become: true
   ansible.builtin.lineinfile:

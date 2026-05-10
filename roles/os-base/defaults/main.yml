@@ -18,6 +18,10 @@ os_base_packages:
   - tmux
   - tree
   - jq
+  # Provides /sbin/mount.nfs — used by the jellyfin role for media
+  # mounts and by the backup role to mount the NAS share. Stock on
+  # Fedora Server, not on AlmaLinux 9. Cheap to ship everywhere.
+  - nfs-utils
   - wget
   - curl
   - rsync
