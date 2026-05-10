@@ -1,0 +1,45 @@
+# Automation perspective: who does what, in which order, to bring a
+# fresh box up to a fully-deployed homeserver.
+#
+# Render: d2 docs/diagrams/automation.d2 docs/diagrams/automation.svg
+
+# Top-level 3-column grid forces repos | laptop | target left-to-right
+# regardless of edge directions (which would otherwise pull target below
+# laptop because of the back-edges from laptop to target.*).
+grid-columns: 3
+horizontal-gap: 80
+
+repos: "" {
+  style.opacity: 0
+  style.fill: "#ffffff"
+  grid-rows: 2
+
+  pubrepo: "github.com/luckynrslevin/\nhome-server.git\npublic repo\nplaybooks + roles" {
+    shape: cylinder
+  }
+
+  privrepo: "home-server-private.git\nyour private inventory:\npersonal configuration\n+ encrypted secrets,\nhosted on a git repo\nonly you can access" {
+    shape: cylinder
+  }
+}
+
+laptop: "Ansible host (your laptop)\nclones both repos;\nprivate overlay\nsymlinked into public"
+
+target: "homeserver (cloud or physical)" {
+  label.near: top-center
+  grid-columns: 1
+  style.fill: "#f4f8ff"
+
+  fresh: "fresh OS install\n(AlmaLinux 9.x)"
+  hardened: "hardened host\n(ansible user, sudo,\nssh on non-default port)"
+  deployed: "fully deployed\n(all services running)"
+}
+
+repos.pubrepo -> laptop
+repos.privrepo -> laptop
+
+laptop -> target.fresh: "1. bootstrap-host.sh\n(one-time, on target)" { style.stroke-dash: 3 }
+target.fresh -> target.hardened
+laptop -> target.hardened: "2. ansible-playbook\nsite.yml" { style.stroke-width: 3 }
+target.hardened -> target.deployed
+laptop -> target.deployed: "3. ansible-playbook\nbackup.yml / restore.yml\n(scheduled / on demand)" { style.stroke-dash: 3 }
