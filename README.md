@@ -83,8 +83,8 @@ manual / requires extra setup · **−** absent or actively contrary
 |---|:---:|:---:|:---:|:---:|:---:|
 | Polished web UI for daily ops | o | + | + | + | + |
 | Curated application catalog (one-click install) | o | + | + | + | + |
-| Built-in SSO / LDAP across all installed apps | − *(planned)* | − | − | − | + |
-| Ready-made VPS image at common hosters | − *(cloud-init self-provision planned)* | + | o | o | o |
+| Built-in SSO / LDAP across all installed apps | − <br>*(planned)* | − | − | − | + |
+| Ready-made VPS image at common hosters | − <br>*(cloud-init self-provision planned)* | + | o | o | o |
 | One-command install of the *whole* stack | + | o | + | + | + |
 | Mandatory HTTPS for every service via internal CA | + | o | o | − | + |
 | Tailscale / mesh-VPN integration first-class | + | o | + | o | − |
