@@ -71,6 +71,95 @@
         proto: udp
         toport: 1053
 
+# ----------------------------------------------------------------------
+# OUTPUT-chain DNS redirect — match the PREROUTING port-53→1053 forward
+# above, but for locally-generated traffic.
+#
+# `ansible.posix.firewalld`'s `port_forward` only writes a PREROUTING
+# rule, which catches LAN-incoming DNS but not eddie's own outbound
+# queries. NetworkManager hands systemd-resolved a per-link DNS from
+# DHCP — typically the host's own LAN IP — and resolved sends
+# `*.<domain>` queries (matched on the link's DNS Domain) to that
+# link DNS first. The destination is the host's LAN IP on port 53,
+# where nothing listens locally (Pi-hole is on :1053, systemd-resolved
+# on 127.0.0.53:53). Result: `Connection refused` whenever the host or
+# any host-network container tries to resolve `*.<caddy_domain>`.
+#
+# We restrict by destination IP so we don't redirect Unbound's
+# recursive queries to public root servers — those go to external
+# IPs, not the host itself.
+# ----------------------------------------------------------------------
+
+- name: Detect host's primary LAN IP for OUTPUT redirect rule
+  ansible.builtin.set_fact:
+    pihole_host_lan_ip: "{{ ansible_default_ipv4.address }}"
+
+- name: Check if OUTPUT-chain DNS redirect rules already exist
+  become: true
+  ansible.builtin.command:
+    argv:
+      - firewall-cmd
+      - --permanent
+      - --direct
+      - --query-rule
+      - ipv4
+      - nat
+      - OUTPUT
+      - "0"
+      - -d
+      - "{{ pihole_host_lan_ip }}"
+      - -p
+      - "{{ item }}"
+      - --dport
+      - "53"
+      - -j
+      - REDIRECT
+      - --to-ports
+      - "1053"
+  register: pihole_output_redirect_check
+  changed_when: false
+  failed_when: false
+  loop:
+    - tcp
+    - udp
+
+- name: Add OUTPUT-chain DNS redirect rules (tcp + udp)
+  become: true
+  ansible.builtin.command:
+    argv:
+      - firewall-cmd
+      - --permanent
+      - --direct
+      - --add-rule
+      - ipv4
+      - nat
+      - OUTPUT
+      - "0"
+      - -d
+      - "{{ pihole_host_lan_ip }}"
+      - -p
+      - "{{ item.item }}"
+      - --dport
+      - "53"
+      - -j
+      - REDIRECT
+      - --to-ports
+      - "1053"
+  loop: "{{ pihole_output_redirect_check.results }}"
+  loop_control:
+    label: "{{ item.item }}/53 -> 1053 (-d {{ pihole_host_lan_ip }})"
+  when: item.rc != 0
+  notify: Reload firewalld
+
+# Force the firewalld reload immediately, before any downstream task
+# in this playbook can fail and skip the handler-flush phase. Without
+# this, an unrelated failure further down (e.g. another role's NFS
+# mount) would leave the rules sitting in `--permanent` but never
+# loaded into runtime — the host would still see "Connection refused"
+# for *.<caddy_domain>.
+- name: Flush handlers so the firewalld reload happens now
+  ansible.builtin.meta: flush_handlers
+
 # Start and enable Unbound (it's a separate systemd unit, not part of
 # the pihole app unit, so the Galaxy role's restart doesn't cover it).
 - name: Enable and start Unbound # noqa: no-changed-when
