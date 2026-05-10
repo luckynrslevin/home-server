@@ -262,11 +262,11 @@ application roles below can run.
 | **Backup** | Host-side service. Snapshots each role's declared volumes to the NAS on a schedule (default 21:00) using the per-role `backup_manifest`. | — (no container — runs as a systemd timer) | — |
 
 
-### Planned
+### Planned applications / features
 - [Nextcloud (file storage and sharing)](https://github.com/luckynrslevin/home-server/issues/7)
 - [Single Sign-On (e.g. Keycloak) across all installed apps](https://github.com/luckynrslevin/home-server/issues/6)
 - [Cloud-init self-provisioning — one-paste deploy to any VPS provider](https://github.com/luckynrslevin/home-server/issues/106)
+- [Home Assistant](https://www.home-assistant.io/)
+- [Mealie](https://mealie.io/)
 - IoT stack (Mosquitto, InfluxDB, Grafana, Telegraf)
-- Uptime Kuma
-- Home Assistant
-- Mealie
+- [Uptime Kuma](https://uptimekuma.org/)
