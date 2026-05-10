@@ -47,6 +47,11 @@
   loop: "{{ jellyfin_nas_mounts }}"
   loop_control:
     label: "{{ item.path }}"
+  # Skip when the path is already an active mountpoint — applying mode
+  # / setype to a mounted (read-only) NFS share would fail with EROFS,
+  # and the underlying mountpoint already exists by definition.
+  when: ansible_mounts | selectattr('mount', 'equalto', item.path)
+        | list | length == 0
 
 - name: Mount NFS shares for Jellyfin
   become: true
