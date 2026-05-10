@@ -84,7 +84,6 @@ manual / requires extra setup · **−** absent or actively contrary
 | Polished web UI for daily ops | o | + | + | + | + |
 | Curated application catalog (one-click install) | o | + | + | + | + |
 | Built-in SSO / LDAP across all installed apps | − *(planned)* | − | − | − | + |
-| Ready-made hardware appliance you can buy | − | − | + | o | − |
 | Ready-made VPS image at common hosters | − | + | o | o | o |
 | One-command install of the *whole* stack | + | o | + | + | + |
 | Mandatory HTTPS for every service via internal CA | + | o | o | − | + |
@@ -97,6 +96,7 @@ manual / requires extra setup · **−** absent or actively contrary
 | Tested, fully automated restore from scratch | + | − | o | − | + |
 | Zero control-plane RAM overhead on the home server | + | − | − | − | − |
 | Easy to extend with services *outside* the catalog | + | + | − | + | o |
+| Ready-made hardware appliance you can buy | − | − | + | o | − |
 
 **Notes worth flagging:**
 
