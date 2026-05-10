@@ -193,6 +193,21 @@ fi
 echo "[2/6] Ensuring firewalld is enabled and running..."
 systemctl enable --now firewalld
 
+# ---- Helper: back up a file before we overwrite or modify it --------------
+# Creates <file>.bak.<timestamp> the first time we touch a pre-existing file
+# in a given run. No-op if the file doesn't exist yet (nothing to preserve)
+# or if a backup from this same run already exists (don't shadow the real
+# original on a multi-step run).
+BOOTSTRAP_TS="$(date +%Y%m%d-%H%M%S)"
+backup_if_exists() {
+    local path="$1"
+    [[ -e "$path" ]] || return 0
+    local backup="${path}.bak.${BOOTSTRAP_TS}"
+    [[ -e "$backup" ]] && return 0
+    cp -a -- "$path" "$backup"
+    echo "  backed up $path → $backup"
+}
+
 # ---- 3. User + sudoers ----
 if [[ "$MODE" == "root" ]]; then
     echo "[3/6] Creating user $TARGET_USER with passwordless sudo..."
@@ -206,6 +221,7 @@ else
 fi
 
 SUDOERS_FILE="/etc/sudoers.d/90-$TARGET_USER"
+backup_if_exists "$SUDOERS_FILE"
 cat > "$SUDOERS_FILE" <<SUDO
 # Bootstrap-installed: $TARGET_USER may run any command without a password.
 $TARGET_USER ALL=(ALL) NOPASSWD:ALL
@@ -223,10 +239,11 @@ fi
 USER_SSH_DIR="$USER_HOME/.ssh"
 AUTH_KEYS="$USER_SSH_DIR/authorized_keys"
 install -d -m 0700 -o "$TARGET_USER" -g "$TARGET_USER" "$USER_SSH_DIR"
-touch "$AUTH_KEYS"
-if grep -qxF "$SSH_PUBKEY" "$AUTH_KEYS"; then
+if grep -qxF "$SSH_PUBKEY" "${AUTH_KEYS:-/dev/null}" 2>/dev/null; then
     echo "  key already present — skipping"
 else
+    backup_if_exists "$AUTH_KEYS"
+    touch "$AUTH_KEYS"
     echo "$SSH_PUBKEY" >> "$AUTH_KEYS"
     echo "  key appended to $AUTH_KEYS"
 fi
@@ -247,6 +264,7 @@ fi
 # ---- 6. sshd drop-in + restart ----
 echo "[6/6] Writing sshd hardening drop-in and restarting sshd..."
 SSHD_DROPIN="/etc/ssh/sshd_config.d/99-bootstrap.conf"
+backup_if_exists "$SSHD_DROPIN"
 cat > "$SSHD_DROPIN" <<SSHD
 # Bootstrap-installed sshd hardening (see scripts/bootstrap-host.sh).
 Port $NEW_SSH_PORT
