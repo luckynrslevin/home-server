@@ -83,7 +83,7 @@ manual / requires extra setup · **−** absent or actively contrary
 |---|:---:|:---:|:---:|:---:|:---:|
 | Polished web UI for daily ops | o | + | + | + | + |
 | Curated application catalog (one-click install) | o | + | + | + | + |
-| Built-in SSO / LDAP across all installed apps | − | − | − | − | + |
+| Built-in SSO / LDAP across all installed apps | − *(planned)* | − | − | − | + |
 | Ready-made hardware appliance you can buy | − | − | + | o | − |
 | Ready-made VPS image at common hosters | − | + | o | o | o |
 | One-command install of the *whole* stack | + | o | + | + | + |
