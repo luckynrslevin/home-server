@@ -22,6 +22,12 @@ os_base_packages:
   # mounts and by the backup role to mount the NAS share. Stock on
   # Fedora Server, not on AlmaLinux 9. Cheap to ship everywhere.
   - nfs-utils
+  # Provides `dig` / `nslookup` / `host`. Used by the pihole role's
+  # verify.yml to query the local pihole directly (bypassing the
+  # host's NSS / systemd-resolved stack so per-link DNS servers
+  # advertised by DHCP don't poison the result), and generally
+  # essential for any DNS troubleshooting on a pihole host.
+  - bind-utils
   - wget
   - curl
   - rsync
