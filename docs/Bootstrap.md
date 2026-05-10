@@ -34,8 +34,7 @@ Run without sudo and the script bails fast with an error.
 SSH (or console) into the fresh target first, then on the target:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/luckynrslevin/home-server/refs/heads/main/scripts/bootstrap-host.sh \
-  | sudo bash -s -- -p 2222 -k "ssh-ed25519 AAAA... you@laptop"
+curl -fsSL https://raw.githubusercontent.com/luckynrslevin/home-server/refs/heads/main/scripts/bootstrap-host.sh | sudo bash -s -- -p 2222 -k "ssh-ed25519 AAAA... you@laptop"
 ```
 
 Always pipe through `sudo bash` — the script needs root and `sudo` is
