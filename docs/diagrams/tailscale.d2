@@ -3,31 +3,48 @@
 #
 # Render: d2 docs/diagrams/tailscale.d2 docs/diagrams/tailscale.svg
 
-direction: right
-
-tailnet: "Tailscale virtual network (WireGuard mesh)" {
-  grid-columns: 3
-  style.stroke-dash: 3
-  style.stroke-width: 2
-  style.fill: "#f4f8ff"
-
-  public: "public\n(café Wi-Fi, mobile data, hotel, …)" {
-    label.near: top-center
-    ios: "iOS device"
-    mac: "macOS MacBook"
+vars: {
+  d2-config: {
+    theme-id: 3 # terrastruct
+    sketch: true
+    layout-engine: elk
   }
-
-  cloud: "cloud\n(VPS / datacenter)" {
-    label.near: top-center
-    homeserver: "homeserver"
-  }
-
-  home: "home\n(LAN behind your router)" {
-    label.near: top-center
-    linux: "Linux desktop"
-    nas: "NAS\n(LAN-only — reached via\nhomeserver subnet route)" {
-      style.fill: "#ffffff"
-      style.stroke-dash: 2
-    }
+  colors: {
+    c2: "#C7F1FF" # light turkuaz
+    c3: "#B5AFF6" # dark purple
+    c4: "#DEE1EB" # gray
+    c5: "#88DCF7" # turkuaz
+    c6: "#E4DBFE" # purple
   }
 }
+
+direction: right
+
+devices: "" {
+  style.opacity: 0
+  style.fill: "#ffffff"
+  grid-columns: 2
+
+  tailnet: "Tailscale virtual network" {
+    grid-columns: 3
+    style.stroke-dash: 3
+    style.stroke-width: 2
+    style.fill: "#f4f8ff"
+
+    ios: "iOS device" {
+      style.multiple: true
+    }
+    mac: "macOS device" {
+      style.multiple: true
+    }
+    linux: "Linux desktop" {
+      style.multiple: true
+    }
+    homeserver: "Linux homeserver"
+  }
+
+  nas <-> tailnet.homeserver
+
+}
+
+    

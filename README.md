@@ -61,6 +61,7 @@ What "opinionated, end-to-end" means concretely:
   - Rootless containers first — each rootless application runs as its own dedicated Linux user
   - Rootful containers only where rootless is not feasible, and always hardened
   - Caddy is the mandatory front door — every web UI reached via `https://<subdomain>.<caddy_domain>` with a single trusted internal CA; per-service HTTP ports are not exposed on the LAN
+  - Use tailscale to create a virtual network accross your devices to be able to access services on your homeserver independent from your location and network access point
 - **Operational consistency**
   - Fully automatic reinstall from scratch, including restore of configuration and data
   - All applications fully integrated with systemd (start, stop, reboot)
@@ -85,31 +86,20 @@ sequence, scheduled container updates, and the backup flow.
 
 The same system from an **automation perspective** — who does what,
 and in which order, to bring a fresh box up to a fully-deployed
-homeserver:
+homeserver. The laptop as ansible host is optional, you could also use the homeserver itself:
 
 ![Automation architecture](docs/diagrams/automation.svg)
 
 <!-- Source: docs/diagrams/automation.d2 — render with `d2 docs/diagrams/automation.d2 docs/diagrams/automation.svg` -->
 
 
-The same system from a **remote-access perspective** — how user
-devices reach the homeserver and the LAN-only NAS from anywhere via
-**Tailscale**, without opening any inbound port on the home router:
+
+Use **Tailscale** to create a **virtual network across your devices and the homeserver** to be able to access the services running on homeserver, independent from the location and network access point your device is connected. NAS server can be omittet but still needs network access to the homeserver for backup und restore operations.
 
 ![Tailscale architecture](docs/diagrams/tailscale.svg)
 
 <!-- Source: docs/diagrams/tailscale.d2 — render with `d2 docs/diagrams/tailscale.d2 docs/diagrams/tailscale.svg` -->
 
-
-This is **just one example layout** — the same model works whether
-the homeserver lives in a datacenter or on a shelf at home, and the
-desktop/mobile devices move freely between locations (home Wi-Fi one
-moment, café Wi-Fi or LTE the next). What stays constant is the
-Tailscale tailnet: every device gets a stable IP and DNS name on a
-WireGuard mesh, end-to-end encrypted, with no inbound port opened on
-the home router. The NAS isn't on the tailnet itself — the
-homeserver advertises the home LAN as a subnet route, so roaming
-clients reach it through the homeserver as if they were on the LAN.
 
 ---
 

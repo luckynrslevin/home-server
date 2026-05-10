@@ -6,26 +6,42 @@
 
 # Top-level 2-column grid: homeserver (left, contains OS + containers)
 # | NAS (right).
+
+vars: {
+  d2-config: {
+    theme-id: 3 # terrastruct
+    sketch: true
+    layout-engine: elk
+  }
+  colors: {
+    c2: "#C7F1FF" # light turkuaz
+    c3: "#B5AFF6" # dark purple
+    c4: "#DEE1EB" # gray
+    c5: "#88DCF7" # turkuaz
+    c6: "#E4DBFE" # purple
+  }
+}
 grid-columns: 2
 horizontal-gap: 80
 
-homeserver: "homeserver (AlmaLinux 9.x)" {
+homeserver: "homeserver" {
   label.near: top-center
-  style.fill: "#f4f8ff"
+  style.fill: ${colors.c4}
 
   # Inside homeserver: 2 columns — Base OS on the left, containers
   # (rootful + rootless stacked) on the right.
   grid-columns: 2
 
-  os: "Base OS" {
+  os: "OS" {
     label.near: top-center
     packages: |md
+      # AlmaLinux 9.x
       - podman ≥ 5 (quadlet support)
-      - systemd
+      - nfs-utils (NAS mounts)
       - firewalld
+      - systemd
       - dnf-automatic (security updates)
       - SELinux
-      - nfs-utils (NAS mounts)
     |
   }
 
@@ -35,7 +51,8 @@ homeserver: "homeserver (AlmaLinux 9.x)" {
     style.opacity: 0
     grid-rows: 2
 
-    rootful: "Rootful containers" {
+    rootful: "Rootful containers\n(Only in case rootless is not possible)" {
+      style.multiple: true
       label.near: top-center
       direction: right
       container: "container"
@@ -43,7 +60,8 @@ homeserver: "homeserver (AlmaLinux 9.x)" {
       container -- volume
     }
 
-    rootless: "Rootless containers" {
+    rootless: "Rootless containers\n(Dedicated linux user for each app)" {
+      style.multiple: true
       label.near: top-center
       direction: right
       container: "container"
@@ -55,11 +73,18 @@ homeserver: "homeserver (AlmaLinux 9.x)" {
 
 nas: "NAS" {
   label.near: top-center
+  style.fill: ${colors.c4}
   grid-columns: 1
   tar: "tar\nconfig / state volumes" { shape: cylinder }
   pgdump: "pgdump\nPostgres logical dumps" { shape: cylinder }
   rsync: "rsync\nbulk / media data" { shape: cylinder }
 }
 
-homeserver.workloads.rootful -> nas: "backup role" { style.stroke-dash: 3 }
-homeserver.workloads.rootless -> nas: "backup role" { style.stroke-dash: 3 }
+homeserver.workloads.rootful -> nas: "backup" {
+  style.stroke-dash: 3
+  style.animated: true
+  }
+homeserver.workloads.rootless -> nas: "backup" {
+  style.stroke-dash: 3
+  style.animated: true
+  }
