@@ -6,40 +6,107 @@
 # Top-level 3-column grid forces repos | laptop | target left-to-right
 # regardless of edge directions (which would otherwise pull target below
 # laptop because of the back-edges from laptop to target.*).
-grid-columns: 3
-horizontal-gap: 80
+vars: {
+  d2-config: {
+    theme-id: 3 # terrastruct
+    sketch: true
+    layout-engine: elk
+  }
+  colors: {
+    c2: "#C7F1FF" # light turkuaz
+    c3: "#B5AFF6" # dark purple
+    c4: "#DEE1EB" # gray
+    c5: "#88DCF7" # turkuaz
+    c6: "#E4DBFE" # purple
+  }
+}
+
+grid-columns: 4
+horizontal-gap: 30
 
 repos: "" {
   style.opacity: 0
   style.fill: "#ffffff"
   grid-rows: 2
 
-  pubrepo: "github.com/luckynrslevin/\nhome-server.git\npublic repo\nplaybooks + roles" {
+  pubrepo: "github.com/luckynrslevin/home-server.git\n\npublic repo contains\nansible playbooks + roles to\ninstall and configure\n the applications" {
     shape: cylinder
   }
 
-  privrepo: "home-server-private.git\nyour private inventory:\npersonal configuration\n+ encrypted secrets,\nhosted on a git repo\nonly you can access" {
+  privrepo: "<git-env-of-your-choice>/home-server-private.git\n\nyour private repo contains:\npersonal configuration\n+ encrypted secrets / passwords" {
     shape: cylinder
   }
 }
 
-laptop: "Ansible host (your laptop)\nclones both repos;\nprivate overlay\nsymlinked into public"
+laptop: "Ansible host\n(your laptop)\n\nclones both repos;\nprivate overlay\nsymlinked into public" {
+  style.fill: ${colors.c4}
+}
 
-target: "homeserver (cloud or physical)" {
+spacer: "" {
+  style.opacity: 0
+  style.fill: "#ffffff"
+  width: 220
+}
+
+target: "homeserver" {
   label.near: top-center
   grid-columns: 1
-  style.fill: "#f4f8ff"
+  style.fill: ${colors.c4}
 
   fresh: "fresh OS install\n(AlmaLinux 9.x)"
-  hardened: "hardened host\n(ansible user, sudo,\nssh on non-default port)"
+  hardened: "hardened sshd\n\n(disable root,\nssh key auth. mandatory,\nchange to non-default port,\ncreate and enable ansible user,\nenable sudo for ansible user)"
   deployed: "fully deployed\n(all services running)"
 }
 
-repos.pubrepo -> laptop
-repos.privrepo -> laptop
+repos.pubrepo -> laptop {
+  style: {
+    stroke-dash: 3
+    animated: true
+  }
+}
+repos.privrepo -> laptop {
+  style: {
+    stroke-dash: 3
+    animated: true
+  }
+}
 
-laptop -> target.fresh: "1. bootstrap-host.sh\n(one-time, on target)" { style.stroke-dash: 3 }
-target.fresh -> target.hardened
-laptop -> target.hardened: "2. ansible-playbook\nsite.yml" { style.stroke-width: 3 }
-target.hardened -> target.deployed
-laptop -> target.deployed: "3. ansible-playbook\nbackup.yml / restore.yml\n(scheduled / on demand)" { style.stroke-dash: 3 }
+laptop -> target.fresh: "1. bootstrap-host.sh\n(one-time, on target)" {
+    style: {
+    stroke-dash: 3
+    font-color: black
+    animated: true
+    font-size: 15
+  }
+}
+
+target.fresh -> target.hardened {
+  style: {
+    stroke-dash: 3
+    animated: true
+  }
+}
+laptop -> target.hardened: "2. ansible-playbook\nsite.yml" {
+  style: {
+    stroke-dash: 3
+    font-color: black
+    animated: true
+    font-size: 15
+  }
+}
+
+target.hardened -> target.deployed {
+  style: {
+    stroke-dash: 3
+    animated: true
+  }
+}
+
+laptop -> target.deployed: "3. ansible-playbook\nbackup.yml / restore.yml\n(scheduled / on demand)" {
+  style: {
+    stroke-dash: 3
+    font-color: black
+    animated: true
+    font-size: 15
+  }
+}
