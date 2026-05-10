@@ -2,83 +2,138 @@
 
 ## Objective
 
-The objective of this project is to design and operate a **reliable, reproducible, and fully automated home server platform** that minimizes manual intervention, simplifies maintenance, and provides a solid foundation for containerized workloads.
+There are plenty of homeserver projects already. Why another one?
 
-The solution emphasizes:
+Because the tools aren't the bottleneck — **the transition is.**
+
+Anyone who's tried to move off a vendor ecosystem (iCloud, Google
+Photos, Apple Music, Dropbox, …) knows the pattern: dozens of viable
+self-hosted alternatives in every category, each with its own setup,
+backup shape, sync quirks, and migration story. Evaluating them takes
+hours per app. Wiring half a dozen into a single coherent, daily-use
+system takes weeks. Most people give up partway through and stay
+locked in.
+
+And to be fair: ecosystems like Apple's are genuinely good at "it
+just works." That's why the *cost of leaving* feels so high — and why
+the *cost of staying* (no real ownership of your own data, no leverage
+when terms change) stays mostly invisible until it bites.
+
+This project is one opinionated, end-to-end answer: a small,
+well-chosen stack of self-hosted applications deployed together by a
+single fully-automated install, with backup, restore, TLS, and a
+unified dashboard already plumbed in. No "now wire these seven things
+together yourself" steps.
+
+**Today's audience.** Two groups, served by the same opinionated
+stack:
+- Technically inclined people who want real privacy and real control
+  over their data, willing to spend a weekend (rather than a quarter)
+  on the transition.
+- Users who want to make the move, don't have the skills themselves,
+  but are willing to pay a reasonable fee to an IT-services provider
+  to deliver the same outcome.
+
+**Where it's going.**
+- Long-term, the IT-services role should be
+  absorbable by an **AI agent** — guiding non-technical users through
+  the move end-to-end and handing back a working setup. Today the
+  human is in the loop; tomorrow the agent is.
+- And obviously besides home users it could also serve the transition for
+  small businesses, e.g. having the need to move away due to GDPR / US 
+  cloud act or simply not satisfied with ecosystems like Office 365 and 
+  looking for alternatives.
+
+### Design principles
+
+What "opinionated, end-to-end" means concretely:
 
 - **Application focus**
-  - Provide a secure, private (ad- and tracker-filtered) home network environment for all family members
+  - A secure, private (ad- and tracker-filtered) home network for all family members
   - Host and own all personal data — documents, music, photos, videos
   - Seamless integration with the iOS ecosystem wherever practical (AirPlay, native photo sync, etc.)
 - **Automation by default**
-  - Fully automatic installation driven by Ansible
-  - Private overlay repository holds all host-specific configuration
+  - Fully automatic, declarative installation — one command, no clicking through wizards
+  - Per-host configuration kept in a private overlay repository
 - **Security-conscious design**
   - Unique credentials generated during initial install
-  - Private repository for home-server-specific configuration
-  - Secrets stored encrypted with `ansible-vault`
+  - Secrets stored encrypted at rest, never committed in plaintext
   - Rootless containers first — each rootless application runs as its own dedicated Linux user
   - Rootful containers only where rootless is not feasible, and always hardened
-  - Caddy is the mandatory front door — every web UI is reachable only via `https://<subdomain>.<caddy_domain>` with a single trusted internal CA; per-service HTTP ports are not exposed on the LAN
+  - Caddy is the mandatory front door — every web UI reached via `https://<subdomain>.<caddy_domain>` with a single trusted internal CA; per-service HTTP ports are not exposed on the LAN
 - **Operational consistency**
   - Fully automatic reinstall from scratch, including restore of configuration and data
   - All applications fully integrated with systemd (start, stop, reboot)
   - Simple but practical backup and restore of all your data
-  - Automatic release update of containers
+  - Automatic release updates of containers, plus automatic OS security updates on the host
 
 ---
 
-## Target Architecture
+## Technical Architecture
 
-The target system is built around a small number of well-defined components that together provide a predictable and maintainable platform.
+The target system is built around a small number of well-defined
+components that together provide a predictable and maintainable
+platform. It leverages **podman containers** (both rootless and
+rootful) and **podman quadlets** for native systemd integration —
+every application is wired into the host's boot and shutdown
+sequence, scheduled container updates, and the backup flow.
 
-```mermaid
-graph LR
-    subgraph HOST["Fedora Server"]
-        direction TB
+![Technical architecture](docs/diagrams/technical.svg)
 
-        subgraph ROOTFUL["Rootful containers"]
-            direction LR
-            RFC["container"] --- RFV[("volume")]
-        end
+<!-- Source: docs/diagrams/technical.d2 — render with `d2 docs/diagrams/technical.d2 docs/diagrams/technical.svg` -->
 
-        subgraph ROOTLESS["Rootless containers"]
-            direction LR
-            RLC["container"] --- RLV[("volume")]
-        end
 
-        subgraph OS["Base OS"]
-            KERNEL["`- podman
-- systemd
-- firewalld
-- dnf-automatic (security updates)
-- SELinux`"]
-        end
+The same system from an **automation perspective** — who does what,
+and in which order, to bring a fresh box up to a fully-deployed
+homeserver:
 
-        KERNEL --- ROOTFUL
-        KERNEL --- ROOTLESS
-    end
+![Automation architecture](docs/diagrams/automation.svg)
 
-    subgraph NAS["NAS"]
-        direction TB
-        TAR[("tar<br/>config / state volumes")] ~~~ PGD[("pgdump<br/>Postgres logical dumps")] ~~~ RSY[("rsync<br/>bulk / media data")]
-    end
+<!-- Source: docs/diagrams/automation.d2 — render with `d2 docs/diagrams/automation.d2 docs/diagrams/automation.svg` -->
 
-    ROOTFUL -. "backup role" .-> NAS
-    ROOTLESS -. "backup role" .-> NAS
-```
+
+The same system from a **remote-access perspective** — how user
+devices reach the homeserver and the LAN-only NAS from anywhere via
+**Tailscale**, without opening any inbound port on the home router:
+
+![Tailscale architecture](docs/diagrams/tailscale.svg)
+
+<!-- Source: docs/diagrams/tailscale.d2 — render with `d2 docs/diagrams/tailscale.d2 docs/diagrams/tailscale.svg` -->
+
+
+This is **just one example layout** — the same model works whether
+the homeserver lives in a datacenter or on a shelf at home, and the
+desktop/mobile devices move freely between locations (home Wi-Fi one
+moment, café Wi-Fi or LTE the next). What stays constant is the
+Tailscale tailnet: every device gets a stable IP and DNS name on a
+WireGuard mesh, end-to-end encrypted, with no inbound port opened on
+the home router. The NAS isn't on the tailnet itself — the
+homeserver advertises the home LAN as a subnet route, so roaming
+clients reach it through the homeserver as if they were on the LAN.
 
 ---
 
-### 1. Base Operating System – Fedora Server
+### 1. Base Operating System – AlmaLinux 9
 
-Fedora Server is used as the foundational operating system due to:
-- A modern kernel and container tooling
-- Strong SELinux integration
-- Alignment with RHEL-like operational models
-- A predictable lifecycle and update process
+AlmaLinux 9 is used as the foundational operating system due to:
+- A long, predictable lifecycle (10 years per major release)
+  with no surprise feature churn between minor versions
+- Bug-for-bug compatibility with RHEL — every operational pattern,
+  package, and SELinux policy translates directly
+- Strong SELinux integration out of the box
+- Mature container tooling — **podman ≥ 5** with native systemd
+  **quadlet** unit support and rootless containers, shipped in stock
+  `appstream` from AL 9.4 onward (no third-party COPR required)
+- **nfs-utils** in stock `baseos` — every host gets the
+  `mount.nfs` helper needed for the NAS-backed media (jellyfin) and
+  backup/restore flows
+- Free and community-governed, with no commercial subscription
+  required
 
-This choice ensures the system remains **secure, current, and aligned with enterprise Linux best practices**, while still being suitable for home use.
+This choice ensures the system remains **secure, current, and aligned
+with enterprise Linux best practices**, while still being suitable for
+home use — and avoids the ~13-month Fedora release treadmill on a
+machine that should "just work" for years.
 
 ---
 

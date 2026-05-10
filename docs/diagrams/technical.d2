@@ -1,0 +1,65 @@
+# Technical-architecture perspective: rootful + rootless containers
+# wired into the host's systemd via podman quadlets, with an external
+# NAS receiving backups in three flavours (tar / pgdump / rsync).
+#
+# Render: d2 docs/diagrams/technical.d2 docs/diagrams/technical.svg
+
+# Top-level 2-column grid: homeserver (left, contains OS + containers)
+# | NAS (right).
+grid-columns: 2
+horizontal-gap: 80
+
+homeserver: "homeserver (AlmaLinux 9.x)" {
+  label.near: top-center
+  style.fill: "#f4f8ff"
+
+  # Inside homeserver: 2 columns — Base OS on the left, containers
+  # (rootful + rootless stacked) on the right.
+  grid-columns: 2
+
+  os: "Base OS" {
+    label.near: top-center
+    packages: |md
+      - podman ≥ 5 (quadlet support)
+      - systemd
+      - firewalld
+      - dnf-automatic (security updates)
+      - SELinux
+      - nfs-utils (NAS mounts)
+    |
+  }
+
+  # Invisible wrapper so rootful + rootless stack vertically as one
+  # column to the right of Base OS.
+  workloads: "" {
+    style.opacity: 0
+    grid-rows: 2
+
+    rootful: "Rootful containers" {
+      label.near: top-center
+      direction: right
+      container: "container"
+      volume: "volume" { shape: cylinder }
+      container -- volume
+    }
+
+    rootless: "Rootless containers" {
+      label.near: top-center
+      direction: right
+      container: "container"
+      volume: "volume" { shape: cylinder }
+      container -- volume
+    }
+  }
+}
+
+nas: "NAS" {
+  label.near: top-center
+  grid-columns: 1
+  tar: "tar\nconfig / state volumes" { shape: cylinder }
+  pgdump: "pgdump\nPostgres logical dumps" { shape: cylinder }
+  rsync: "rsync\nbulk / media data" { shape: cylinder }
+}
+
+homeserver.workloads.rootful -> nas: "backup role" { style.stroke-dash: 3 }
+homeserver.workloads.rootless -> nas: "backup role" { style.stroke-dash: 3 }

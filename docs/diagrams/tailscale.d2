@@ -1,0 +1,33 @@
+# Remote-access perspective: how user devices reach the homeserver and
+# the LAN-only NAS from anywhere via Tailscale.
+#
+# Render: d2 docs/diagrams/tailscale.d2 docs/diagrams/tailscale.svg
+
+direction: right
+
+tailnet: "Tailscale virtual network (WireGuard mesh)" {
+  grid-columns: 3
+  style.stroke-dash: 3
+  style.stroke-width: 2
+  style.fill: "#f4f8ff"
+
+  public: "public\n(café Wi-Fi, mobile data, hotel, …)" {
+    label.near: top-center
+    ios: "iOS device"
+    mac: "macOS MacBook"
+  }
+
+  cloud: "cloud\n(VPS / datacenter)" {
+    label.near: top-center
+    homeserver: "homeserver"
+  }
+
+  home: "home\n(LAN behind your router)" {
+    label.near: top-center
+    linux: "Linux desktop"
+    nas: "NAS\n(LAN-only — reached via\nhomeserver subnet route)" {
+      style.fill: "#ffffff"
+      style.stroke-dash: 2
+    }
+  }
+}
