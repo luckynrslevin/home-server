@@ -4,7 +4,7 @@
 
 There are plenty of homeserver projects already. Why another one?
 
-Because the tools aren't the bottleneck — **the transition is.**
+Because **the tools aren't the bottleneck — the transition is.**
 
 Anyone who's tried to move off a vendor ecosystem (iCloud, Google
 Photos, Apple Music, Dropbox, …) knows the pattern: dozens of viable
@@ -36,7 +36,7 @@ stack:
 
 **Where it's going.**
 - Long-term, the IT-services role should be
-  absorbable by an **AI agent** — guiding non-technical users through
+  absorbable by an AI agent — guiding non-technical users through
   the move end-to-end and handing back a working setup. Today the
   human is in the loop; tomorrow the agent is.
 - And obviously besides home users it could also serve the transition for
