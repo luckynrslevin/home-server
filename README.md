@@ -70,6 +70,45 @@ What "opinionated, end-to-end" means concretely:
 
 ---
 
+## Alternatives & Comparison
+
+Honest, side-by-side feature matrix. Contributions welcome — open
+an issue or PR if your favourite solution is missing or a rating
+looks off.
+
+**Legend:** **+** delivered out of the box · **o** partial /
+manual / requires extra setup · **−** absent or actively contrary
+
+| Feature | **This project** | [**Coolify**](https://coolify.io) | [**Umbrel**](https://umbrel.com) | [**CasaOS**](https://casaos.io) | [**YunoHost**](https://yunohost.org) |
+|---|:---:|:---:|:---:|:---:|:---:|
+| Polished web UI for daily ops | o | + | + | + | + |
+| Curated application catalog (one-click install) | o | + | + | + | + |
+| Built-in SSO / LDAP across all installed apps | − <br>*(planned)* | − | − | − | + |
+| Ready-made VPS image at common hosters | − <br>*(cloud-init self-provision planned)* | + | o | o | o |
+| One-command install of the *whole* stack | + | o | + | + | + |
+| Mandatory HTTPS for every service via internal CA | + | o | o | − | + |
+| Tailscale / mesh-VPN integration first-class | + | o | + | o | − |
+| **Rootless / per-app-user isolation by default** | + | − | − | − | o |
+| Per-app systemd integration (`systemctl`, `journalctl`, dep ordering) | + | − | − | − | + |
+| Automatic container/app release updates | + | − | − | − | o |
+| Automatic OS security updates | + | − | o | o | + |
+| Built-in scheduled backup workflow | + | − | + | − | + |
+| Tested, fully automated restore from scratch | + | − | o | − | + |
+| Zero control-plane RAM overhead on the home server | + | − | − | − | − |
+| Easy to extend with services *outside* the catalog | + | + | − | + | o |
+| Ready-made hardware appliance you can buy | − | − | + | o | − |
+
+**Notes worth flagging:**
+
+- **Rootless matters.** Coolify runs as root and so do all deployed containers — full rootless Docker is an [open feature request](https://github.com/coollabsio/coolify/issues/2387). The [Jan 2026 CVE batch](https://thehackernews.com/2026/01/coolify-discloses-11-critical-flaws.html) (3× CVSS 10.0, including unauthenticated root SSH key disclosure) demonstrates the cost of that default.
+- **App-update model on Umbrel** is deliberately manual — apps don't auto-update so you can review each release. In practice [many apps lag well behind upstream](https://community.umbrel.com/t/umbrel-update-policy-many-apps-are-not-up-to-date/17208).
+- **Lifecycle integration** — Coolify, Umbrel, and CasaOS all rely on Docker restart policies (`unless-stopped` etc.) for container lifecycle. No dependency ordering (e.g. wait for the NFS mount before starting Jellyfin), no per-app systemd unit, no `journalctl -u <app>`. Coolify's own control plane has had [host-reboot bugs](https://github.com/coollabsio/coolify/issues/5933).
+- **Umbrel Bitcoin focus** — heavily oriented toward Bitcoin / Lightning use cases. Excellent if you want that; complexity tax if you don't.
+- **CasaOS backup/restore** is an [open community feature request](https://github.com/IceWhaleTech/CasaOS/discussions/175), not a shipped capability. App updates are also limited — apps installed from the store are [bound to specific releases](https://github.com/IceWhaleTech/CasaOS/discussions/744).
+- **YunoHost is fundamentally different** — apps are *not* containerized; they install directly into the host as system packages, each running as its own dedicated system user behind a shared NGINX + LDAP + SSO stack. That's why it gets credit for built-in SSO and per-app systemd integration but only `o` on isolation (no namespace boundaries), and why "extend outside the catalog" is harder (you'd be manually packaging an app into the YunoHost integration model).
+
+---
+
 ## Technical Architecture
 
 The target system is built around a small number of well-defined
@@ -83,6 +122,10 @@ sequence, scheduled container updates, and the backup flow.
 
 <!-- Source: docs/diagrams/technical.d2 — render with `d2 docs/diagrams/technical.d2 docs/diagrams/technical.svg` -->
 
+Backup flavours (driven by each role's `backup_manifest`):
+- **tar** — small config/state volumes (`podman volume export` → gzip'd tar), restored atomically.
+- **pgdump** — logical SQL dumps for PostgreSQL services (container stays up while the dump is taken).
+- **rsync** — large mutable trees where a full-volume tar would be wasteful (media, MinIO buckets). A filesystem with snapshot capabilities on the NAS, like e.g. ZFS, is obviously benefitial.
 
 The same system from an **automation perspective** — who does what,
 and in which order, to bring a fresh box up to a fully-deployed
@@ -185,144 +228,45 @@ The guiding principle is **rebuild over repair**: if the system drifts, it shoul
 
 ## Getting Started
 
-### Network prerequisites
+If you want to get up and running quickly, head straight to the
+**[Quickstart guide](docs/Quickstart.md)** — it walks through the
+fresh-install path end-to-end (cloud-init bootstrap, private overlay
+setup, vault, and first deploy).
 
-Several roles assume specific LAN IPs are stable: `backup_nas_ip`
-pins the NAS IP into `/etc/hosts`, `pihole_local_dns_records` map
-hostnames to per-host IPs, and any service the dashboard links to
-sits at the home-server's address. None of this survives DHCP lease
-drift.
+A more detailed setup reference will land here in a follow-up
+revision.
 
-**Pin each device's IP via a router-side DHCP reservation** (admin
-UI → DHCP → "Address reservation" / "Static lease" — exact menu
-varies by vendor). Bind each device's MAC to the IP it currently
-holds. Two devices need this:
-
-- **The home server** — IP referenced as `caddy_domain`'s
-  resolution target and as the host every Caddy reverse-proxy
-  hostname points at.
-- **The NAS** (if you back up to one) — IP referenced as
-  `backup_nas_ip` in the backup role.
-
-The host stays on DHCP; the router always answers with the same
-address. Single source of truth, survives NIC swaps. If you'd
-rather not use your router for this, Pi-hole can also act as the
-DHCP server; the project doesn't require it either way.
-
-Without reservations, lease drift will eventually break backups,
-Pi-hole local DNS, and any service that hardcodes a LAN IP.
-
-### Repository structure
-
-This repo is designed to be used alongside a **private overlay** that holds
-your personal inventory (host IPs, vault-encrypted secrets, device configs).
-The public repo contains all roles, playbooks, and example configs — but no
-real credentials or personal data.
-
-```
-~/github/
-  home-server/              ← this public repo (clone it)
-  home-server-private/      ← your private overlay (create or clone)
-    inventory/
-      hosts.yml             ← your real host definitions
-      host_vars/
-        homeserver.yml      ← your vault-encrypted secrets + overrides
-    roles/
-      syncthing/            ← personal syncthing device identity (optional)
-        files/volumes/syncthing-config/config/
-          cert.pem
-          key.pem
-        templates/volumes/syncthing-config/config/
-          config.xml.j2
-```
-
-### 1. Set up the private overlay
-
-**Option A — Start fresh** (no existing private repo):
-
-```bash
-mkdir -p home-server-private/inventory/host_vars
-cp home-server/inventory/hosts.yml.example home-server-private/inventory/hosts.yml
-cp home-server/inventory/host_vars/homeserver.yml.example home-server-private/inventory/host_vars/homeserver.yml
-```
-
-Edit both files with your real values.
-
-**Option B — Clone existing** (if you already have a private repo):
-
-```bash
-git clone git@github.com:youruser/home-server-private.git
-```
-
-### 2. Symlink private files into the public repo
-
-```bash
-cd home-server
-ln -sf ../home-server-private/inventory/hosts.yml inventory/hosts.yml
-ln -sf ../home-server-private/inventory/host_vars/homeserver.yml inventory/host_vars/homeserver.yml
-```
-
-These symlinks are gitignored — they won't leak into the public repo.
-
-For syncthing config restore (optional):
-
-```bash
-mkdir -p roles/syncthing/files/volumes/syncthing-config/config
-mkdir -p roles/syncthing/templates/volumes/syncthing-config/config
-ln -sf ../../../../../../../../home-server-private/roles/syncthing/files/volumes/syncthing-config/config/key.pem roles/syncthing/files/volumes/syncthing-config/config/key.pem
-ln -sf ../../../../../../../../home-server-private/roles/syncthing/files/volumes/syncthing-config/config/cert.pem roles/syncthing/files/volumes/syncthing-config/config/cert.pem
-ln -sf ../../../../../../../../home-server-private/roles/syncthing/templates/volumes/syncthing-config/config/config.xml.j2 roles/syncthing/templates/volumes/syncthing-config/config/config.xml.j2
-```
-
-### 3. Generate and encrypt secrets
-
-```bash
-# Create a vault password file (gitignored)
-echo 'your-vault-password' > vault.pw
-
-# Generate and encrypt a secret
-openssl rand -base64 24 | ansible-vault encrypt_string --stdin-name 'pihole_api_password'
-```
-
-Paste the output into your private `inventory/host_vars/homeserver.yml`.
-
-### 4. Install role dependencies
-
-```bash
-ansible-galaxy install -r roles/requirements.yml -p .ansible/roles/
-```
-
-### 5. Deploy a service
-
-```bash
-ansible-playbook playbooks/pihole.yml
-```
+---
 
 ## Services
+
+Platform foundations (always deployed) — `os-base` (system hardening,
+podman 5, dnf-automatic, systemd-resolved, swap, etc.) and
+`os-tailscale` (mesh-VPN onto the tailnet, optional subnet routing).
+These aren't web-facing services; they set the stage so the
+application roles below can run.
 
 ### Deployed
 
 | Service | Purpose | Container images | Volumes (backup method) |
 |---|---|---|---|
-| **Dashboard** | Regularly updated Dashboard, showing all deployed services incl. status, related volumes and backup status. | — (static HTML rendered on host) | — |
-| **Caddy** | Front-door reverse proxy with internal TLS via a private CA. | `caddy:latest` | <ul><li>`caddy-data` — internal CA seeded from private overlay (not backed up)</li><li>`caddy-config` — not backed up</li><li>`caddy-etc` — not backed up</li></ul> |
-| **Pi-hole + Unbound** | Network-wide DNS ad/tracker blocking with a local recursive resolver (no upstream DNS leakage). HTTPS admin UI on port 8443. | <ul><li>`pi-hole/pihole:latest`</li><li>`klutchell/unbound:latest`</li></ul> | <ul><li>`pihole-etc` — tar</li><li>`pihole-dnsmasq` — tar</li></ul> |
-| **Shairport-sync** | AirPlay audio receiver for iOS/macOS devices. | `mikebrady/shairport-sync` | — (stateless) |
-| **Syncthing** | Peer-to-peer file synchronization between household devices. | `syncthing/syncthing:2` | <ul><li>`syncthing-config` — tar</li><li>`syncthing-data` — rsync</li></ul> |
-| **Jukebox** (Lyrion Music Server + Squeezelite) | Self-hosted music server with streaming client, Material skin UI. | <ul><li>`lmscommunity/lyrionmusicserver`</li><li>`giof71/squeezelite`</li></ul> | <ul><li>`jukebox-server-config` — tar</li><li>`jukebox-server-playlist` — tar</li><li>`jukebox-server-music` — rsync (opt-in restore)</li></ul> |
-| **Ente Photos** | Self-hosted photo & video library with iOS/Android apps (end-to-end encrypted). | <ul><li>`ente-io/server:latest`</li><li>`ente-io/web:latest`</li><li>`postgres:15`</li><li>`minio/minio:latest`</li></ul> | <ul><li>`entephoto-museum-config` — tar</li><li>`entephoto-minio-data` — rsync</li><li>`ente_db` (Postgres) — pgdump</li></ul> |
-| **Paperless-NGX** | Document management with OCR + full-text search. Includes an SFTP sidecar for scanner auto-ingest. | <ul><li>`paperless-ngx/paperless-ngx:latest`</li><li>`postgres:16`</li><li>`redis:7-alpine`</li><li>`gotenberg/gotenberg:8`</li><li>`atmoz/sftp:latest`</li></ul> | <ul><li>`paperless-data` — tar</li><li>`paperless-export` — tar</li><li>`paperless-redis-data` — tar</li><li>`paperless-media` — rsync</li><li>`paperless` (Postgres) — pgdump</li><li>`paperless-consume`, `paperless-sftp-*` — runtime, not backed up</li></ul> |
-| **Jellyfin** | Media server for movies, TV and music with native iOS/tvOS clients. | `jellyfin/jellyfin:latest` | <ul><li>`jellyfin-config` — tar</li><li>`jellyfin-media` — rsync (opt-in restore)</li><li>`jellyfin-cache` — regenerated, not backed up</li></ul> |
-| **Backup** | Snapshots each role's declared volumes to the NAS on a schedule; retention per method. | — (host service, no container) | — |
+| **Dashboard** | Generated status page showing every deployed service, its container, related volumes and last backup time. | — (static HTML rendered on host) | — |
+| **Caddy** | Mandatory front-door reverse proxy. Issues TLS for every web UI from a single internal CA seeded from the private overlay. | `public.ecr.aws/docker/library/caddy:latest` | <ul><li>`caddy-data` — internal CA seeded from private overlay (not backed up)</li><li>`caddy-config` — not backed up</li><li>`caddy-etc` — not backed up</li></ul> |
+| **Pi-hole + Unbound** | Network-wide DNS ad/tracker blocking with a local recursive resolver (no upstream DNS leakage). Admin UI at `https://pihole.<caddy_domain>`. | <ul><li>`ghcr.io/pi-hole/pihole:latest`</li><li>`docker.io/klutchell/unbound:latest`</li></ul> | <ul><li>`pihole-etc` — tar</li><li>`pihole-dnsmasq` — tar</li></ul> |
+| **Shairport-sync** | AirPlay audio receiver for iOS/macOS devices. | `docker.io/mikebrady/shairport-sync` | — (stateless) |
+| **Syncthing** | Peer-to-peer file synchronization between household devices. | `ghcr.io/syncthing/syncthing:2` | <ul><li>`syncthing-config` — tar</li><li>`syncthing-data` — rsync</li></ul> |
+| **Music Assistant** | Self-hosted music server with library + streaming providers + queue. SqueezeLite player container drives a USB DAC for local playback (opt-out via `music_assistant_player_enabled: false` on hosts without audio hardware). | <ul><li>`ghcr.io/music-assistant/server:latest`</li><li>`docker.io/giof71/squeezelite`</li></ul> | <ul><li>`music-assistant-data` — tar</li></ul> |
+| **Ente Photos** | Self-hosted photo & video library with iOS/Android apps (end-to-end encrypted). | <ul><li>`ghcr.io/ente-io/server:latest`</li><li>`ghcr.io/ente-io/web:latest`</li><li>`public.ecr.aws/docker/library/postgres:15`</li><li>`quay.io/minio/minio:latest`</li></ul> | <ul><li>`entephoto-museum-config` — tar</li><li>`entephoto-minio-data` — rsync</li><li>`ente_db` (Postgres) — pgdump</li></ul> |
+| **Paperless-NGX** | Document management with OCR + full-text search. Optional SFTP sidecar for scanner auto-ingest (`paperless_sftp_ingest_enabled`). | <ul><li>`ghcr.io/paperless-ngx/paperless-ngx:latest`</li><li>`public.ecr.aws/docker/library/postgres:16`</li><li>`public.ecr.aws/docker/library/redis:7-alpine`</li><li>`docker.io/gotenberg/gotenberg:8`</li><li>`docker.io/atmoz/sftp:latest`</li></ul> | <ul><li>`paperless-data` — tar</li><li>`paperless-export` — tar</li><li>`paperless-redis-data` — tar</li><li>`paperless-media` — rsync</li><li>`paperless` (Postgres) — pgdump</li><li>`paperless-consume`, `paperless-sftp-*` — runtime, not backed up</li></ul> |
+| **Jellyfin** | Media server for movies, TV and music with native iOS/tvOS clients. NAS-backed video library mounted read-only via NFS. | `ghcr.io/jellyfin/jellyfin:latest` | <ul><li>`jellyfin-config` — tar</li><li>`jellyfin-media` — rsync (opt-in restore)</li></ul> |
+| **Backup** | Host-side service. Snapshots each role's declared volumes to the NAS on a schedule (default 21:00) using the per-role `backup_manifest`. | — (no container — runs as a systemd timer) | — |
 
-Backup flavours (driven by each role's `backup_manifest`):
-- **tar** — small config/state volumes, restored atomically.
-- **pgdump** — logical SQL dumps for PostgreSQL services (container stays up).
-- **rsync** — large mutable trees where a full-volume tar would be wasteful (media, bulk data).
 
-### Planned
-- Nextcloud (file storage and sharing)
+### Planned applications / features
+- [Nextcloud (file storage and sharing)](https://github.com/luckynrslevin/home-server/issues/7)
+- [Single Sign-On (e.g. Keycloak) across all installed apps](https://github.com/luckynrslevin/home-server/issues/6)
+- [Cloud-init self-provisioning — one-paste deploy to any VPS provider](https://github.com/luckynrslevin/home-server/issues/106)
+- [Home Assistant](https://www.home-assistant.io/)
+- [Mealie](https://mealie.io/)
 - IoT stack (Mosquitto, InfluxDB, Grafana, Telegraf)
-- Uptime Kuma
-- Home Assistant
-- Mealie
+- [Uptime Kuma](https://uptimekuma.org/)
