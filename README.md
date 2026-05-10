@@ -224,7 +224,13 @@ The guiding principle is **rebuild over repair**: if the system drifts, it shoul
 
 ## Getting Started
 
-*To be rewritten.*
+If you want to get up and running quickly, head straight to the
+**[Quickstart guide](docs/Quickstart.md)** — it walks through the
+fresh-install path end-to-end (cloud-init bootstrap, private overlay
+setup, vault, and first deploy).
+
+A more detailed setup reference will land here in a follow-up
+revision.
 
 ---
 
