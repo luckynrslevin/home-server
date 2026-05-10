@@ -72,16 +72,37 @@ What "opinionated, end-to-end" means concretely:
 
 ## Alternatives & Comparison
 
-There are plenty of self-hosting tools out there. The table below is
-an honest, side-by-side look at where each one shines and where it
-leaves work on your plate compared to this project's "opinionated
-end-to-end" model. Contributions welcome — open an issue or PR if
-your favourite solution is missing.
+Honest, side-by-side feature matrix. Contributions welcome — open
+an issue or PR if your favourite solution is missing or a rating
+looks off.
 
-| Solution | Strengths (vs. this project) | Gaps (vs. this project) |
-|---|---|---|
-| **[Coolify](https://coolify.io)** — open-source PaaS-style controller with a UI for deploying self-hosted services. | • Polished web UI for browsing and configuring services.<br>• Large library of preconfigured application templates.<br>• Several hosting providers offer ready-made Coolify VPS images — quick to spin up for evaluation.<br>• Good fit for *trying out* candidate applications before committing. | • Not actually one-click — non-trivial apps still need per-application config and container-level digging.<br>• Coolify itself runs on your server and consumes RAM/CPU that small home boxes (4–8 GB RAM mini-PC) can't really spare.<br>• Coolify runs as **root** and so do all deployed containers — full rootless Docker is an open [feature request](https://github.com/coollabsio/coolify/issues/2387), not a shipped feature. The Jan 2026 CVE batch (3× CVSS 10.0, including unauthenticated root SSH key disclosure) shows the cost of that default.<br>• Container lifecycle is just Docker restart policies (`unless-stopped` etc.) — no per-app systemd unit, no dependency ordering (e.g. wait for NFS mount before starting Jellyfin), no `systemctl status <app>` / `journalctl -u <app>`. Coolify's own control plane has had host-reboot problems ([issue #5933](https://github.com/coollabsio/coolify/issues/5933)).<br>• No automatic container release updates, no automatic OS security updates — you're on the patch treadmill.<br>• No built-in backup/restore workflow — assemble it yourself per service. |
-| **[Umbrel](https://umbrel.com)** — opinionated home-server OS with an app-store UI, originally a Bitcoin/Lightning appliance. | • Beautifully designed OS-level UX — onboarding, dashboard, settings.<br>• 300+ apps in the App Store, one-click install; community App Stores for extras.<br>• Available as ready-made hardware (Umbrel Home / Pro) *and* DIY on a Pi 5, Ubuntu, or any x86 box.<br>• Built-in encrypted hourly backups to USB / NAS / another Umbrel, with a "Rewind" time-travel restore — significantly more polished than rolling your own.<br>• Bitcoin / Lightning node is first-class. | • Apps don't auto-update — by design ("user is in full control"). You manually click update per app. Many apps lag well behind upstream releases ([community thread](https://community.umbrel.com/t/umbrel-update-policy-many-apps-are-not-up-to-date/17208)).<br>• Containers run via Docker on a customized Raspberry Pi OS base — root model, no per-app systemd integration (same lifecycle limitations as Coolify above).<br>• You're tied to what the App Store packages. Adding services outside it means dropping into Portainer / docker-compose by hand; the curated UX disappears.<br>• Backups exist but [community feedback](https://github.com/getumbrel/umbrel/issues/1943) flags incomplete recovery flows — manual intervention often required.<br>• Heavily Bitcoin-flavoured product positioning; if that's not your use case, you're paying complexity tax for features you don't use. |
+**Legend:** **+** delivered out of the box · **o** partial /
+manual / requires extra setup · **−** absent or actively contrary
+
+| Feature | **This project** | [**Coolify**](https://coolify.io) | [**Umbrel**](https://umbrel.com) |
+|---|:---:|:---:|:---:|
+| Polished web UI for daily ops | o | + | + |
+| Curated application catalog (one-click install) | o | + | + |
+| Ready-made hardware appliance you can buy | − | − | + |
+| Ready-made VPS image at common hosters | − | + | o |
+| One-command install of the *whole* stack | + | o | + |
+| Mandatory HTTPS for every service via internal CA | + | o | o |
+| Tailscale / mesh-VPN integration first-class | + | o | + |
+| **Rootless containers by default** | + | − | − |
+| Per-app systemd integration (`systemctl`, `journalctl`, dep ordering) | + | − | − |
+| Automatic container release updates | + | − | − |
+| Automatic OS security updates | + | − | o |
+| Built-in scheduled backup workflow | + | − | + |
+| Tested, fully automated restore from scratch | + | − | o |
+| Zero control-plane RAM overhead on the home server | + | − | − |
+| Easy to extend with services *outside* the catalog | + | + | − |
+
+**Notes worth flagging:**
+
+- **Rootless matters.** Coolify runs as root and so do all deployed containers — full rootless Docker is an [open feature request](https://github.com/coollabsio/coolify/issues/2387). The [Jan 2026 CVE batch](https://thehackernews.com/2026/01/coolify-discloses-11-critical-flaws.html) (3× CVSS 10.0, including unauthenticated root SSH key disclosure) demonstrates the cost of that default.
+- **App-update model on Umbrel** is deliberately manual — apps don't auto-update so you can review each release. In practice [many apps lag well behind upstream](https://community.umbrel.com/t/umbrel-update-policy-many-apps-are-not-up-to-date/17208).
+- **Lifecycle integration** — both Coolify and Umbrel rely on Docker restart policies (`unless-stopped` etc.) for container lifecycle. No dependency ordering (e.g. wait for the NFS mount before starting Jellyfin), no per-app systemd unit, no `journalctl -u <app>`. Coolify's own control plane has had [host-reboot bugs](https://github.com/coollabsio/coolify/issues/5933).
+- **Umbrel Bitcoin focus** — the product is heavily oriented toward Bitcoin / Lightning use cases. Excellent if you want that; complexity tax if you don't.
 
 ---
 
