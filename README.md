@@ -79,30 +79,33 @@ looks off.
 **Legend:** **+** delivered out of the box · **o** partial /
 manual / requires extra setup · **−** absent or actively contrary
 
-| Feature | **This project** | [**Coolify**](https://coolify.io) | [**Umbrel**](https://umbrel.com) |
-|---|:---:|:---:|:---:|
-| Polished web UI for daily ops | o | + | + |
-| Curated application catalog (one-click install) | o | + | + |
-| Ready-made hardware appliance you can buy | − | − | + |
-| Ready-made VPS image at common hosters | − | + | o |
-| One-command install of the *whole* stack | + | o | + |
-| Mandatory HTTPS for every service via internal CA | + | o | o |
-| Tailscale / mesh-VPN integration first-class | + | o | + |
-| **Rootless containers by default** | + | − | − |
-| Per-app systemd integration (`systemctl`, `journalctl`, dep ordering) | + | − | − |
-| Automatic container release updates | + | − | − |
-| Automatic OS security updates | + | − | o |
-| Built-in scheduled backup workflow | + | − | + |
-| Tested, fully automated restore from scratch | + | − | o |
-| Zero control-plane RAM overhead on the home server | + | − | − |
-| Easy to extend with services *outside* the catalog | + | + | − |
+| Feature | **This project** | [**Coolify**](https://coolify.io) | [**Umbrel**](https://umbrel.com) | [**CasaOS**](https://casaos.io) | [**YunoHost**](https://yunohost.org) |
+|---|:---:|:---:|:---:|:---:|:---:|
+| Polished web UI for daily ops | o | + | + | + | + |
+| Curated application catalog (one-click install) | o | + | + | + | + |
+| Built-in SSO / LDAP across all installed apps | − | − | − | − | + |
+| Ready-made hardware appliance you can buy | − | − | + | o | − |
+| Ready-made VPS image at common hosters | − | + | o | o | o |
+| One-command install of the *whole* stack | + | o | + | + | + |
+| Mandatory HTTPS for every service via internal CA | + | o | o | − | + |
+| Tailscale / mesh-VPN integration first-class | + | o | + | o | − |
+| **Rootless / per-app-user isolation by default** | + | − | − | − | o |
+| Per-app systemd integration (`systemctl`, `journalctl`, dep ordering) | + | − | − | − | + |
+| Automatic container/app release updates | + | − | − | − | o |
+| Automatic OS security updates | + | − | o | o | + |
+| Built-in scheduled backup workflow | + | − | + | − | + |
+| Tested, fully automated restore from scratch | + | − | o | − | + |
+| Zero control-plane RAM overhead on the home server | + | − | − | − | − |
+| Easy to extend with services *outside* the catalog | + | + | − | + | o |
 
 **Notes worth flagging:**
 
 - **Rootless matters.** Coolify runs as root and so do all deployed containers — full rootless Docker is an [open feature request](https://github.com/coollabsio/coolify/issues/2387). The [Jan 2026 CVE batch](https://thehackernews.com/2026/01/coolify-discloses-11-critical-flaws.html) (3× CVSS 10.0, including unauthenticated root SSH key disclosure) demonstrates the cost of that default.
 - **App-update model on Umbrel** is deliberately manual — apps don't auto-update so you can review each release. In practice [many apps lag well behind upstream](https://community.umbrel.com/t/umbrel-update-policy-many-apps-are-not-up-to-date/17208).
-- **Lifecycle integration** — both Coolify and Umbrel rely on Docker restart policies (`unless-stopped` etc.) for container lifecycle. No dependency ordering (e.g. wait for the NFS mount before starting Jellyfin), no per-app systemd unit, no `journalctl -u <app>`. Coolify's own control plane has had [host-reboot bugs](https://github.com/coollabsio/coolify/issues/5933).
-- **Umbrel Bitcoin focus** — the product is heavily oriented toward Bitcoin / Lightning use cases. Excellent if you want that; complexity tax if you don't.
+- **Lifecycle integration** — Coolify, Umbrel, and CasaOS all rely on Docker restart policies (`unless-stopped` etc.) for container lifecycle. No dependency ordering (e.g. wait for the NFS mount before starting Jellyfin), no per-app systemd unit, no `journalctl -u <app>`. Coolify's own control plane has had [host-reboot bugs](https://github.com/coollabsio/coolify/issues/5933).
+- **Umbrel Bitcoin focus** — heavily oriented toward Bitcoin / Lightning use cases. Excellent if you want that; complexity tax if you don't.
+- **CasaOS backup/restore** is an [open community feature request](https://github.com/IceWhaleTech/CasaOS/discussions/175), not a shipped capability. App updates are also limited — apps installed from the store are [bound to specific releases](https://github.com/IceWhaleTech/CasaOS/discussions/744).
+- **YunoHost is fundamentally different** — apps are *not* containerized; they install directly into the host as system packages, each running as its own dedicated system user behind a shared NGINX + LDAP + SSO stack. That's why it gets credit for built-in SSO and per-app systemd integration but only `o` on isolation (no namespace boundaries), and why "extend outside the catalog" is harder (you'd be manually packaging an app into the YunoHost integration model).
 
 ---
 
