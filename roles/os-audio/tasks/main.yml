@@ -82,11 +82,10 @@
     - blacklist_result.changed
     - ansible_connection == "local"
 
-# Wait for the system to be online after reboot
 - name: Wait for the system to be online after reboot
   ansible.builtin.wait_for:
     host: "{{ ansible_host | default(inventory_hostname) }}"
-    port: 22
+    port: "{{ ansible_port | default(22) }}"
     timeout: 600
     state: started
   when:
