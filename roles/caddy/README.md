@@ -18,11 +18,55 @@ empty value will cause `playbooks/site.yml` to fail fast.
 
 | Variable                        | Default | Purpose |
 |---------------------------------|---------|---------|
+| `caddy_image`                   | `ghcr.io/luckynrslevin/caddy-acme:latest` | Caddy build with deSEC + Cloudflare + Hetzner DNS-01 plugins compiled in. See [`../../caddy-image/`](../../caddy-image/). |
 | `caddy_listen_port`             | `9080`  | Internal HTTP port. Firewall forwards `80 → caddy_listen_port`. |
 | `caddy_listen_port_https`       | `9443`  | Internal HTTPS port. Firewall forwards `443 → caddy_listen_port_https` (only when `caddy_domain` is set). |
-| `caddy_domain`                  | `""`    | Server domain (e.g. `homeserver.lan`). Enables reverse proxy + HTTPS. Empty = simple dashboard mode. |
+| `caddy_domain`                  | `""`    | Server domain (e.g. `myhome.dedyn.io` or `homeserver.lan`). Enables reverse proxy + HTTPS. Empty = simple dashboard mode. |
 | `caddy_reverse_proxy_services`  | `[]`    | List of `{subdomain, port, proto?}` dicts — one per proxied service. |
-| `caddy_seed_internal_ca`        | `false` | Stage the internal ACME CA (root + intermediate cert/key) from the private overlay on deploy. See [Internal CA persistence](#internal-ca-persistence). |
+| `caddy_acme_provider`           | `"internal"` | TLS issuer: `internal` (Caddy self-signed CA), `desec`, `cloudflare`, or `hetzner`. See [TLS issuer selection](#tls-issuer-selection). |
+| `caddy_acme_subdomain`          | `""`    | For `desec`: the dedyn.io subdomain (without `.dedyn.io`). |
+| `caddy_acme_zone`               | `""`    | For `cloudflare` / `hetzner`: the apex zone (e.g. `example.com`). |
+| `caddy_acme_token`              | `""`    | DNS-provider API token (vault-encrypt in host_vars). |
+| `caddy_seed_internal_ca`        | `false` | When `caddy_acme_provider == 'internal'`, stage the internal ACME CA (root + intermediate cert/key) from the private overlay on deploy. See [Internal CA persistence](#internal-ca-persistence). |
+
+## TLS issuer selection
+
+`caddy_acme_provider` picks how Caddy issues certs:
+
+| Provider | When to use | Cert type | Per-device install? |
+|---|---|---|---|
+| **`internal`** | Air-gapped homelab; no internet at install time. | Self-signed by Caddy's built-in CA. | **Yes** — every device that hits a Caddy URL must trust the root cert. The `/trust` HTTP landing page (served at `http://<caddy_domain>/trust`) walks users through the install. |
+| **`desec`** | Default platform path — recommended. Free `*.dedyn.io` subdomain at deSEC. | **Real Let's Encrypt** (via DNS-01). | No. |
+| **`cloudflare`** | You own a domain hosted at Cloudflare DNS. | **Real Let's Encrypt** (via DNS-01). | No. |
+| **`hetzner`** | You own a domain hosted at Hetzner DNS. | **Real Let's Encrypt** (via DNS-01). | No. |
+
+Setting any non-`internal` provider:
+- Drops every `tls internal` line from the Caddyfile.
+- Emits a global `acme_dns <provider> <token>` block at the top of the Caddyfile.
+- Skips the entire CA-extract / mobileconfig / `/trust` landing-page deploy chain (those tasks are gated on `caddy_acme_provider == 'internal'`).
+- Caddy auto-issues a wildcard cert for `*.<caddy_domain>` via the chosen provider's API.
+
+Example for the deSEC default path:
+
+```yaml
+# host_vars (private overlay)
+caddy_domain: "myhome.dedyn.io"
+caddy_acme_provider: "desec"
+caddy_acme_subdomain: "myhome"
+caddy_acme_token: !vault |
+  $ANSIBLE_VAULT;1.1;AES256
+  ...
+```
+
+Example for BYO Cloudflare:
+
+```yaml
+caddy_domain: "homeserver.example.com"
+caddy_acme_provider: "cloudflare"
+caddy_acme_zone: "example.com"
+caddy_acme_token: !vault |
+  ...
+```
 
 ### Reverse proxy configuration example
 

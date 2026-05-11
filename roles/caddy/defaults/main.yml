@@ -1,5 +1,10 @@
-# Container image
-caddy_image: "public.ecr.aws/docker/library/caddy:latest"
+# Container image — custom Caddy build with deSEC + Cloudflare +
+# Hetzner DNS-01 plugins compiled in. See ../caddy-image/ for the
+# Dockerfile + GitHub Actions workflow that publishes this tag.
+# It's a strict superset of upstream caddy:latest (just adds DNS
+# plugins), so it's safe to use even when caddy_acme_provider is
+# "internal" (the plugins are simply unused).
+caddy_image: "ghcr.io/luckynrslevin/caddy-acme:latest"
 
 # Caddy listen port (unprivileged, mapped via firewall from 80)
 caddy_listen_port: 9080
@@ -46,3 +51,39 @@ caddy_ca_root_crt: ""
 caddy_ca_root_key: ""
 caddy_ca_intermediate_crt: ""
 caddy_ca_intermediate_key: ""
+
+# ACME provider for issuing TLS certificates.
+#
+#   "internal"   — Caddy's built-in self-signed CA. Per-device root
+#                  install required (see caddy-trust.mobileconfig +
+#                  /trust landing page). Today's default; the
+#                  air-gapped fallback in the platform plan.
+#   "desec"      — Real Let's Encrypt certs via DNS-01 against deSEC
+#                  (free *.dedyn.io subdomain). The recommended
+#                  default for the platform; needs caddy_acme_token
+#                  + caddy_acme_subdomain.
+#   "cloudflare" — Real LE certs via DNS-01 against Cloudflare DNS
+#                  (BYO domain). Needs caddy_acme_token +
+#                  caddy_acme_zone.
+#   "hetzner"    — Same as cloudflare but via Hetzner DNS.
+#
+# Switching to a non-internal provider drops the `tls internal`
+# stanza from every site in the Caddyfile; Caddy falls back to its
+# default behaviour of auto-issuing real LE certs via the chosen
+# DNS-01 challenge.
+caddy_acme_provider: "internal"
+
+# For provider == "desec": the dedyn.io subdomain (without the
+# .dedyn.io suffix). Caddy issues a wildcard cert for
+# *.<caddy_acme_subdomain>.dedyn.io.
+caddy_acme_subdomain: ""
+
+# For provider == "cloudflare" / "hetzner": the BYO apex zone
+# (e.g. "example.com"). Caddy issues a wildcard cert for
+# *.<caddy_acme_zone>.
+caddy_acme_zone: ""
+
+# API token for the chosen DNS provider. Vault-encrypt this in
+# host_vars. Scope to the single zone / single record type when
+# the provider supports it.
+caddy_acme_token: ""

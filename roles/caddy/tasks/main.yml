@@ -106,7 +106,9 @@
     path: "{{ caddy_ca_cert_host_path | dirname }}"
     state: directory
     mode: "0755"
-  when: caddy_domain | length > 0
+  when:
+    - caddy_domain | length > 0
+    - caddy_acme_provider == 'internal'
 
 - name: Wait for Caddy's internal root CA to be generated # noqa: no-changed-when
   become: true
@@ -118,7 +120,9 @@
   delay: 2
   until: caddy_ca_ready.rc == 0
   changed_when: false
-  when: caddy_domain | length > 0
+  when:
+    - caddy_domain | length > 0
+    - caddy_acme_provider == 'internal'
 
 - name: Export Caddy internal root CA to host # noqa: no-changed-when
   become: true
@@ -130,7 +134,9 @@
   args:
     executable: /bin/bash
   changed_when: false
-  when: caddy_domain | length > 0
+  when:
+    - caddy_domain | length > 0
+    - caddy_acme_provider == 'internal'
 
 - name: Set permissions on exported Caddy CA cert
   become: true
@@ -142,7 +148,9 @@
     # /etc/ssl/certs/caddy-root.crt). The default cert_t inherited from
     # /etc/pki/ blocks confined containers from reading it.
     setype: container_file_t
-  when: caddy_domain | length > 0
+  when:
+    - caddy_domain | length > 0
+    - caddy_acme_provider == 'internal'
 
 # Publish the root CA via the dashboard so devices on the LAN can
 # install it. Caddy bind-mounts /var/www/dashboard read-only and serves
@@ -156,7 +164,9 @@
     remote_src: true
     mode: "0644"
     setype: container_file_t
-  when: caddy_domain | length > 0
+  when:
+    - caddy_domain | length > 0
+    - caddy_acme_provider == 'internal'
 
 # Apple-flavoured one-tap trust: the same root CA wrapped into a
 # .mobileconfig profile. iOS / iPadOS / macOS install it via Safari
@@ -171,7 +181,9 @@
   ansible.builtin.slurp:
     src: "{{ caddy_ca_cert_host_path }}"
   register: _caddy_ca_pem
-  when: caddy_domain | length > 0
+  when:
+    - caddy_domain | length > 0
+    - caddy_acme_provider == 'internal'
 
 - name: Publish Caddy mobileconfig profile via dashboard
   become: true
@@ -182,7 +194,9 @@
     setype: container_file_t
   vars:
     caddy_ca_pem_content: "{{ _caddy_ca_pem.content | b64decode }}"
-  when: caddy_domain | length > 0
+  when:
+    - caddy_domain | length > 0
+    - caddy_acme_provider == 'internal'
 
 # HTTP-served landing page that walks the user through trusting the
 # CA on their device. Reachable at http://<caddy_domain>/trust without
@@ -197,4 +211,6 @@
     dest: /var/www/dashboard/trust.html
     mode: "0644"
     setype: container_file_t
-  when: caddy_domain | length > 0
+  when:
+    - caddy_domain | length > 0
+    - caddy_acme_provider == 'internal'
