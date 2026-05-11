@@ -102,11 +102,23 @@ info "Step 1/7: Installing prerequisites..."
 
 # `pipx` lives in EPEL on AlmaLinux / Rocky / RHEL / CentOS-9 and in
 # the base repos on Fedora. Enable EPEL on the RHEL-9 family before
-# the install; on Fedora the dnf call is a no-op (package not found
-# is fine — Fedora doesn't have or need epel-release).
+# the install; on Fedora the block is skipped.
+#
+# We also install `python3.11` on the RHEL-9 family because:
+#   - AL9's default system Python is 3.9.
+#   - pipx defaults to building its venvs against the system Python.
+#   - ansible-core 2.16+ requires Python ≥ 3.10.
+#   - On Python 3.9, pipx caps us at ansible-core 2.15.x, which has
+#     a parser bug in include_tasks/role-include path resolution
+#     (TypeError: expected str, ... not NoneType) that this project's
+#     Galaxy podman_quadlet role triggers reliably.
+# python3.11 ships in AL9 AppStream; Fedora's system Python is
+# already current so this whole block is a no-op there.
+PIPX_PYTHON_ARG=()
 if [[ "${ID:-}" =~ ^(almalinux|rocky|centos|rhel)$ ]]; then
-    sudo dnf install -y epel-release &>/dev/null \
-        || sudo dnf install -y epel-release
+    sudo dnf install -y epel-release python3.11 &>/dev/null \
+        || sudo dnf install -y epel-release python3.11
+    PIPX_PYTHON_ARG=(--python python3.11)
 fi
 
 sudo dnf install -y podman git python3-pyyaml pipx &>/dev/null \
@@ -120,10 +132,11 @@ if ! command -v pipx &>/dev/null; then
     exit 1
 fi
 
-# Install ansible-core via pipx for the latest version (distro repos
-# may ship an older version with compatibility issues).
+# Install ansible-core via pipx (latest available for the chosen
+# Python). With python3.11 we get ansible-core 2.18.x; without the
+# override on Fedora we get whatever's current for system Python.
 if ! command -v ansible-playbook &>/dev/null; then
-    pipx install ansible-core &>/dev/null
+    pipx install "${PIPX_PYTHON_ARG[@]}" ansible-core &>/dev/null
     # Inject the full ansible package for built-in collections.
     pipx inject ansible-core ansible &>/dev/null
 fi
