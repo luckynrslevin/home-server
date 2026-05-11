@@ -7,7 +7,9 @@
 # (desec / cloudflare / hetzner) are bundled in the custom Caddy
 # image — switching providers is just an inventory change.
 {
-	acme_dns {{ caddy_acme_provider }} {{ caddy_acme_token }}
+	acme_dns {{ caddy_acme_provider }} {
+		token {{ caddy_acme_token }}
+	}
 }
 
 # Dashboard (root domain)
