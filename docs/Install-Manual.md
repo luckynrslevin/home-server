@@ -25,7 +25,12 @@ you reproducible installs.
    ```bash
    sudo dd if=AlmaLinux-9.x-x86_64-dvd.iso of=/dev/sdX bs=4M status=progress
    ```
-   (replace `/dev/sdX` carefully — this wipes the device).
+
+   > [!IMPORTANT]
+   > Replace `/dev/sdX` with your actual USB device — `dd` writes
+   > byte-for-byte and **wipes whatever is on the target**. Confirm
+   > the device with `lsblk` first; getting it wrong on your laptop's
+   > primary disk destroys it.
 
 There's a helper at
 [`scripts/prepare-installer-usb.sh`](../scripts/prepare-installer-usb.sh).
