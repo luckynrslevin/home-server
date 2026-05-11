@@ -2,6 +2,7 @@
 # Container images
 entephoto_postgres_image: "public.ecr.aws/docker/library/postgres:15"
 entephoto_minio_image: "quay.io/minio/minio:latest"
+entephoto_mc_image: "quay.io/minio/mc:latest"
 entephoto_server_image: "ghcr.io/ente-io/server:latest"
 entephoto_web_image: "ghcr.io/ente-io/web:latest"
 
