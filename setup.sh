@@ -560,7 +560,7 @@ cat << EOF
     service: pihole
     urls:
       - label: Admin UI
-        url: https://${SERVER_IP}:8443/admin
+        url: https://pihole.${CADDY_DOMAIN}/admin
     volumes:
       - systemd-pihole-etc
       - systemd-pihole-dnsmasq
@@ -576,7 +576,7 @@ cat << EOF
     service: syncthing
     urls:
       - label: Web UI
-        url: https://${SERVER_IP}:8384
+        url: https://syncthing.${CADDY_DOMAIN}
     volumes:
       - systemd-syncthing
 
@@ -591,9 +591,9 @@ cat << EOF
     service: entephoto-pod
     urls:
       - label: Photos
-        url: http://${SERVER_IP}:3000
+        url: https://photos.${CADDY_DOMAIN}
       - label: API
-        url: http://${SERVER_IP}:8080/ping
+        url: https://photos-api.${CADDY_DOMAIN}/ping
     volumes:
       - entephoto-postgres-data
       - entephoto-minio-data
@@ -610,7 +610,7 @@ cat << EOF
     service: paperless-ngx-pod
     urls:
       - label: Web UI
-        url: http://${SERVER_IP}:8000
+        url: https://paperless.${CADDY_DOMAIN}
     volumes:
       - paperless-db-data
       - paperless-media
