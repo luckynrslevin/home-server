@@ -1,0 +1,133 @@
+{# Rendered to /var/www/dashboard/trust.html, served by Caddy at
+   http://{{ caddy_domain }}/trust (HTTP, no redirect). Plain HTML,
+   inline CSS, no JS, no external resources. #}
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Trust the homeserver CA — {{ caddy_domain }}</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+           max-width: 760px; margin: 2em auto; padding: 0 1em; color: #1a1a1a; line-height: 1.55; }
+    h1 { margin-bottom: 0.2em; }
+    h2 { margin-top: 1.8em; }
+    .domain { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; color: #0066cc; }
+    .lead { color: #555; font-size: 1.05em; }
+    .downloads { display: flex; flex-wrap: wrap; gap: 0.8em; margin: 1.5em 0; }
+    .downloads a {
+      display: inline-block; padding: 0.85em 1.3em;
+      background: #0066cc; color: white; text-decoration: none;
+      border-radius: 6px; font-weight: 600;
+    }
+    .downloads a:hover { background: #0052a3; }
+    .downloads a small { display: block; font-weight: 400; opacity: 0.85; font-size: 0.85em; margin-top: 0.15em; }
+    details { background: #f4f6fa; border-radius: 6px; padding: 0.8em 1.2em; margin: 0.5em 0; }
+    details[open] { background: #eef1f7; }
+    summary { cursor: pointer; font-weight: 600; padding: 0.2em 0; }
+    code, pre { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.92em; }
+    pre { background: #1f1f1f; color: #f0f0f0; padding: 1em; border-radius: 6px; overflow-x: auto; }
+    .verify { background: #e8f4ea; border-left: 4px solid #2a8e3f; padding: 1em 1.2em; margin: 2em 0 1em; border-radius: 4px; }
+    .verify a { color: #1c6e2c; font-weight: 600; }
+  </style>
+</head>
+<body>
+  <h1>Trust the homeserver CA</h1>
+  <p class="lead">
+    Every web UI on this server is served at
+    <code class="domain">https://*.{{ caddy_domain }}/</code> with
+    a TLS certificate signed by your homeserver's own internal CA.
+    Install the CA's root certificate on this device once, and every
+    URL works with no warnings.
+  </p>
+
+  <h2>Step 1 — Download the right file for your device</h2>
+  <div class="downloads">
+    <a href="/caddy-trust.mobileconfig" download>
+      Apple Profile (.mobileconfig)
+      <small>iOS · iPadOS · macOS</small>
+    </a>
+    <a href="/caddy-root.crt" download>
+      Root certificate (.crt)
+      <small>Linux · Windows · Android</small>
+    </a>
+  </div>
+
+  <h2>Step 2 — Install on your device</h2>
+
+  <details>
+    <summary>macOS</summary>
+    <p>Option 1 — Apple Configuration Profile (recommended):</p>
+    <ol>
+      <li>Click <b>Apple Profile</b> above. The file downloads to <code>~/Downloads</code>.</li>
+      <li>Double-click the <code>.mobileconfig</code> file in Finder.</li>
+      <li>Open <b>System Settings → Privacy &amp; Security → Profiles</b>, find <i>Caddy Local CA</i>, click <b>Install</b>.</li>
+      <li>Open <b>Keychain Access → System</b>, find the <i>Caddy Local Authority</i> root, double-click it → <b>Trust → "When using this certificate" → Always Trust</b>.</li>
+    </ol>
+    <p>Option 2 — raw PEM via CLI:</p>
+    <pre>sudo security add-trusted-cert -d -r trustRoot \
+  -k /Library/Keychains/System.keychain \
+  ~/Downloads/caddy-root.crt</pre>
+  </details>
+
+  <details>
+    <summary>iOS / iPadOS</summary>
+    <ol>
+      <li>Open this page in <b>Safari</b> on the device (not in another browser).</li>
+      <li>Tap <b>Apple Profile</b> above. Safari shows "This website is trying to download a configuration profile". Tap <b>Allow</b>.</li>
+      <li>Open <b>Settings → General → VPN &amp; Device Management → Caddy Local CA → Install</b>.</li>
+      <li>Go to <b>Settings → General → About → Certificate Trust Settings</b> and toggle <b>Caddy Local Authority</b> on. (This step is mandatory — without it iOS won't actually trust the cert.)</li>
+    </ol>
+  </details>
+
+  <details>
+    <summary>Linux — Fedora / AlmaLinux / Rocky / RHEL</summary>
+    <pre>sudo cp ~/Downloads/caddy-root.crt /etc/pki/ca-trust/source/anchors/
+sudo update-ca-trust</pre>
+    <p>Chromium-family browsers (Chrome, Edge, Brave) read the system store; restart the browser to pick up the new CA. <b>Firefox</b> uses its own store — <code>Settings → Privacy &amp; Security → Certificates → View Certificates → Authorities → Import</code> and tick "Trust this CA to identify websites".</p>
+  </details>
+
+  <details>
+    <summary>Linux — Debian / Ubuntu</summary>
+    <pre>sudo cp ~/Downloads/caddy-root.crt /usr/local/share/ca-certificates/caddy-root.crt
+sudo update-ca-certificates</pre>
+    <p>Firefox uses its own store — see above.</p>
+  </details>
+
+  <details>
+    <summary>Windows</summary>
+    <p>PowerShell as Administrator:</p>
+    <pre>certutil -addstore -enterprise Root "$env:USERPROFILE\Downloads\caddy-root.crt"</pre>
+    <p>Or via GUI: double-click the <code>.crt</code> → <b>Install Certificate → Local Machine → Place all certificates in: Trusted Root Certification Authorities</b>.</p>
+  </details>
+
+  <details>
+    <summary>Android</summary>
+    <ol>
+      <li>Copy the <code>caddy-root.crt</code> to the device (Files app, AirDrop, etc.).</li>
+      <li><b>Settings → Security &amp; privacy → More security &amp; privacy → Encryption &amp; credentials → Install a certificate → CA certificate</b>.</li>
+      <li>Pick the file, tap <b>Install anyway</b> on the warning.</li>
+    </ol>
+    <p>(Android shows "Network may be monitored" — that's the standard warning for any user-installed CA. It's not specific to this one.)</p>
+  </details>
+
+  <div class="verify">
+    <h2 style="margin: 0 0 0.4em">Step 3 — Verify</h2>
+    <p style="margin: 0">
+      Restart your browser, then open
+      <a href="https://{{ caddy_domain }}/">https://{{ caddy_domain }}/</a>.
+      You should see the dashboard with no warnings and a green
+      padlock. If you still see a warning, check that you installed
+      the <b>root</b> cert (not the intermediate) and that the
+      browser has been restarted.
+    </p>
+  </div>
+
+  <p style="color: #777; font-size: 0.85em; margin-top: 3em">
+    Served over plain HTTP by design — the published cert is the
+    public part of the CA, and these install instructions don't
+    benefit from being on HTTPS (you don't trust the server yet).
+    Everything else on this server is HTTPS-only.
+  </p>
+</body>
+</html>

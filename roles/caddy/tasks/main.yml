@@ -183,3 +183,18 @@
   vars:
     caddy_ca_pem_content: "{{ _caddy_ca_pem.content | b64decode }}"
   when: caddy_domain | length > 0
+
+# HTTP-served landing page that walks the user through trusting the
+# CA on their device. Reachable at http://<caddy_domain>/trust without
+# a browser warning (chicken-and-egg fix: you can't fetch the cert
+# from HTTPS until you've trusted it). The Caddyfile exempts /trust,
+# /caddy-root.crt, and /caddy-trust.mobileconfig from the standard
+# HTTP→HTTPS redirect.
+- name: Publish CA-trust landing page via dashboard
+  become: true
+  ansible.builtin.template:
+    src: trust.html.j2
+    dest: /var/www/dashboard/trust.html
+    mode: "0644"
+    setype: container_file_t
+  when: caddy_domain | length > 0

@@ -91,15 +91,16 @@ The script is interactive — it walks you through:
 The server acts as **its own Ansible controller** — no separate
 workstation needed.
 
-When it finishes, open `https://<server-ip>` in your browser to see
-the dashboard.
+When it finishes, open `https://<caddy_domain>/` in your browser to
+see the dashboard.
 
-> [!NOTE]
-> The current `setup.sh` was written for Fedora Server and refuses
-> to run on other distros (`dnf` check + Fedora-specific package
-> assumptions). AlmaLinux 9 support is on the roadmap — until then,
-> use the manual deploy flow described in the project README and
-> the role-by-role playbooks in `playbooks/`.
+> [!IMPORTANT]
+> Your browser will show a certificate warning the first time
+> because the homeserver runs its own internal CA. Visit
+> **`http://<caddy_domain>/trust`** (plain HTTP, no warning) first —
+> the page has a one-click download for the root certificate plus
+> per-platform install instructions. Once installed, the dashboard
+> URL works cleanly with a green padlock.
 
 ## Step 3 — Hand off to Ansible from your laptop (optional)
 

@@ -240,6 +240,11 @@ If you want to get up and running quickly, head straight to the
 fresh-install path end-to-end (cloud-init bootstrap, private overlay
 setup, vault, and first deploy).
 
+Once deployed, install the homeserver's internal CA on each device
+that wants to reach the web UIs — visit
+`http://<caddy_domain>/trust` (plain HTTP, no warning) for download
+links and per-platform install instructions.
+
 A more detailed setup reference will land here in a follow-up
 revision.
 

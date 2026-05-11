@@ -101,17 +101,28 @@ for a LAN home server. Certificate data is persisted in `caddy-data`.
 
 ## Distributing the internal CA to client devices
 
-The role publishes the root CA at two URLs on the dashboard:
+The role publishes a small **HTTP-served landing page** plus the raw
+artifacts so a fresh device can bootstrap trust without first
+trusting the cert it's trying to download:
 
-| URL                              | For                       | UX                                                                                                  |
-|----------------------------------|---------------------------|-----------------------------------------------------------------------------------------------------|
-| `/caddy-trust.mobileconfig`      | iOS / iPadOS / macOS      | Tap in Safari → install Apple configuration profile → two-tap trust on iOS, one-tap on macOS.       |
-| `/caddy-root.crt`                | Linux / Android / other   | Raw PEM cert; install via OS / browser certificate manager.                                         |
+| URL                                            | Scheme | For                       | UX                                                                                                  |
+|------------------------------------------------|:---:|---------------------------|-----------------------------------------------------------------------------------------------------|
+| `http://<caddy_domain>/trust`                  | HTTP | Any device, first install | Self-contained landing page with download links + per-platform install instructions. **Start here on a fresh device.** |
+| `http://<caddy_domain>/caddy-trust.mobileconfig` | HTTP | iOS / iPadOS / macOS      | Apple Configuration Profile bundling the root cert. Linked from the landing page.                    |
+| `http://<caddy_domain>/caddy-root.crt`         | HTTP | Linux / Android / Windows | Raw PEM cert. Linked from the landing page.                                                          |
 
-The mobileconfig profile is generated from
-`templates/caddy-trust.mobileconfig.j2` on every deploy, so a CA
-rotation regenerates the file automatically. The profile is
-unsigned (Apple displays a "Verify" prompt; the user accepts).
+These three paths are the only HTTP exemptions in the Caddyfile;
+everything else on `http://<caddy_domain>` 301-redirects to HTTPS as
+normal. Serving them over HTTP is safe — they're the **public** part
+of the CA and install instructions for it; nothing secret.
+
+Once installed, the user reaches the dashboard at
+`https://<caddy_domain>/` cleanly with no warnings.
+
+The landing page is rendered from
+`templates/trust.html.j2`; the mobileconfig from
+`templates/caddy-trust.mobileconfig.j2`. Both regenerate on every
+deploy, so a CA rotation refreshes them automatically.
 
 ## Internal CA persistence
 
