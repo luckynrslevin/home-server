@@ -66,7 +66,10 @@ configure the `NOPASSWD:ALL` sudoers drop-in first.
 
 ## Step 2 — Run the interactive setup script
 
-On the server (not your laptop):
+> [!IMPORTANT]
+> Run this **on the server** (i.e. via the SSH session you opened
+> in Step 1) — **not on your laptop.** The script provisions the
+> machine it runs on.
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/luckynrslevin/home-server/main/setup.sh \
