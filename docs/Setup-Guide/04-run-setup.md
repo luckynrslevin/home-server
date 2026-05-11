@@ -7,15 +7,6 @@ The longest step (~20 min), but most of it is unattended. ~3
 minutes of your attention up front, ~17 minutes of "container
 images pull and services start" you can use to make coffee.
 
-> [!WARNING]
-> **Work in progress.** The deSEC + Let's Encrypt path described
-> below is the *target* end-state but not yet implemented in
-> `setup.sh`. Tracker: see the platform tracking issue once it's
-> opened. Today's `setup.sh` falls back to an internal CA (per-
-> device root install) — see [Quickstart Step 2](../Quickstart.md)
-> for the current flow. The rest of this page describes how it
-> will work once the implementation lands.
-
 ## Heads-up on the prompts
 
 `setup.sh` is interactive. It will ask you for:

@@ -127,12 +127,11 @@ Used for: entephoto Postgres (`entephoto-postgres` / `ente_db`).
 | jellyfin  | `systemd-jellyfin-config`         | tar     |
 | jellyfin  | `systemd-jellyfin-media`          | rsync   |
 
-> Caddy volumes are not backed up. `caddy-etc` (Caddyfile) and
-> `caddy-config` (runtime state) are regenerated from the role.
-> Caddy's internal ACME root CA lives in `caddy-data` — it is
-> persisted via `caddy_seed_internal_ca` staging from the
-> `home-server-private` overlay, not via NAS backup. See
-> [roles/caddy/README.md](../caddy/README.md#internal-ca-persistence).
+> Caddy volumes are not backed up. All three (`caddy-data`,
+> `caddy-config`, `caddy-etc`) are regenerated from the role on
+> every deploy. Real Let's Encrypt certs live in `caddy-data` and
+> Caddy re-issues them via DNS-01 against deSEC after a fresh
+> install — no persistence needed.
 
 ## Deployment
 

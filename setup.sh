@@ -264,55 +264,36 @@ read -r SERVER_HOSTNAME
 SERVER_HOSTNAME=${SERVER_HOSTNAME:-$DEFAULT_HOSTNAME}
 
 # --- TLS / cert strategy ---
-# Pick how Caddy issues certificates. The deSEC path gets you real
-# green-padlock LE certs with no per-device CA install; the internal
-# path is the air-gapped fallback (every device has to trust Caddy's
-# self-signed root).
+# --- TLS via deSEC + Let's Encrypt ---
+# Single supported path: real LE certs via DNS-01 against deSEC.
+# User signs up at desec.io, claims a *.dedyn.io subdomain, and
+# generates an API token; we prompt for both.
 echo
-echo -e "${BOLD}--- TLS / cert strategy ---${NC}"
+echo -e "${BOLD}--- deSEC + Let's Encrypt ---${NC}"
 echo
-echo "How should Caddy issue TLS certificates?"
+echo "Caddy issues real Let's Encrypt certs via DNS-01 against deSEC."
+echo "Every device gets a green padlock with no per-device CA install."
+echo "Sign up at https://desec.io/ first if you haven't:"
+echo "  1. Register an account and confirm via email."
+echo "  2. Claim a *.dedyn.io subdomain at first sign-in."
+echo "  3. Create an API token in Token Management."
+echo "See docs/Setup-Guide/01-deSEC-account.md for the click-by-click."
 echo
-echo "  [1] deSEC + Let's Encrypt   (recommended)"
-echo "        Real green-padlock certs on every device, no install."
-echo "        Needs a free deSEC account: https://desec.io/"
-echo
-echo "  [2] Internal CA             (air-gapped fallback)"
-echo "        Caddy self-signs every cert. Each device has to trust"
-echo "        the root once via http://<domain>/trust."
-echo
-ask "Choose [1]:"
-read -r cert_strategy
-cert_strategy=${cert_strategy:-1}
-
-if [[ "$cert_strategy" == "1" ]]; then
-    CERT_STRATEGY="desec"
-    ask "deSEC subdomain (without .dedyn.io):"
-    read -r DESEC_SUBDOMAIN
-    if [[ -z "$DESEC_SUBDOMAIN" ]]; then
-        err "Subdomain is required for the deSEC path."
-        exit 1
-    fi
-    ask "deSEC API token (input hidden):"
-    read -rs DESEC_TOKEN
-    echo
-    if [[ -z "$DESEC_TOKEN" ]]; then
-        err "Token is required for the deSEC path."
-        exit 1
-    fi
-    CADDY_DOMAIN="${DESEC_SUBDOMAIN}.dedyn.io"
-    ok "Cert strategy: deSEC ($CADDY_DOMAIN)"
-elif [[ "$cert_strategy" == "2" ]]; then
-    CERT_STRATEGY="internal"
-    DEFAULT_CADDY_DOMAIN="${SERVER_HOSTNAME}.lan"
-    ask "Caddy domain (for https://*.<domain>) [$DEFAULT_CADDY_DOMAIN]:"
-    read -r CADDY_DOMAIN
-    CADDY_DOMAIN=${CADDY_DOMAIN:-$DEFAULT_CADDY_DOMAIN}
-    ok "Cert strategy: internal CA ($CADDY_DOMAIN)"
-else
-    err "Invalid cert strategy choice: $cert_strategy"
+ask "deSEC subdomain (without .dedyn.io):"
+read -r DESEC_SUBDOMAIN
+if [[ -z "$DESEC_SUBDOMAIN" ]]; then
+    err "Subdomain is required."
     exit 1
 fi
+ask "deSEC API token (input hidden):"
+read -rs DESEC_TOKEN
+echo
+if [[ -z "$DESEC_TOKEN" ]]; then
+    err "Token is required."
+    exit 1
+fi
+CADDY_DOMAIN="${DESEC_SUBDOMAIN}.dedyn.io"
+ok "Caddy domain: $CADDY_DOMAIN"
 
 ask "Your username [$DEFAULT_USER]:"
 read -r SERVER_USER
@@ -488,17 +469,15 @@ my_linux_users:
     gid: 1014
 ##################################################################################################
 
-### Caddy reverse-proxy
+### Caddy reverse-proxy + Let's Encrypt via deSEC DNS-01
 caddy_domain: "$CADDY_DOMAIN"
-caddy_acme_provider: "$CERT_STRATEGY"
+caddy_acme_provider: "desec"
+caddy_acme_subdomain: "$DESEC_SUBDOMAIN"
 YAML
 
-if [[ "$CERT_STRATEGY" == "desec" ]]; then
-    echo "caddy_acme_subdomain: \"$DESEC_SUBDOMAIN\""
-    echo ""
-    vault_encrypt "$DESEC_TOKEN" "caddy_acme_token"
-    echo ""
-fi
+echo ""
+vault_encrypt "$DESEC_TOKEN" "caddy_acme_token"
+echo ""
 
 cat << YAML
 
@@ -515,9 +494,6 @@ echo "# Stable MAC for the built-in Squeezelite player. SlimProto"
 echo "# identifies players by MAC, so a fixed value keeps the player"
 echo "# recognized across redeploys."
 echo "music_assistant_squeezelite_mac: \"$MUSIC_ASSISTANT_MAC\""
-echo "# Trust Caddy's internal CA so MA can fetch from Caddy-fronted"
-echo "# providers (e.g. Jellyfin) over HTTPS."
-echo "music_assistant_caddy_ca_cert_path: \"/etc/pki/caddy-internal/root.crt\""
 echo "# On a host without a USB DAC / sound card, set this to false to"
 echo "# skip the local Squeezelite player container — MA server still"
 echo "# runs and can drive AirPlay / Cast / external Squeezelite."
@@ -685,31 +661,29 @@ ok "Generated inventory/host_vars/homeserver/dashboard-config.yaml"
 # Caddy subdomain to this host's LAN IP. Caddy then issues a wildcard
 # LE cert against deSEC's DNS-01 challenge during the deploy below.
 # PATCH on the rrset collection is idempotent — safe to re-run.
-if [[ "$CERT_STRATEGY" == "desec" ]]; then
-    info "Step 6.5/7: Writing wildcard A record at deSEC..."
-    api_body=$(cat <<JSON
+info "Step 6.5/7: Writing wildcard A record at deSEC..."
+api_body=$(cat <<JSON
 [
   {"subname":"","type":"A","ttl":3600,"records":["$SERVER_IP"]},
   {"subname":"*","type":"A","ttl":3600,"records":["$SERVER_IP"]}
 ]
 JSON
-    )
-    api_resp=$(curl -sS -w "\n%{http_code}" -X PATCH \
-        "https://desec.io/api/v1/domains/${DESEC_SUBDOMAIN}.dedyn.io/rrsets/" \
-        -H "Authorization: Token $DESEC_TOKEN" \
-        -H "Content-Type: application/json" \
-        --data-binary "$api_body" 2>&1)
-    api_code=$(echo "$api_resp" | tail -n1)
-    api_body_resp=$(echo "$api_resp" | head -n -1)
-    if [[ "$api_code" == "200" ]]; then
-        ok "deSEC: ${DESEC_SUBDOMAIN}.dedyn.io and *.${DESEC_SUBDOMAIN}.dedyn.io → $SERVER_IP"
-    else
-        err "deSEC API call failed (HTTP $api_code):"
-        echo "$api_body_resp" >&2
-        err "Check that the subdomain '$DESEC_SUBDOMAIN' exists in your deSEC account"
-        err "and the token has write access. Then re-run setup.sh."
-        exit 1
-    fi
+)
+api_resp=$(curl -sS -w "\n%{http_code}" -X PATCH \
+    "https://desec.io/api/v1/domains/${DESEC_SUBDOMAIN}.dedyn.io/rrsets/" \
+    -H "Authorization: Token $DESEC_TOKEN" \
+    -H "Content-Type: application/json" \
+    --data-binary "$api_body" 2>&1)
+api_code=$(echo "$api_resp" | tail -n1)
+api_body_resp=$(echo "$api_resp" | head -n -1)
+if [[ "$api_code" == "200" ]]; then
+    ok "deSEC: ${DESEC_SUBDOMAIN}.dedyn.io and *.${DESEC_SUBDOMAIN}.dedyn.io → $SERVER_IP"
+else
+    err "deSEC API call failed (HTTP $api_code):"
+    echo "$api_body_resp" >&2
+    err "Check that the subdomain '$DESEC_SUBDOMAIN' exists in your deSEC account"
+    err "and the token has write access. Then re-run setup.sh."
+    exit 1
 fi
 
 # ============================================================================
