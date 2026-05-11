@@ -1,0 +1,61 @@
+name: Build custom Caddy image
+
+# Builds and publishes ghcr.io/luckynrslevin/caddy-acme — the Caddy
+# image bundled with deSEC + Cloudflare + Hetzner DNS-01 plugins.
+# See caddy-image/README.md for the rationale.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'caddy-image/**'
+      - '.github/workflows/caddy-build.yml'
+  pull_request:
+    paths:
+      - 'caddy-image/**'
+      - '.github/workflows/caddy-build.yml'
+  schedule:
+    # Weekly Monday 04:00 UTC — picks up upstream Caddy point releases.
+    - cron: '0 4 * * 1'
+  workflow_dispatch:
+
+env:
+  IMAGE_NAME: ghcr.io/${{ github.repository_owner }}/caddy-acme
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up QEMU (multi-arch builds)
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        # PR builds from forks can't push; only authenticate on
+        # main / cron / dispatch where we'll actually publish.
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: ./caddy-image
+          platforms: linux/amd64,linux/arm64
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: |
+            ${{ env.IMAGE_NAME }}:latest
+            ${{ env.IMAGE_NAME }}:${{ github.run_number }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
