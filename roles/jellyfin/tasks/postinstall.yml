@@ -36,23 +36,22 @@
 # --------------------------------------------------------------------------
 # Wizard state probe
 # --------------------------------------------------------------------------
-# The Startup endpoints are only reachable while the first-run wizard
-# is incomplete. Once /Startup/Complete has been called, GET /Startup/User
-# returns 403 (older Jellyfin) or 401 (newer Jellyfin, which now
-# enforces auth on the post-wizard surface). Either is our "wizard
-# already done, skip the walkthrough" signal.
+# /System/Info/Public is unauthenticated and reports the canonical
+# StartupWizardCompleted flag. Older code probed /Startup/User but
+# newer Jellyfin always requires auth there, making the response
+# code ambiguous as a wizard-state signal.
 
 - name: Probe wizard state
   ansible.builtin.uri:
-    url: "http://127.0.0.1:8096/Startup/User"
+    url: "http://127.0.0.1:8096/System/Info/Public"
     method: GET
-    status_code: [200, 401, 403]
-    return_content: false
+    status_code: 200
+    return_content: true
   register: _jellyfin_wizard_probe
 
 - name: Set wizard_incomplete fact
   ansible.builtin.set_fact:
-    _jellyfin_wizard_incomplete: "{{ _jellyfin_wizard_probe.status == 200 }}"
+    _jellyfin_wizard_incomplete: "{{ not (_jellyfin_wizard_probe.json.StartupWizardCompleted | default(true)) }}"
 
 # --------------------------------------------------------------------------
 # Wizard walkthrough — only when wizard is still incomplete
