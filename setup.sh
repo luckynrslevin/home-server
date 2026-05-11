@@ -479,6 +479,25 @@ echo ""
 vault_encrypt "$DESEC_TOKEN" "caddy_acme_token"
 echo ""
 
+# Emit caddy_reverse_proxy_services for selected services so each
+# selected web UI is fronted at https://<sub>.$CADDY_DOMAIN with a
+# real Let's Encrypt cert.
+echo "caddy_reverse_proxy_services:"
+is_selected pihole       && echo '  - { subdomain: pihole, port: 8443, proto: https }'
+is_selected syncthing    && echo '  - { subdomain: syncthing, port: 8384, proto: https }'
+if is_selected entephoto; then
+  echo '  - { subdomain: photos, port: 3000 }'
+  echo '  - { subdomain: accounts, port: 3001 }'
+  echo '  - { subdomain: cast, port: 3002 }'
+  echo '  - { subdomain: auth, port: 3003 }'
+  echo '  - { subdomain: photos-api, port: 8080 }'
+  echo '  - { subdomain: photos-s3, port: 3200 }'
+fi
+is_selected paperless-ngx   && echo '  - { subdomain: paperless, port: 8000 }'
+is_selected jellyfin        && echo '  - { subdomain: jellyfin, port: 8096 }'
+is_selected music-assistant && echo '  - { subdomain: music, port: 8095 }'
+echo ""
+
 cat << YAML
 
 ### Pi-hole
