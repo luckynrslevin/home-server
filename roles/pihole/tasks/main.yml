@@ -145,9 +145,15 @@
       - REDIRECT
       - --to-ports
       - "1053"
-  loop: "{{ pihole_output_redirect_check.results }}"
+  loop: "{{ pihole_output_redirect_check.results | default([]) }}"
   loop_control:
-    label: "{{ item.item }}/53 -> 1053 (-d {{ pihole_host_lan_ip }})"
+    # default('?') keeps the label render-safe when the role is being
+    # evaluated on a host that won't actually run pihole (so
+    # pihole_host_lan_ip never got set). Ansible templates the label
+    # for every iteration even if the task is being skipped, so an
+    # undefined var here breaks the task on hosts that omit pihole
+    # from deploy_services.
+    label: "{{ item.item | default('?') }}/53 -> 1053 (-d {{ pihole_host_lan_ip | default('?') }})"
   when: item.rc != 0
   notify: Reload firewalld
 
