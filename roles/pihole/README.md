@@ -44,6 +44,24 @@ Pi-hole is mirrored on GHCR to sidestep Docker Hub's anonymous-pull rate limit. 
 > DHCP reservation. Lease drift will silently leave Pi-hole
 > answering with stale IPs.
 
+### Wildcard local DNS for the caddy ACME domain
+
+When the caddy role is configured with a public DNS-01 provider —
+i.e. `caddy_acme_subdomain` (deSEC) or `caddy_acme_zone` (BYO
+Cloudflare / Hetzner) is set in inventory — Pi-hole automatically
+gets a **wildcard A record** for that domain pointing at this
+host's LAN IP, so LAN clients reach `*.<domain>` directly instead
+of going through the public DNS path.
+
+Implementation: a dnsmasq config fragment is rendered into the
+`pihole-dnsmasq` volume at deploy time
+(`30-caddy-wildcard.conf`). No extra Pi-hole vars to set — the
+record follows whatever the caddy role is doing.
+
+Wildcard A records aren't supported by Pi-hole's `dns.hosts`
+table (which is exact-match only); the `address=/<domain>/<ip>`
+syntax used here is dnsmasq-native.
+
 ## Secrets
 
 | Variable              | Purpose                              |

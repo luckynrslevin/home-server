@@ -1,0 +1,20 @@
+{# Wildcard A record for the caddy_acme domain.
+   Rendered into the pihole-dnsmasq volume so LAN clients resolve
+   *.<domain> → this host's LAN IP. Loaded by Pi-hole's bundled
+   dnsmasq at startup; reload with `pihole reloaddns`.
+
+   Selection logic:
+     - When `caddy_acme_subdomain` is set, the domain is
+       <subdomain>.dedyn.io (deSEC default platform path).
+     - When `caddy_acme_zone` is set, the domain is the BYO zone
+       (cloudflare / hetzner path).
+     - Otherwise this fragment is not rendered at all (see the
+       conditional on podman_quadlet_volumes_files_to_stage in
+       roles/pihole/tasks/main.yml). #}
+{%- set _domain = (caddy_acme_subdomain ~ '.dedyn.io')
+                  if (caddy_acme_subdomain | length > 0)
+                  else caddy_acme_zone -%}
+# Wildcard A record for *.{{ _domain }}
+# Managed by Ansible — do not edit by hand.
+# Source: roles/pihole/templates/volumes/pihole-dnsmasq/30-caddy-wildcard.conf.j2
+address=/{{ _domain }}/{{ ansible_default_ipv4.address }}
