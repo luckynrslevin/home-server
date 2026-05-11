@@ -285,18 +285,17 @@ SERVICES=(
     [pihole]="Pi-hole DNS ad-blocker"
     [syncthing]="Syncthing file synchronization"
     [shairportsync]="Shairport-sync AirPlay audio receiver (needs audio device)"
-    [jukebox]="Lyrion Music Server + Squeezelite player"
     [entephoto]="Ente Photos (self-hosted photo storage)"
     [paperless-ngx]="Paperless-NGX document management (OCR + search)"
     [jellyfin]="Jellyfin media server (movies, TV, music)"
-    [music-assistant]="Music Assistant (server-side music playback via SlimProto/Squeezelite)"
+    [music-assistant]="Music Assistant music server (optional local Squeezelite player on hosts with a USB DAC)"
 )
 
 # Caddy is always deployed — it's the mandatory front-door reverse proxy.
 SELECTED_SERVICES=(caddy)
 
 # Recommended order for deployment of optional services
-SERVICE_ORDER=(dashboard pihole syncthing shairportsync jukebox entephoto paperless-ngx jellyfin music-assistant)
+SERVICE_ORDER=(dashboard pihole syncthing shairportsync entephoto paperless-ngx jellyfin music-assistant)
 
 for svc in "${SERVICE_ORDER[@]}"; do
     desc="${SERVICES[$svc]}"
@@ -369,12 +368,13 @@ PAPERLESS_DB_PW=$(openssl rand -base64 24)
 PAPERLESS_ADMIN_PW=$(openssl rand -base64 24)
 JELLYFIN_ADMIN_PW=$(openssl rand -base64 24)
 
-# Generate a stable, locally-administered unicast MAC for the
-# squeezelite player. First octet 0x02 sets the locally-administered
-# bit (b1=1) and clears the multicast bit (b0=0). LMS uses the MAC as
-# the player's identity, so a stable value keeps the player recognized
-# across redeploys and clean re-installs.
-JUKEBOX_MAC="02:$(openssl rand -hex 5 | sed 's/\(..\)/\1:/g;s/:$//')"
+# Generate a stable, locally-administered unicast MAC for Music
+# Assistant's built-in Squeezelite player. First octet 0x02 sets the
+# locally-administered bit (b1=1) and clears the multicast bit
+# (b0=0). SlimProto uses the MAC as the player's identity, so a
+# stable value keeps the player recognized across redeploys and
+# clean re-installs.
+MUSIC_ASSISTANT_MAC="02:$(openssl rand -hex 5 | sed 's/\(..\)/\1:/g;s/:$//')"
 
 # Build the host_vars file
 {
@@ -405,9 +405,6 @@ my_linux_users:
   pihole:
     uid: 1005
     gid: 1005
-  jukebox:
-    uid: 1006
-    gid: 1006
   entephoto:
     uid: 1008
     gid: 1008
@@ -436,8 +433,18 @@ YAML
 echo ""
 vault_encrypt "$PIHOLE_PW" "pihole_api_password"
 echo ""
-echo "### Jukebox"
-echo "jukebox_squeezelite_mac: \"$JUKEBOX_MAC\""
+echo "### Music Assistant"
+echo "# Stable MAC for the built-in Squeezelite player. SlimProto"
+echo "# identifies players by MAC, so a fixed value keeps the player"
+echo "# recognized across redeploys."
+echo "music_assistant_squeezelite_mac: \"$MUSIC_ASSISTANT_MAC\""
+echo "# Trust Caddy's internal CA so MA can fetch from Caddy-fronted"
+echo "# providers (e.g. Jellyfin) over HTTPS."
+echo "music_assistant_caddy_ca_cert_path: \"/etc/pki/caddy-internal/root.crt\""
+echo "# On a host without a USB DAC / sound card, set this to false to"
+echo "# skip the local Squeezelite player container — MA server still"
+echo "# runs and can drive AirPlay / Cast / external Squeezelite."
+echo "# music_assistant_player_enabled: false"
 echo ""
 echo "### Ente Photos"
 vault_encrypt "$ENTEPHOTO_DB_PW" "entephoto_db_password"
@@ -519,23 +526,6 @@ cat << EOF
         url: https://${SERVER_IP}:8384
     volumes:
       - systemd-syncthing
-
-EOF
-fi
-
-if is_selected jukebox; then
-cat << EOF
-  - name: Jukebox
-    user: jukebox
-    uid: 1006
-    service: jukebox-pod
-    urls:
-      - label: Web UI
-        url: http://${SERVER_IP}:9100
-    volumes:
-      - jukebox-server-config
-      - jukebox-server-music
-      - jukebox-server-playlist
 
 EOF
 fi
