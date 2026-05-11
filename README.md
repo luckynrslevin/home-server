@@ -268,6 +268,11 @@ application roles below can run.
 | **Jellyfin** | Media server for movies, TV and music with native iOS/tvOS clients. NAS-backed video library mounted read-only via NFS. | `ghcr.io/jellyfin/jellyfin:latest` | <ul><li>`jellyfin-config` — tar</li><li>`jellyfin-media` — rsync (opt-in restore)</li></ul> |
 | **Backup** | Host-side service. Snapshots each role's declared volumes to the NAS on a schedule (default 21:00) using the per-role `backup_manifest`. | — (no container — runs as a systemd timer) | — |
 
+The dashboard, generated on the host and served by Caddy, gives you a
+single page with status / images / volumes / last-backup time for
+every deployed service:
+
+![Sample dashboard](docs/img/Dashboard.jpg)
 
 ### Planned applications / features
 - [Nextcloud (file storage and sharing)](https://github.com/luckynrslevin/home-server/issues/7)
