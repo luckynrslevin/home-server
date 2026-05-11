@@ -2,8 +2,10 @@
 # ============================================================================
 # Home Server — Interactive Setup Script
 #
-# Run on a freshly installed Fedora Server:
-#   curl -fsSL https://raw.githubusercontent.com/luckynrslevin/home-server/main/setup.sh | bash
+# Run on a freshly installed RHEL-family host (AlmaLinux 9+, Rocky 9+,
+# Fedora Server). Invoke as your non-root sudo user, NOT as root:
+#   curl -fsSL https://raw.githubusercontent.com/luckynrslevin/home-server/main/setup.sh \
+#     -o /tmp/setup.sh && bash /tmp/setup.sh
 #
 # This script:
 #   1. Installs Ansible and dependencies
@@ -55,8 +57,31 @@ if [[ $EUID -eq 0 ]]; then
     exit 1
 fi
 
-if ! command -v dnf &>/dev/null; then
-    err "This script requires Fedora (dnf not found)."
+# Distro family detection — accept anything in the RHEL family
+# (rhel/centos/fedora as ID or anywhere in ID_LIKE). Same case
+# statement scripts/bootstrap-host.sh uses, for consistency.
+if [[ -r /etc/os-release ]]; then
+    # shellcheck disable=SC1091
+    . /etc/os-release
+else
+    err "/etc/os-release missing — can't identify distro."
+    exit 1
+fi
+case " ${ID:-} ${ID_LIKE:-} " in
+    *" rhel "*|*" centos "*|*" fedora "*|*" almalinux "*|*" rocky "*) ;;
+    *)
+        err "This script supports the RHEL family (Fedora / AlmaLinux / Rocky)."
+        err "  Detected: ID=${ID:-?} ID_LIKE=${ID_LIKE:-?}"
+        exit 1
+        ;;
+esac
+
+# Passwordless sudo is required — every install/config step shells out
+# via `sudo dnf …` etc., and the script is non-interactive past the
+# config-collection phase.
+if ! sudo -n true 2>/dev/null; then
+    err "This user needs passwordless sudo (NOPASSWD:ALL) to run setup.sh."
+    err "See docs/Install-Manual.md → Step 3 for how to configure it."
     exit 1
 fi
 
@@ -65,8 +90,9 @@ echo -e "${BOLD}============================================${NC}"
 echo -e "${BOLD}   Home Server — Interactive Setup${NC}"
 echo -e "${BOLD}============================================${NC}"
 echo
-echo "This script will set up your Fedora server as an automated home server"
-echo "with containerized services managed by Ansible and rootless Podman."
+echo "Setting up your server (${PRETTY_NAME:-${ID:-?} ${VERSION_ID:-?}}) as"
+echo "an automated home server with containerized services managed by"
+echo "Ansible and rootless Podman."
 echo
 
 # ============================================================================
@@ -74,18 +100,46 @@ echo
 # ============================================================================
 info "Step 1/7: Installing prerequisites..."
 
+# `pipx` lives in EPEL on AlmaLinux / Rocky / RHEL / CentOS-9 and in
+# the base repos on Fedora. Enable EPEL on the RHEL-9 family before
+# the install; on Fedora the dnf call is a no-op (package not found
+# is fine — Fedora doesn't have or need epel-release).
+if [[ "${ID:-}" =~ ^(almalinux|rocky|centos|rhel)$ ]]; then
+    sudo dnf install -y epel-release &>/dev/null \
+        || sudo dnf install -y epel-release
+fi
+
 sudo dnf install -y podman git python3-pyyaml pipx &>/dev/null \
     || sudo dnf install -y podman git python3-pyyaml pipx
 
-# Install ansible-core via pipx for the latest version (Fedora repos
+# Hard-fail if pipx still isn't on PATH — usually means EPEL is
+# misconfigured on AL/Rocky.
+if ! command -v pipx &>/dev/null; then
+    err "pipx not available after install — EPEL likely missing on AlmaLinux/Rocky."
+    err "Try: sudo dnf install -y epel-release && sudo dnf install -y pipx"
+    exit 1
+fi
+
+# Install ansible-core via pipx for the latest version (distro repos
 # may ship an older version with compatibility issues).
 if ! command -v ansible-playbook &>/dev/null; then
     pipx install ansible-core &>/dev/null
-    # Inject the full ansible package for built-in collections
+    # Inject the full ansible package for built-in collections.
     pipx inject ansible-core ansible &>/dev/null
 fi
 
-ok "Prerequisites installed."
+# pipx installs into ~/.local/bin which isn't always on PATH for a
+# fresh AlmaLinux 9 user (depends on ~/.bash_profile sourcing it).
+# Make sure subsequent ansible-playbook calls in this script find it.
+export PATH="$HOME/.local/bin:$PATH"
+
+if ! command -v ansible-playbook &>/dev/null; then
+    err "ansible-playbook not on PATH after pipx install."
+    err "Expected at $HOME/.local/bin/ansible-playbook"
+    exit 1
+fi
+
+ok "Prerequisites installed: $(ansible-playbook --version 2>/dev/null | head -1)"
 
 # ============================================================================
 # Step 2: Clone the repo
