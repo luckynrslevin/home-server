@@ -1,0 +1,125 @@
+name: Build custom Caddy image
+
+# Builds and publishes ghcr.io/luckynrslevin/caddy-acme — the Caddy
+# image bundled with deSEC + Cloudflare + Hetzner DNS-01 plugins.
+# See caddy-image/README.md for the rationale.
+#
+# Two parallel native-arch jobs (amd64 + arm64) → merge digests into
+# a single multi-platform manifest. Avoids the ~15-20 min QEMU
+# emulation hit you'd get building arm64 on an amd64 runner.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'caddy-image/**'
+      - '.github/workflows/caddy-build.yml'
+  pull_request:
+    paths:
+      - 'caddy-image/**'
+      - '.github/workflows/caddy-build.yml'
+  schedule:
+    # Weekly Monday 04:00 UTC — picks up upstream Caddy point releases.
+    - cron: '0 4 * * 1'
+  workflow_dispatch:
+
+env:
+  IMAGE_NAME: ghcr.io/${{ github.repository_owner }}/caddy-acme
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: linux/amd64
+            runner: ubuntu-latest
+          - platform: linux/arm64
+            runner: ubuntu-24.04-arm   # GitHub-hosted ARM runner (GA late 2025)
+    runs-on: ${{ matrix.runner }}
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        # PR builds from forks can't push; only authenticate on
+        # main / cron / dispatch where we'll actually publish.
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push by digest
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: ./caddy-image
+          platforms: ${{ matrix.platform }}
+          # Push the per-arch image by digest only (no tag). The
+          # merge job below stitches the digests into a multi-arch
+          # manifest under the final :latest + :<run-number> tags.
+          outputs: |
+            type=image,name=${{ env.IMAGE_NAME }},push-by-digest=true,name-canonical=true,push=${{ github.event_name != 'pull_request' }}
+          cache-from: type=gha,scope=${{ matrix.platform }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.platform }}
+
+      - name: Export digest
+        if: github.event_name != 'pull_request'
+        run: |
+          mkdir -p /tmp/digests
+          digest="${{ steps.build.outputs.digest }}"
+          touch "/tmp/digests/${digest#sha256:}"
+
+      - name: Upload digest
+        if: github.event_name != 'pull_request'
+        uses: actions/upload-artifact@v4
+        with:
+          name: digest-${{ strategy.job-index }}
+          path: /tmp/digests/*
+          if-no-files-found: error
+          retention-days: 1
+
+  merge:
+    needs: build
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Download digests
+        uses: actions/download-artifact@v4
+        with:
+          path: /tmp/digests
+          pattern: digest-*
+          merge-multiple: true
+
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create manifest list and push
+        working-directory: /tmp/digests
+        run: |
+          docker buildx imagetools create \
+            --tag "${IMAGE_NAME}:latest" \
+            --tag "${IMAGE_NAME}:${{ github.run_number }}" \
+            $(printf "${IMAGE_NAME}@sha256:%s " *)
+
+      - name: Inspect resulting image
+        run: |
+          docker buildx imagetools inspect "${IMAGE_NAME}:latest"
