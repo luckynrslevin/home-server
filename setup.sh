@@ -159,6 +159,13 @@ ok "Prerequisites installed: $(ansible-playbook --version 2>/dev/null | head -1)
 # ============================================================================
 INSTALL_DIR="$HOME/home-server"
 
+# Move out of $INSTALL_DIR before any rm/clone — if the user
+# happens to be running setup.sh from inside ~/home-server (e.g.
+# re-running after a previous attempt), wiping it leaves the shell
+# with an unlinked cwd, and `git clone` silently fails on the
+# missing directory.
+cd "$HOME"
+
 if [[ -d "$INSTALL_DIR" ]]; then
     warn "$INSTALL_DIR already exists."
     ask "Overwrite it? [y/N]:"
@@ -172,7 +179,9 @@ fi
 
 if [[ ! -d "$INSTALL_DIR" ]]; then
     info "Step 2/7: Cloning home-server repository..."
-    git clone https://github.com/luckynrslevin/home-server.git "$INSTALL_DIR" 2>/dev/null
+    # Don't suppress stderr — if git fails (auth, network, broken
+    # cwd, …) we want the user to see why.
+    git clone https://github.com/luckynrslevin/home-server.git "$INSTALL_DIR"
     ok "Repository cloned to $INSTALL_DIR"
 else
     ok "Using existing $INSTALL_DIR"
