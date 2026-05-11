@@ -97,15 +97,10 @@ The server acts as **its own Ansible controller** — no separate
 workstation needed.
 
 When it finishes, open `https://<caddy_domain>/` in your browser to
-see the dashboard.
-
-> [!IMPORTANT]
-> Your browser will show a certificate warning the first time
-> because the homeserver runs its own internal CA. Visit
-> **`http://<caddy_domain>/trust`** (plain HTTP, no warning) first —
-> the page has a one-click download for the root certificate plus
-> per-platform install instructions. Once installed, the dashboard
-> URL works cleanly with a green padlock.
+see the dashboard. You should see a green padlock — Caddy issues
+real Let's Encrypt certificates via DNS-01 against your deSEC
+subdomain, so every device trusts them out of the box (no per-device
+CA install).
 
 ## Step 3 — Hand off to Ansible from your laptop (optional)
 

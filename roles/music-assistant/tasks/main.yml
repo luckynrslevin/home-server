@@ -50,43 +50,6 @@
   ansible.builtin.set_fact:
     music_assistant_role_path: "{{ role_path }}"
 
-# Build a combined CA bundle = system trust + Caddy internal CA, so MA
-# trusts both internal Caddy-signed endpoints (e.g. Jellyfin library
-# provider) AND public HTTPS endpoints (lrclib.net for lyrics,
-# metadata providers, streaming services). Mounting only Caddy's root
-# would break the public path; concatenating preserves both.
-- name: Ensure CA trust directory for music-assistant
-  become: true
-  ansible.builtin.file:
-    path: /home/music-assistant/ca-trust
-    state: directory
-    owner: music-assistant
-    group: music-assistant
-    mode: "0755"
-  when: music_assistant_caddy_ca_cert_path | length > 0
-
-- name: Build combined CA bundle (system + Caddy) for music-assistant
-  become: true
-  ansible.builtin.shell: |
-    set -euo pipefail
-    DEST=/home/music-assistant/ca-trust/full-bundle.pem
-    cat /etc/pki/tls/certs/ca-bundle.crt {{ music_assistant_caddy_ca_cert_path | quote }} > "$DEST.new"
-    mv "$DEST.new" "$DEST"
-  args:
-    executable: /bin/bash
-  changed_when: false
-  when: music_assistant_caddy_ca_cert_path | length > 0
-
-- name: Set ownership and SELinux label on combined CA bundle
-  become: true
-  ansible.builtin.file:
-    path: /home/music-assistant/ca-trust/full-bundle.pem
-    owner: music-assistant
-    group: music-assistant
-    mode: "0644"
-    setype: container_file_t
-  when: music_assistant_caddy_ca_cert_path | length > 0
-
 - name: Deploy music-assistant pod using podman_quadlet
   ansible.builtin.include_role:
     name: luckynrslevin.podman_quadlet

@@ -2,13 +2,10 @@
 #
 # Why this exists:
 #   The official `caddy:latest` image doesn't include any DNS provider
-#   plugins, so Caddy can't run the DNS-01 ACME challenge against
-#   anything but Caddy's built-in `tls internal`. The platform's
-#   default cert path (deSEC + DNS-01 wildcard) needs the deSEC
-#   plugin compiled in. This image bundles the three providers we
-#   officially support so any of them works without a per-user
-#   rebuild:
-#     - deSEC      (default)
+#   plugins, so Caddy can't run the DNS-01 ACME challenge — the
+#   platform's only supported cert path. Bundle the three providers
+#   we support so any of them works without a per-user rebuild:
+#     - deSEC      (default — free *.dedyn.io subdomain)
 #     - Cloudflare (BYO domain, most popular DNS host)
 #     - Hetzner DNS (BYO domain, second-most-popular)
 #

@@ -1,9 +1,6 @@
 # Container image — custom Caddy build with deSEC + Cloudflare +
 # Hetzner DNS-01 plugins compiled in. See ../caddy-image/ for the
 # Dockerfile + GitHub Actions workflow that publishes this tag.
-# It's a strict superset of upstream caddy:latest (just adds DNS
-# plugins), so it's safe to use even when caddy_acme_provider is
-# "internal" (the plugins are simply unused).
 caddy_image: "ghcr.io/luckynrslevin/caddy-acme:latest"
 
 # Caddy listen port (unprivileged, mapped via firewall from 80)
@@ -12,66 +9,33 @@ caddy_listen_port: 9080
 # Caddy HTTPS listen port (unprivileged, mapped via firewall from 443)
 caddy_listen_port_https: 9443
 
-# Host path where Caddy's internal root CA certificate is exported after
-# startup. Containers on the same host can mount this file and set
-# SSL_CERT_FILE so they trust Caddy's self-signed TLS. Only exported when
-# caddy_domain is set (i.e. Caddy is issuing internal certs).
-caddy_ca_cert_host_path: "/etc/pki/caddy-internal/root.crt"
-
-# Domain name for the server. Used for subdomain-based reverse proxy
-# routing and self-signed TLS certificates. If empty, Caddy only
-# serves the dashboard on :80 (no reverse proxy, no HTTPS).
+# Domain name for the server (e.g. "myhome.dedyn.io"). Required —
+# every reverse-proxy subdomain hangs off this. site.yml asserts it
+# at the top of the play.
 caddy_domain: ""
 
 # Reverse proxy service definitions. Each entry creates a subdomain
 # route: <subdomain>.<caddy_domain> → localhost:<port>.
-# Only used when caddy_domain is set.
 #
 # Example:
 #   caddy_reverse_proxy_services:
 #     - { subdomain: pihole, port: 8443, proto: https }
 #     - { subdomain: syncthing, port: 8384, proto: https }
-#     - { subdomain: jukebox, port: 9100 }
 #     - { subdomain: photos, port: 3000 }
 #     - { subdomain: paperless, port: 8000 }
 caddy_reverse_proxy_services: []
 
-# Seed Caddy's internal ACME CA (root + intermediate cert/key under
-# caddy/pki/authorities/local/) from inventory variables. The four
-# variables below hold the PEM contents; private keys should be
-# ansible-vault encrypted in host_vars.
+# ACME provider for issuing real Let's Encrypt certificates via the
+# DNS-01 challenge. Required — the role asserts it. One of:
 #
-# Set caddy_seed_internal_ca: true in host_vars when the four variables
-# are populated. When false (default), Caddy generates a fresh CA on
-# first start. To preserve the CA across reinstalls, extract it once
-# with scripts/caddy-ca-extract.sh, vault-encrypt the two .key PEM
-# strings into host_vars, and flip this flag to true.
-caddy_seed_internal_ca: false
-caddy_ca_root_crt: ""
-caddy_ca_root_key: ""
-caddy_ca_intermediate_crt: ""
-caddy_ca_intermediate_key: ""
-
-# ACME provider for issuing TLS certificates.
+#   "desec"      — Free *.dedyn.io subdomain at deSEC (recommended).
+#   "cloudflare" — BYO domain hosted at Cloudflare DNS.
+#   "hetzner"    — BYO domain hosted at Hetzner DNS.
 #
-#   "internal"   — Caddy's built-in self-signed CA. Per-device root
-#                  install required (see caddy-trust.mobileconfig +
-#                  /trust landing page). Today's default; the
-#                  air-gapped fallback in the platform plan.
-#   "desec"      — Real Let's Encrypt certs via DNS-01 against deSEC
-#                  (free *.dedyn.io subdomain). The recommended
-#                  default for the platform; needs caddy_acme_token
-#                  + caddy_acme_subdomain.
-#   "cloudflare" — Real LE certs via DNS-01 against Cloudflare DNS
-#                  (BYO domain). Needs caddy_acme_token +
-#                  caddy_acme_zone.
-#   "hetzner"    — Same as cloudflare but via Hetzner DNS.
-#
-# Switching to a non-internal provider drops the `tls internal`
-# stanza from every site in the Caddyfile; Caddy falls back to its
-# default behaviour of auto-issuing real LE certs via the chosen
-# DNS-01 challenge.
-caddy_acme_provider: "internal"
+# All three plugins are bundled in the custom Caddy image
+# (ghcr.io/luckynrslevin/caddy-acme); switching is just an inventory
+# change.
+caddy_acme_provider: ""
 
 # For provider == "desec": the dedyn.io subdomain (without the
 # .dedyn.io suffix). Caddy issues a wildcard cert for
@@ -84,6 +48,6 @@ caddy_acme_subdomain: ""
 caddy_acme_zone: ""
 
 # API token for the chosen DNS provider. Vault-encrypt this in
-# host_vars. Scope to the single zone / single record type when
-# the provider supports it.
+# host_vars. Scope to the single zone / single record type when the
+# provider supports it.
 caddy_acme_token: ""

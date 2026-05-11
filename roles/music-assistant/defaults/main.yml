@@ -48,13 +48,6 @@ music_assistant_web_port: 8095
 # the actual fully-qualified subdomains under your caddy_domain.
 music_assistant_internal_hosts: []
 
-# Host path to the Caddy internal root CA cert (typically
-# /etc/pki/caddy-internal/root.crt — see caddy_ca_cert_host_path).
-# Empty disables the mount; set this in host_vars when MA needs to
-# trust HTTPS endpoints fronted by your Caddy (Jellyfin provider,
-# etc.). Same pattern entephoto uses for entephoto_caddy_ca_cert_path.
-music_assistant_caddy_ca_cert_path: ""
-
 # Backup manifest — consumed by the backup role and restore playbook.
 # music-assistant-data holds the SQLite library DB, provider config,
 # player config, and queue state. Small (well under 1 GB).

@@ -335,50 +335,10 @@ def generate_html(services_data, generated_at, nas_host_display):
   .unknown { background: #e2e3e5; color: #383d41; }
   .backup-path { color: #6c757d; font-style: italic; }
   .footer { margin-top: 15px; color: #888; font-size: 0.85em; }
-  .ca-install { margin: 0 0 18px 0; padding: 10px 14px; background: #eef5ff;
-                border: 1px solid #b6d4fe; border-radius: 6px; font-size: 0.92em; }
-  .ca-install a { color: #084298; font-weight: 600; }
-  .ca-install details { margin-top: 6px; }
-  .ca-install summary { cursor: pointer; color: #555; }
-  .ca-install ol { margin: 6px 0 0 22px; padding: 0; }
 </style>
 </head>
 <body>
 <h1>Home Server Dashboard</h1>
-<div class="ca-install">
-  Trust this server's HTTPS:
-  <a href="/caddy-trust.mobileconfig"><strong>Install Apple profile</strong></a>
-  &nbsp;&middot;&nbsp;
-  <a href="/caddy-root.crt" download>Download root certificate</a>
-  <details>
-    <summary>iOS / iPadOS install (Apple profile, recommended)</summary>
-    <ol>
-      <li>Open this page in <strong>Safari</strong> (not Chrome) and tap <em>Install Apple profile</em>.</li>
-      <li>Tap <em>Allow</em>, then open <em>Settings &rarr; General &rarr; VPN &amp; Device Management</em>
-          and tap the downloaded profile to install.</li>
-      <li>Open <em>Settings &rarr; General &rarr; About &rarr; Certificate Trust Settings</em>
-          and turn on trust for the new root.</li>
-    </ol>
-  </details>
-  <details>
-    <summary>macOS install (Apple profile, recommended)</summary>
-    <ol>
-      <li>Open this page in Safari and click <em>Install Apple profile</em>.</li>
-      <li>System Settings opens to the Profiles pane &mdash; click <em>Install</em>.</li>
-      <li>Trust is applied automatically; HTTPS works in Safari and Chrome immediately.</li>
-    </ol>
-  </details>
-  <details>
-    <summary>Linux / Android / other</summary>
-    <ol>
-      <li>Use <em>Download root certificate</em> instead of the Apple profile.</li>
-      <li>Linux: copy to <code>/etc/pki/ca-trust/source/anchors/</code> (Fedora/RHEL) or
-          <code>/usr/local/share/ca-certificates/</code> (Debian/Ubuntu) and run
-          <code>update-ca-trust</code> / <code>update-ca-certificates</code>.</li>
-      <li>Android &le; 6 / desktop Chrome: import via the OS certificate manager.</li>
-    </ol>
-  </details>
-</div>
 <table>
   <thead>
     <tr>

@@ -67,7 +67,7 @@ What "opinionated, end-to-end" means concretely:
   - Secrets stored encrypted at rest, never committed in plaintext
   - Rootless containers first — each rootless application runs as its own dedicated Linux user
   - Rootful containers only where rootless is not feasible, and always hardened
-  - Caddy is the mandatory front door — every web UI reached via `https://<subdomain>.<caddy_domain>` with a single trusted internal CA; per-service HTTP ports are not exposed on the LAN
+  - Caddy is the mandatory front door — every web UI reached via `https://<subdomain>.<caddy_domain>` with real Let's Encrypt certificates issued via DNS-01 against your DNS provider (deSEC by default); per-service HTTP ports are not exposed on the LAN, and no per-device CA install is ever needed
   - Use tailscale to create a virtual network accross your devices to be able to access services on your homeserver independent from your location and network access point
 - **Operational consistency**
   - Fully automatic reinstall from scratch, including restore of configuration and data
@@ -93,7 +93,7 @@ manual / requires extra setup · **−** absent or actively contrary
 | Built-in SSO / LDAP across all installed apps | − <br>*(planned)* | − | − | − | + |
 | Ready-made VPS image at common hosters | − <br>*(cloud-init self-provision planned)* | + | o | o | o |
 | One-command install of the *whole* stack | + | o | + | + | + |
-| Mandatory HTTPS for every service via internal CA | + | o | o | − | + |
+| Mandatory HTTPS for every service via real Let's Encrypt certs | + | o | o | − | + |
 | Tailscale / mesh-VPN integration first-class | + | o | + | o | − |
 | **Rootless / per-app-user isolation by default** | + | − | − | − | o |
 | Per-app systemd integration (`systemctl`, `journalctl`, dep ordering) | + | − | − | − | + |
@@ -259,7 +259,7 @@ application roles below can run.
 | Service | Purpose | Container images | Volumes (backup method) |
 |---|---|---|---|
 | **Dashboard** | Generated status page showing every deployed service, its container, related volumes and last backup time. | — (static HTML rendered on host) | — |
-| **Caddy** | Mandatory front-door reverse proxy. Issues TLS for every web UI from a single internal CA seeded from the private overlay. | `public.ecr.aws/docker/library/caddy:latest` | <ul><li>`caddy-data` — internal CA seeded from private overlay (not backed up)</li><li>`caddy-config` — not backed up</li><li>`caddy-etc` — not backed up</li></ul> |
+| **Caddy** | Mandatory front-door reverse proxy. Issues real Let's Encrypt certs for every web UI via DNS-01 against your DNS provider (deSEC default; Cloudflare / Hetzner also bundled). | `ghcr.io/luckynrslevin/caddy-acme:latest` (custom build with deSEC + Cloudflare + Hetzner DNS plugins) | <ul><li>`caddy-data` — LE certs (auto-renewed, not backed up)</li><li>`caddy-config` — not backed up</li><li>`caddy-etc` — not backed up</li></ul> |
 | **Pi-hole + Unbound** | Network-wide DNS ad/tracker blocking with a local recursive resolver (no upstream DNS leakage). Admin UI at `https://pihole.<caddy_domain>`. | <ul><li>`ghcr.io/pi-hole/pihole:latest`</li><li>`docker.io/klutchell/unbound:latest`</li></ul> | <ul><li>`pihole-etc` — tar</li><li>`pihole-dnsmasq` — tar</li></ul> |
 | **Shairport-sync** | AirPlay audio receiver for iOS/macOS devices. | `docker.io/mikebrady/shairport-sync` | — (stateless) |
 | **Syncthing** | Peer-to-peer file synchronization between household devices. | `ghcr.io/syncthing/syncthing:2` | <ul><li>`syncthing-config` — tar</li><li>`syncthing-data` — rsync</li></ul> |
