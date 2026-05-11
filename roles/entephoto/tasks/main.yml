@@ -78,7 +78,7 @@
   ansible.builtin.shell:
     cmd: |
       su - entephoto -c 'podman run --rm --pod entephoto \
-        --entrypoint sh docker.io/minio/mc:latest -c "
+        --entrypoint sh {{ entephoto_mc_image }} -c "
           for i in \$(seq 1 30); do
             mc alias set h0 http://localhost:3200 {{ entephoto_minio_root_user }} {{ entephoto_minio_password | quote }} && break
             sleep 2
