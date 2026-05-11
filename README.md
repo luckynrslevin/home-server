@@ -235,13 +235,14 @@ The guiding principle is **rebuild over repair**: if the system drifts, it shoul
 
 ## Getting Started
 
-If you want to get up and running quickly, head straight to the
-**[Quickstart guide](docs/Quickstart.md)** — it walks through the
-fresh-install path end-to-end (cloud-init bootstrap, private overlay
-setup, vault, and first deploy).
+➡️ **[Setup Guide](docs/Setup-Guide/README.md)** — five short
+pages, ~50–90 min total, takes you from "I just heard about this
+project" to "I'm logged into my dashboard over HTTPS with a green
+padlock". Each step has time estimates and a progress bar.
 
-A more detailed setup reference will land here in a follow-up
-revision.
+Prefer one long page over a wizard? See
+**[Quickstart](docs/Quickstart.md)** — same path, denser
+single-page format.
 
 ---
 
