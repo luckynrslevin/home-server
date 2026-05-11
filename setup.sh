@@ -2,8 +2,10 @@
 # ============================================================================
 # Home Server — Interactive Setup Script
 #
-# Run on a freshly installed Fedora Server:
-#   curl -fsSL https://raw.githubusercontent.com/luckynrslevin/home-server/main/setup.sh | bash
+# Run on a freshly installed RHEL-family host (AlmaLinux 9+, Rocky 9+,
+# Fedora Server). Invoke as your non-root sudo user, NOT as root:
+#   curl -fsSL https://raw.githubusercontent.com/luckynrslevin/home-server/main/setup.sh \
+#     -o /tmp/setup.sh && bash /tmp/setup.sh
 #
 # This script:
 #   1. Installs Ansible and dependencies
@@ -55,8 +57,31 @@ if [[ $EUID -eq 0 ]]; then
     exit 1
 fi
 
-if ! command -v dnf &>/dev/null; then
-    err "This script requires Fedora (dnf not found)."
+# Distro family detection — accept anything in the RHEL family
+# (rhel/centos/fedora as ID or anywhere in ID_LIKE). Same case
+# statement scripts/bootstrap-host.sh uses, for consistency.
+if [[ -r /etc/os-release ]]; then
+    # shellcheck disable=SC1091
+    . /etc/os-release
+else
+    err "/etc/os-release missing — can't identify distro."
+    exit 1
+fi
+case " ${ID:-} ${ID_LIKE:-} " in
+    *" rhel "*|*" centos "*|*" fedora "*|*" almalinux "*|*" rocky "*) ;;
+    *)
+        err "This script supports the RHEL family (Fedora / AlmaLinux / Rocky)."
+        err "  Detected: ID=${ID:-?} ID_LIKE=${ID_LIKE:-?}"
+        exit 1
+        ;;
+esac
+
+# Passwordless sudo is required — every install/config step shells out
+# via `sudo dnf …` etc., and the script is non-interactive past the
+# config-collection phase.
+if ! sudo -n true 2>/dev/null; then
+    err "This user needs passwordless sudo (NOPASSWD:ALL) to run setup.sh."
+    err "See docs/Install-Manual.md → Step 3 for how to configure it."
     exit 1
 fi
 
@@ -65,8 +90,9 @@ echo -e "${BOLD}============================================${NC}"
 echo -e "${BOLD}   Home Server — Interactive Setup${NC}"
 echo -e "${BOLD}============================================${NC}"
 echo
-echo "This script will set up your Fedora server as an automated home server"
-echo "with containerized services managed by Ansible and rootless Podman."
+echo "Setting up your server (${PRETTY_NAME:-${ID:-?} ${VERSION_ID:-?}}) as"
+echo "an automated home server with containerized services managed by"
+echo "Ansible and rootless Podman."
 echo
 
 # ============================================================================
@@ -74,23 +100,71 @@ echo
 # ============================================================================
 info "Step 1/7: Installing prerequisites..."
 
+# `pipx` lives in EPEL on AlmaLinux / Rocky / RHEL / CentOS-9 and in
+# the base repos on Fedora. Enable EPEL on the RHEL-9 family before
+# the install; on Fedora the block is skipped.
+#
+# We also install `python3.11` on the RHEL-9 family because:
+#   - AL9's default system Python is 3.9.
+#   - pipx defaults to building its venvs against the system Python.
+#   - ansible-core 2.16+ requires Python ≥ 3.10.
+#   - On Python 3.9, pipx caps us at ansible-core 2.15.x, which has
+#     a parser bug in include_tasks/role-include path resolution
+#     (TypeError: expected str, ... not NoneType) that this project's
+#     Galaxy podman_quadlet role triggers reliably.
+# python3.11 ships in AL9 AppStream; Fedora's system Python is
+# already current so this whole block is a no-op there.
+PIPX_PYTHON_ARG=()
+if [[ "${ID:-}" =~ ^(almalinux|rocky|centos|rhel)$ ]]; then
+    sudo dnf install -y epel-release python3.11 &>/dev/null \
+        || sudo dnf install -y epel-release python3.11
+    PIPX_PYTHON_ARG=(--python python3.11)
+fi
+
 sudo dnf install -y podman git python3-pyyaml pipx &>/dev/null \
     || sudo dnf install -y podman git python3-pyyaml pipx
 
-# Install ansible-core via pipx for the latest version (Fedora repos
-# may ship an older version with compatibility issues).
+# Hard-fail if pipx still isn't on PATH — usually means EPEL is
+# misconfigured on AL/Rocky.
+if ! command -v pipx &>/dev/null; then
+    err "pipx not available after install — EPEL likely missing on AlmaLinux/Rocky."
+    err "Try: sudo dnf install -y epel-release && sudo dnf install -y pipx"
+    exit 1
+fi
+
+# Install ansible-core via pipx (latest available for the chosen
+# Python). With python3.11 we get ansible-core 2.18.x; without the
+# override on Fedora we get whatever's current for system Python.
 if ! command -v ansible-playbook &>/dev/null; then
-    pipx install ansible-core &>/dev/null
-    # Inject the full ansible package for built-in collections
+    pipx install "${PIPX_PYTHON_ARG[@]}" ansible-core &>/dev/null
+    # Inject the full ansible package for built-in collections.
     pipx inject ansible-core ansible &>/dev/null
 fi
 
-ok "Prerequisites installed."
+# pipx installs into ~/.local/bin which isn't always on PATH for a
+# fresh AlmaLinux 9 user (depends on ~/.bash_profile sourcing it).
+# Make sure subsequent ansible-playbook calls in this script find it.
+export PATH="$HOME/.local/bin:$PATH"
+
+if ! command -v ansible-playbook &>/dev/null; then
+    err "ansible-playbook not on PATH after pipx install."
+    err "Expected at $HOME/.local/bin/ansible-playbook"
+    exit 1
+fi
+
+ok "Prerequisites installed: $(ansible-playbook --version 2>/dev/null | head -1)"
 
 # ============================================================================
 # Step 2: Clone the repo
 # ============================================================================
 INSTALL_DIR="$HOME/home-server"
+
+# Move out of $INSTALL_DIR before any rm/clone — if the user
+# happens to be running setup.sh from inside ~/home-server (e.g.
+# re-running after a previous attempt), wiping it leaves the shell
+# with an unlinked cwd, and `git clone` silently fails on the
+# missing directory.
+cd "$HOME"
 
 if [[ -d "$INSTALL_DIR" ]]; then
     warn "$INSTALL_DIR already exists."
@@ -105,7 +179,9 @@ fi
 
 if [[ ! -d "$INSTALL_DIR" ]]; then
     info "Step 2/7: Cloning home-server repository..."
-    git clone https://github.com/luckynrslevin/home-server.git "$INSTALL_DIR" 2>/dev/null
+    # Don't suppress stderr — if git fails (auth, network, broken
+    # cwd, …) we want the user to see why.
+    git clone https://github.com/luckynrslevin/home-server.git "$INSTALL_DIR"
     ok "Repository cloned to $INSTALL_DIR"
 else
     ok "Using existing $INSTALL_DIR"
@@ -231,18 +307,17 @@ SERVICES=(
     [pihole]="Pi-hole DNS ad-blocker"
     [syncthing]="Syncthing file synchronization"
     [shairportsync]="Shairport-sync AirPlay audio receiver (needs audio device)"
-    [jukebox]="Lyrion Music Server + Squeezelite player"
     [entephoto]="Ente Photos (self-hosted photo storage)"
     [paperless-ngx]="Paperless-NGX document management (OCR + search)"
     [jellyfin]="Jellyfin media server (movies, TV, music)"
-    [music-assistant]="Music Assistant (server-side music playback via SlimProto/Squeezelite)"
+    [music-assistant]="Music Assistant music server (optional local Squeezelite player on hosts with a USB DAC)"
 )
 
 # Caddy is always deployed — it's the mandatory front-door reverse proxy.
 SELECTED_SERVICES=(caddy)
 
 # Recommended order for deployment of optional services
-SERVICE_ORDER=(dashboard pihole syncthing shairportsync jukebox entephoto paperless-ngx jellyfin music-assistant)
+SERVICE_ORDER=(dashboard pihole syncthing shairportsync entephoto paperless-ngx jellyfin music-assistant)
 
 for svc in "${SERVICE_ORDER[@]}"; do
     desc="${SERVICES[$svc]}"
@@ -315,12 +390,13 @@ PAPERLESS_DB_PW=$(openssl rand -base64 24)
 PAPERLESS_ADMIN_PW=$(openssl rand -base64 24)
 JELLYFIN_ADMIN_PW=$(openssl rand -base64 24)
 
-# Generate a stable, locally-administered unicast MAC for the
-# squeezelite player. First octet 0x02 sets the locally-administered
-# bit (b1=1) and clears the multicast bit (b0=0). LMS uses the MAC as
-# the player's identity, so a stable value keeps the player recognized
-# across redeploys and clean re-installs.
-JUKEBOX_MAC="02:$(openssl rand -hex 5 | sed 's/\(..\)/\1:/g;s/:$//')"
+# Generate a stable, locally-administered unicast MAC for Music
+# Assistant's built-in Squeezelite player. First octet 0x02 sets the
+# locally-administered bit (b1=1) and clears the multicast bit
+# (b0=0). SlimProto uses the MAC as the player's identity, so a
+# stable value keeps the player recognized across redeploys and
+# clean re-installs.
+MUSIC_ASSISTANT_MAC="02:$(openssl rand -hex 5 | sed 's/\(..\)/\1:/g;s/:$//')"
 
 # Build the host_vars file
 {
@@ -351,9 +427,6 @@ my_linux_users:
   pihole:
     uid: 1005
     gid: 1005
-  jukebox:
-    uid: 1006
-    gid: 1006
   entephoto:
     uid: 1008
     gid: 1008
@@ -382,8 +455,18 @@ YAML
 echo ""
 vault_encrypt "$PIHOLE_PW" "pihole_api_password"
 echo ""
-echo "### Jukebox"
-echo "jukebox_squeezelite_mac: \"$JUKEBOX_MAC\""
+echo "### Music Assistant"
+echo "# Stable MAC for the built-in Squeezelite player. SlimProto"
+echo "# identifies players by MAC, so a fixed value keeps the player"
+echo "# recognized across redeploys."
+echo "music_assistant_squeezelite_mac: \"$MUSIC_ASSISTANT_MAC\""
+echo "# Trust Caddy's internal CA so MA can fetch from Caddy-fronted"
+echo "# providers (e.g. Jellyfin) over HTTPS."
+echo "music_assistant_caddy_ca_cert_path: \"/etc/pki/caddy-internal/root.crt\""
+echo "# On a host without a USB DAC / sound card, set this to false to"
+echo "# skip the local Squeezelite player container — MA server still"
+echo "# runs and can drive AirPlay / Cast / external Squeezelite."
+echo "# music_assistant_player_enabled: false"
 echo ""
 echo "### Ente Photos"
 vault_encrypt "$ENTEPHOTO_DB_PW" "entephoto_db_password"
@@ -465,23 +548,6 @@ cat << EOF
         url: https://${SERVER_IP}:8384
     volumes:
       - systemd-syncthing
-
-EOF
-fi
-
-if is_selected jukebox; then
-cat << EOF
-  - name: Jukebox
-    user: jukebox
-    uid: 1006
-    service: jukebox-pod
-    urls:
-      - label: Web UI
-        url: http://${SERVER_IP}:9100
-    volumes:
-      - jukebox-server-config
-      - jukebox-server-music
-      - jukebox-server-playlist
 
 EOF
 fi
