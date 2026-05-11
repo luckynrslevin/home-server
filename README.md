@@ -2,12 +2,10 @@
 
 > [!WARNING]
 > **Work in progress — not ready for production use yet.**
-> The project is under active development. The architecture, role
+> The project is under active development and as of now it's not
+> exactly working as described. The architecture, role
 > contracts, inventory layout, and even the deploy_services list
-> still change without warning between commits. Read the README and
-> the [Quickstart](docs/Quickstart.md) to follow along, but expect
-> rough edges and don't trust the current state with data you can't
-> afford to lose.
+> still change without warning between commits.
 
 ## Objective
 
