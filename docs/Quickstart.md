@@ -4,6 +4,11 @@ The fast path: get a working homeserver in under an hour, running
 the setup directly on the server itself. No separate Ansible
 control machine needed.
 
+> [!TIP]
+> Looking for a step-by-step wizard with progress bars instead of
+> a single long page? Start with the
+> **[Setup Guide](Setup-Guide/README.md)**.
+
 ## Prerequisites
 
 You need an **AlmaLinux 9** machine you can SSH into, with these
