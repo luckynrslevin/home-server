@@ -25,18 +25,27 @@ you later want to bring your own domain.
 
 - Open <https://desec.io/> in your browser.
 - Click **Sign Up**.
-- Enter your email, choose a password, confirm via the
-  verification email.
+- Enter your email, choose a password, accept the terms, submit.
+- Open the verification email from deSEC, click the confirmation
+  link.
 
 (~2 min.)
 
 ### 2. Claim a subdomain
 
-- After login, you're on the dashboard.
-- Click **Create new DNS zone**.
-- Enter a subdomain like `<your-name>` or `<household>-home`
-  followed by `.dedyn.io` — for example, `alice-home.dedyn.io`.
-- Click **Save**.
+After confirming your email and signing in, deSEC asks:
+
+> **Do you want to set up a domain right away?**
+> a) Configure your own domain (Managed DNS or dynDNS)
+> b) Register a new domain under dedyn.io (DynDNS)
+> c) No, I'll add one later
+
+Pick **(b) Register a new domain under dedyn.io (DynDNS)**.
+
+- Type the subdomain you want — for example, `alice-home`.
+- Click **Check availability**. If it's taken, pick another and
+  re-check.
+- Confirm to claim `alice-home.dedyn.io`.
 
 You now own `alice-home.dedyn.io` and any subdomain under it
 (`pihole.alice-home.dedyn.io`, `paperless.alice-home.dedyn.io`,
@@ -45,13 +54,19 @@ Step 4.
 
 (~1 min.)
 
-### 3. Copy your API token
+### 3. Create an API token
 
-- Click your email address (top-right) → **Token Management**.
+deSEC's web UI shows your domain's dashboard after Step 2.
+
+- Open the **Token Management** page from the top-right account
+  menu (user icon → Token Management).
 - Click **Create new token**.
-- Give it a name like `homeserver` and click **Save**.
-- **Copy the token** to a password manager or a temporary note —
-  deSEC shows it only once.
+- Give it a descriptive name like `homeserver`.
+- Leave the default permissions (full account scope) unless you
+  know you want to restrict it.
+- Click **Save**.
+- **Copy the token now** to a password manager or a temporary
+  note — deSEC shows it only once.
 
 (~1 min.)
 
