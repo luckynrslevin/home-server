@@ -48,10 +48,16 @@ Three providers are supported (all bundled in the image):
 | **`cloudflare`** | `caddy_acme_provider: cloudflare` + `caddy_acme_zone: <zone>` | You own a domain hosted at Cloudflare DNS. |
 | **`hetzner`** | `caddy_acme_provider: hetzner` + `caddy_acme_zone: <zone>` | You own a domain hosted at Hetzner DNS. |
 
-Caddy auto-issues a wildcard cert for `*.<caddy_domain>` and
-auto-renews it. The DNS provider's API only sees a temporary
+Caddy issues a **single wildcard cert** covering both the apex
+(`<caddy_domain>`) and every subdomain (`*.<caddy_domain>`), and
+auto-renews it. One Caddyfile site block routes every reverse-
+proxied service via `host` matchers, so adding a service is just
+an inventory entry — no extra cert, no extra ACME challenge.
+
+The DNS provider's API only sees a single temporary
 `_acme-challenge.<domain>` TXT record per renewal — your homeserver
-is never reachable from the public internet.
+is never reachable from the public internet, and there are no
+per-subdomain TXTs to leave behind.
 
 ### Example: deSEC (default platform path)
 
@@ -144,8 +150,10 @@ The role:
    container restart.
 
 On first deploy Caddy contacts Let's Encrypt, writes a temporary
-`_acme-challenge.<domain>` TXT record at the DNS provider, gets the
-wildcard cert issued, and serves HTTPS within ~30 seconds.
+`_acme-challenge.<domain>` TXT record at the DNS provider, waits
+for DNS propagation (2 min, to give recursive resolvers time to
+clear any negative cache), then gets the wildcard cert issued.
+HTTPS for every site is live ~3 min after the play finishes.
 
 ## Cross-role dependencies
 
