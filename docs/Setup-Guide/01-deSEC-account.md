@@ -25,9 +25,11 @@ you later want to bring your own domain.
 
 - Open <https://desec.io/> in your browser.
 - Click **Sign Up**.
-- Enter your email, choose a password, accept the terms, submit.
-- Open the verification email from deSEC, click the confirmation
-  link.
+  - Enter your email
+  - chose "No, I'll add one later"
+  - fill in CAPTCHA
+  - accept the terms & sign up
+- Open the verification email from deSEC, click the confirmation link.
 
 (~2 min.)
 
@@ -65,8 +67,10 @@ deSEC's web UI shows your domain's dashboard after Step 2.
 - Leave the default permissions (full account scope) unless you
   know you want to restrict it.
 - Click **Save**.
-- **Copy the token now** to a password manager or a temporary
-  note — deSEC shows it only once.
+
+> [!IMPORTANT]  
+> **Copy the token now** to a password manager or a temporary 
+> note — **deSEC shows it only once**.
 
 (~1 min.)
 
