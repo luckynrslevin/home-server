@@ -392,17 +392,16 @@ vault_encrypt() {
 }
 
 # --- Generate inventory/hosts.yml ---
-mkdir -p inventory/host_vars/homeserver
+mkdir -p "inventory/host_vars/$SERVER_HOSTNAME"
 
 cat > inventory/hosts.yml << EOF
 all:
   children:
     homeservers:
       hosts:
-        homeserver:
+        $SERVER_HOSTNAME:
           ansible_host: 127.0.0.1
           ansible_connection: local
-          ansible_host_name: $SERVER_HOSTNAME
           ansible_user: $SERVER_USER
 EOF
 
@@ -436,10 +435,8 @@ MUSIC_ASSISTANT_MAC="02:$(openssl rand -hex 5 | sed 's/\(..\)/\1:/g;s/:$//')"
 cat << YAML
 ##################################################################################################
 ### Host identity
-# Preserve the system hostname the operator set during OS install,
-# instead of falling back to the inventory key (which is hardcoded
-# to "homeserver"). Without this, os-base would rename the box on
-# every deploy.
+# Pin the system hostname so os-base never renames the box on a
+# re-deploy (the role's default would be inventory_hostname).
 os_base_hostname: $SERVER_HOSTNAME
 
 ##################################################################################################
@@ -557,9 +554,9 @@ echo ""
 echo "### Jellyfin"
 vault_encrypt "$JELLYFIN_ADMIN_PW" "jellyfin_admin_password"
 echo "##################################################################################################"
-} > inventory/host_vars/homeserver/main.yml
+} > inventory/host_vars/$SERVER_HOSTNAME/main.yml
 
-ok "Generated inventory/host_vars/homeserver/main.yml (with vault-encrypted secrets)"
+ok "Generated inventory/host_vars/$SERVER_HOSTNAME/main.yml (with vault-encrypted secrets)"
 
 # --- Generate dashboard config ---
 # Only include services that were actually selected for deployment, so
@@ -677,9 +674,9 @@ cat << EOF
 
 EOF
 fi
-} > inventory/host_vars/homeserver/dashboard-config.yaml
+} > inventory/host_vars/$SERVER_HOSTNAME/dashboard-config.yaml
 
-ok "Generated inventory/host_vars/homeserver/dashboard-config.yaml"
+ok "Generated inventory/host_vars/$SERVER_HOSTNAME/dashboard-config.yaml"
 
 # ============================================================================
 # Step 6.5: deSEC API — upsert the wildcard A record
@@ -734,23 +731,23 @@ if [[ "$proceed" =~ ^[Nn]$ ]]; then
     echo
     ok "Setup complete! Configuration files generated at:"
     echo "  $INSTALL_DIR/inventory/hosts.yml"
-    echo "  $INSTALL_DIR/inventory/host_vars/homeserver/"
+    echo "  $INSTALL_DIR/inventory/host_vars/$SERVER_HOSTNAME/"
     echo
     echo "Deploy manually anytime with:"
     echo "  cd $INSTALL_DIR"
-    echo "  ansible-playbook playbooks/site.yml --limit homeserver"
+    echo "  ansible-playbook playbooks/site.yml --limit $SERVER_HOSTNAME"
     exit 0
 fi
 
 echo
 
 info "Deploying selected services..."
-ansible-playbook playbooks/site.yml --limit homeserver
+ansible-playbook playbooks/site.yml --limit $SERVER_HOSTNAME
 DEPLOY_EXIT=$?
 
 if [[ $DEPLOY_EXIT -ne 0 ]]; then
     warn "Some services may have failed. Check the output above."
-    echo "Re-run with: cd $INSTALL_DIR && ansible-playbook playbooks/site.yml --limit homeserver"
+    echo "Re-run with: cd $INSTALL_DIR && ansible-playbook playbooks/site.yml --limit $SERVER_HOSTNAME"
 fi
 
 # Rootless containers can take a moment to start after the playbook
@@ -777,8 +774,8 @@ echo -e "${BOLD}Back up ${VAULT_PW_FILE} into your password manager now.${NC}"
 echo "Without it you cannot re-deploy this host or decrypt its inventory."
 echo
 echo "Configuration files:"
-echo "  $INSTALL_DIR/inventory/host_vars/homeserver/main.yml"
-echo "  $INSTALL_DIR/inventory/host_vars/homeserver/dashboard-config.yaml"
+echo "  $INSTALL_DIR/inventory/host_vars/$SERVER_HOSTNAME/main.yml"
+echo "  $INSTALL_DIR/inventory/host_vars/$SERVER_HOSTNAME/dashboard-config.yaml"
 echo
 echo "Container images auto-update daily via podman-auto-update.timer."
 echo "See the Quickstart.md for more details."
