@@ -181,6 +181,26 @@
 - name: Flush handlers so the firewalld reload happens now
   ansible.builtin.meta: flush_handlers
 
+# Pre-pull the Unbound image. On a fresh deploy the firewalld+resolved
+# restart in the handlers just flushed the resolver cache, so the
+# implicit pull triggered by the first `systemctl --user start unbound`
+# can race and fail with "operation not permitted" looking up
+# registry-1.docker.io. Pulling explicitly here keeps retries inside
+# podman (which handles them) instead of inside systemd's start path
+# (which gives up after one failed exec).
+- name: Pre-pull Unbound image # noqa: no-changed-when
+  become: true
+  ansible.builtin.command:
+    cmd: >
+      sudo -u pihole XDG_RUNTIME_DIR=/run/user/{{ my_linux_users.pihole.uid }}
+      podman pull {{ pihole_unbound_image }}
+  changed_when: false
+  retries: 3
+  delay: 5
+  register: _pihole_unbound_pull
+  until: _pihole_unbound_pull.rc == 0
+  when: pihole_enable_unbound | bool
+
 # Start and enable Unbound (it's a separate systemd unit, not part of
 # the pihole app unit, so the Galaxy role's restart doesn't cover it).
 - name: Enable and start Unbound # noqa: no-changed-when
