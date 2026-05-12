@@ -68,6 +68,22 @@
     status_code: [200, 204]
   when: _jellyfin_wizard_incomplete
 
+# Jellyfin seeds the default "root" user asynchronously after the
+# Configuration POST returns. Polling GET /Startup/User until it
+# returns 200 (instead of the 500 from `Users.First()` on an empty
+# collection) avoids a race where the next POST 500s.
+- name: Wait for Jellyfin default user to be seeded
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:8096/Startup/User"
+    method: GET
+    status_code: 200
+    return_content: false
+  register: _jellyfin_default_user_probe
+  retries: 30
+  delay: 2
+  until: _jellyfin_default_user_probe.status == 200
+  when: _jellyfin_wizard_incomplete
+
 - name: Create admin user via wizard
   ansible.builtin.uri:
     url: "http://127.0.0.1:8096/Startup/User"
