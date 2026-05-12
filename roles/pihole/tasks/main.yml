@@ -190,10 +190,12 @@
 # (which gives up after one failed exec).
 - name: Pre-pull Unbound image # noqa: no-changed-when
   become: true
+  become_user: pihole
+  environment:
+    XDG_RUNTIME_DIR: "/run/user/{{ my_linux_users.pihole.uid }}"
   ansible.builtin.command:
-    cmd: >
-      sudo -u pihole XDG_RUNTIME_DIR=/run/user/{{ my_linux_users.pihole.uid }}
-      podman pull {{ pihole_unbound_image }}
+    cmd: podman pull {{ pihole_unbound_image }}
+    chdir: /tmp
   changed_when: false
   retries: 3
   delay: 5
