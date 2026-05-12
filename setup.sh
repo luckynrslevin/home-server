@@ -435,6 +435,14 @@ MUSIC_ASSISTANT_MAC="02:$(openssl rand -hex 5 | sed 's/\(..\)/\1:/g;s/:$//')"
 {
 cat << YAML
 ##################################################################################################
+### Host identity
+# Preserve the system hostname the operator set during OS install,
+# instead of falling back to the inventory key (which is hardcoded
+# to "homeserver"). Without this, os-base would rename the box on
+# every deploy.
+os_base_hostname: $SERVER_HOSTNAME
+
+##################################################################################################
 ### Services to deploy on this host (used by playbooks/site.yml)
 deploy_services:
 YAML
