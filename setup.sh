@@ -362,6 +362,14 @@ done
 echo
 ok "Selected services: ${SELECTED_SERVICES[*]}"
 
+is_selected() {
+    local needle=$1
+    for s in "${SELECTED_SERVICES[@]}"; do
+        [[ "$s" == "$needle" ]] && return 0
+    done
+    return 1
+}
+
 # ============================================================================
 # Step 6: Generate configuration files
 # ============================================================================
@@ -549,13 +557,6 @@ ok "Generated inventory/host_vars/homeserver/main.yml (with vault-encrypted secr
 # Only include services that were actually selected for deployment, so
 # the dashboard doesn't display stale "Stopped" rows for un-deployed
 # services.
-is_selected() {
-    local needle=$1
-    for s in "${SELECTED_SERVICES[@]}"; do
-        [[ "$s" == "$needle" ]] && return 0
-    done
-    return 1
-}
 
 {
 echo "services:"
