@@ -85,3 +85,10 @@
     su - webproxy -c 'podman exec caddy caddy reload --config /etc/caddy/Caddyfile 2>&1'
   changed_when: false
   failed_when: false
+
+- name: Register backup manifest
+  ansible.builtin.set_fact:
+    _backup_manifests: >-
+      {{ _backup_manifests | default([]) +
+         [backup_manifest | combine({'_role_name': role_name})] }}
+  when: backup_manifest is defined

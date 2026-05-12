@@ -130,8 +130,10 @@ ansible-vault encrypt_string --encrypt-vault-id default --stdin-name 'caddy_acme
 ## Volumes
 
 - `caddy-data` — TLS certificates issued by Let's Encrypt and
-  auto-renewed. Re-issued from scratch on a fresh install — no
-  backup needed.
+  auto-renewed, plus the ACME account key. **Backed up** so a
+  rebuilt host can restore the wildcard cert instead of re-issuing
+  (and burning a slot in LE's 5-certs-per-week-per-identifier-set
+  rate limit during testing cycles).
 - `caddy-config` — runtime config. Regenerated.
 - `caddy-etc` — staged `Caddyfile` (rendered from Jinja2 template).
 

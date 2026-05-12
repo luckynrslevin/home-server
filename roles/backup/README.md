@@ -126,12 +126,12 @@ Used for: entephoto Postgres (`entephoto-postgres` / `ente_db`).
 | entephoto | `entephoto-minio-data`            | rsync   |
 | jellyfin  | `systemd-jellyfin-config`         | tar     |
 | jellyfin  | `systemd-jellyfin-media`          | rsync   |
+| caddy     | `caddy-data`                      | tar     |
 
-> Caddy volumes are not backed up. All three (`caddy-data`,
-> `caddy-config`, `caddy-etc`) are regenerated from the role on
-> every deploy. Real Let's Encrypt certs live in `caddy-data` and
-> Caddy re-issues them via DNS-01 against deSEC after a fresh
-> install — no persistence needed.
+> Only `caddy-data` is backed up (the LE-issued wildcard cert
+> and ACME account key). `caddy-config` is runtime state and
+> `caddy-etc` is regenerated from the Jinja template on every
+> deploy — neither needs persistence.
 
 ## Deployment
 

@@ -51,3 +51,16 @@ caddy_acme_zone: ""
 # host_vars. Scope to the single zone / single record type when the
 # provider supports it.
 caddy_acme_token: ""
+
+# Backup manifest — consumed by the backup role and restore playbook.
+# Only caddy-data is backed up: it holds the LE-issued wildcard cert
+# and the ACME account key. Preserving it across an OS reinstall lets
+# `restore.yml` skip a fresh issuance entirely (and dodges LE's
+# 5-certs-per-week rate limit on aggressive rebuilds). caddy-config
+# is runtime state, caddy-etc is regenerated from the template — both
+# rebuild from scratch on every deploy.
+backup_manifest:
+  service_user: webproxy
+  service_unit: caddy
+  volumes:
+    - { name: caddy-data, method: tar }
