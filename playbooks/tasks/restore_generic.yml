@@ -44,7 +44,7 @@
 # --- Find latest tar backups ---
 - name: "{{ svc._role_name | upper }}: find latest tar backups"
   ansible.builtin.shell: >
-    ls -t {{ restore_root }}/tar/{{ item.name }}/*.tar.gz | head -1
+    ls -t {{ restore_root }}/tar/{{ inventory_hostname }}/{{ item.name }}/*.tar.gz | head -1
   register: _tar_latest
   loop: "{{ svc.volumes | selectattr('method', 'equalto', 'tar') | list }}"
   loop_control:
@@ -54,7 +54,7 @@
 # --- Find latest pgdump backups ---
 - name: "{{ svc._role_name | upper }}: find latest pgdump backups"
   ansible.builtin.shell: >
-    ls -t {{ restore_root }}/tar/pgdump-{{ item.container }}/*.sql.gz | head -1
+    ls -t {{ restore_root }}/tar/{{ inventory_hostname }}/pgdump-{{ item.container }}/*.sql.gz | head -1
   register: _pgdump_latest
   loop: "{{ svc.databases | default([]) }}"
   loop_control:
@@ -92,7 +92,7 @@
         --format='{% raw %}{{.Mountpoint}}{% endraw %}')
     sudo -u {{ svc.service_user }} podman unshare rsync -a --delete \
         --no-owner --no-group --numeric-ids \
-        "{{ restore_root }}/{{ item.nas_share }}/" "$MP/"
+        "{{ restore_root }}/{{ item.nas_share }}/{{ inventory_hostname }}/" "$MP/"
   loop: >-
     {{ svc.volumes
        | selectattr('method', 'equalto', 'rsync')

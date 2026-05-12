@@ -18,10 +18,13 @@ set -euo pipefail
 # ===========================================================================
 
 # --- Configuration ---
-# NOTE: NAS_HOST / NAS_VOLUME are rendered by Ansible from host_vars.
+# NOTE: NAS_HOST / NAS_VOLUME / HOSTNAME_DIR are rendered by Ansible from
+# host_vars. HOSTNAME_DIR segments every backup path so multiple homeservers
+# (e.g. prod + test) can share the same NAS without colliding.
 BACKUP_ROOT="/mnt/backup"
 NAS_HOST="{{ backup_nas_hostname }}"
 NAS_VOLUME="{{ backup_nas_volume }}"
+HOSTNAME_DIR="{{ inventory_hostname }}"
 # Local mount name → Synology shared folder name.
 # Derived from backup_manifest declarations in each role's defaults.
 declare -A NFS_SHARES=(
@@ -80,7 +83,7 @@ start_service() {
 # --- Backup functions ---
 backup_tar_volume() {
   local user=$1 uid=$2 volume=$3
-  local dest="$BACKUP_ROOT/tar/$volume"
+  local dest="$BACKUP_ROOT/tar/$HOSTNAME_DIR/$volume"
   mkdir -p "$dest"
   log "  Tar backup: $volume"
   if su - "$user" -c "podman volume export $volume" \
@@ -103,8 +106,9 @@ backup_rsync_volume() {
     log_error "Cannot inspect volume $volume"
     return 1
   fi
-  local dest="$BACKUP_ROOT/$share"
-  log "  Rsync backup: $volume → $share"
+  local dest="$BACKUP_ROOT/$share/$HOSTNAME_DIR"
+  mkdir -p "$dest"
+  log "  Rsync backup: $volume → $share/$HOSTNAME_DIR"
   # --no-owner --no-group --numeric-ids: NFS all_squash maps every UID to the
   #   share's anon user, so chowns from rsync would fail. We deliberately
   #   drop ownership preservation here. On restore, container-native UIDs
@@ -121,7 +125,7 @@ backup_rsync_volume() {
 
 backup_pgdump() {
   local user=$1 container=$2 db_user=$3 db_name=$4
-  local dest="$BACKUP_ROOT/tar/pgdump-$container"
+  local dest="$BACKUP_ROOT/tar/$HOSTNAME_DIR/pgdump-$container"
   mkdir -p "$dest"
   log "  pg_dump: $container ($db_name)"
   if su - "$user" -c "podman exec $container pg_dump -U $db_user $db_name" \
