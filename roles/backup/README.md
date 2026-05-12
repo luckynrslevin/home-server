@@ -42,6 +42,21 @@ The script implements three methods. Each service's volumes are
 assigned the right one based on size, mutability, and whether the
 data is a database.
 
+### Per-host segmentation
+
+Every backup path is prefixed with the host's `inventory_hostname`,
+so multiple homeservers (e.g. prod + test) can share the same NAS
+without colliding. Layout:
+
+```
+backup-tar/<hostname>/<volume>/<volume>-YYYYMMDD-HHMMSS.tar.gz
+backup-tar/<hostname>/pgdump-<container>/<container>-YYYYMMDD-HHMMSS.sql.gz
+backup-<share>/<hostname>/...
+```
+
+Restore reads the same paths via `inventory_hostname`, so each
+host always restores its own data.
+
 ### 1. `tar` — `podman volume export | gzip`
 
 Used for **small, mostly-config volumes** where keeping a daily
@@ -84,7 +99,7 @@ wasteful and history isn't needed (the data is the data).
 - **Restore:**
   ```bash
   rsync -a --no-owner --no-group --numeric-ids \
-      /mnt/backup/<share>/ <volume mount path>/
+      /mnt/backup/<share>/<hostname>/ <volume mount path>/
   sudo -u <user> podman unshare chown -R 0:0 <volume mount path>
   ```
 
