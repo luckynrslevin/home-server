@@ -763,17 +763,14 @@ echo -e "${BOLD}============================================${NC}"
 echo -e "${GREEN}${BOLD}   Setup complete!${NC}"
 echo -e "${BOLD}============================================${NC}"
 echo
-echo "Your home server is now running at: http://${SERVER_IP}"
+echo "Your home server is now running at: https://${CADDY_DOMAIN}"
 echo
-echo "Useful commands:"
-echo "  cd $INSTALL_DIR"
-echo "  ansible-playbook playbooks/<service>.yml --limit homeserver  # deploy a service"
-echo "  podman ps                                                     # list containers"
+echo -e "${BOLD}Back up ${VAULT_PW_FILE} into your password manager now.${NC}"
+echo "Without it you cannot re-deploy this host or decrypt its inventory."
 echo
 echo "Configuration files:"
 echo "  $INSTALL_DIR/inventory/host_vars/homeserver/main.yml"
 echo "  $INSTALL_DIR/inventory/host_vars/homeserver/dashboard-config.yaml"
-echo "  $VAULT_PW_FILE  (vault password — BACK THIS UP!)"
 echo
 echo "Container images auto-update daily via podman-auto-update.timer."
 echo "See the Quickstart.md for more details."
