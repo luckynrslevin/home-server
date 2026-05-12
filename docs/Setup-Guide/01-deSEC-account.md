@@ -37,12 +37,13 @@ you later want to bring your own domain.
 
 After confirming your email and signing in, deSEC asks:
 
-> **Do you want to set up a domain right away?**
-> a) Configure your own domain (Managed DNS or dynDNS)
-> b) Register a new domain under dedyn.io (DynDNS)
-> c) No, I'll add one later
+**Do you want to set up a domain right away?**
 
-Pick **(b) Register a new domain under dedyn.io (DynDNS)**.
+- [ ] Configure your own domain (Managed DNS or dynDNS)
+- [x] Register a new domain under dedyn.io (DynDNS)
+- [ ] No, I'll add one later
+
+Pick **Register a new domain under dedyn.io (DynDNS)**.
 
 - Type the subdomain you want — for example, `alice-home`.
 - Click **Check availability**. If it's taken, pick another and
