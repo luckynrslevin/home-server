@@ -31,8 +31,8 @@ curl -fsSL https://raw.githubusercontent.com/luckynrslevin/home-server/main/setu
 
 > [!IMPORTANT]
 > Run this **on the server** (i.e. inside the SSH session from
-> Step 3) — not on your laptop. The script provisions the
-> machine it runs on.
+> Step 3) — not on your laptop. **The script provisions the
+> machine it runs on.**
 
 ### What you'll see
 
