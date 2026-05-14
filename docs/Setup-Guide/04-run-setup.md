@@ -13,7 +13,7 @@ images pull and services start" you can use to make coffee.
 
 | Prompt | What to paste | From Step |
 |---|---|---|
-| **deSEC subdomain** (without `.dedyn.io`) | `alice-home` | 1 |
+| **deSEC subdomain** (without `.dedyn.io`) | `mydomain` | 1 |
 | **deSEC API token** | the long opaque string | 1 |
 | **Which services to deploy?** | y/N per service (defaults are sensible) | — |
 
