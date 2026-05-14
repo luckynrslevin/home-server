@@ -54,16 +54,8 @@ Step 4.
 After creating your domain, you need to create a API token caddy can use to automatically request creation
 of Let's Encrypt SSL certificates.
 - Click "Token Management" and **&#10753;** button to add a new API token
-
-
-  - Type in the domain you want, e.g. if you would like to register **mydomain**, type in **mydomain.dedyn.io** and register.
-  - If it's taken, pick another and re-check.
-- Open the **Token Management** page from the top-right account
-  menu (user icon → Token Management).
-- Click **Create new token**.
 - Give it a descriptive name like `homeserver`.
-- Leave the default permissions (full account scope) unless you
-  know you want to restrict it.
+- Leave the default permissions.
 - Click **Save**.
 
 > [!IMPORTANT]  
