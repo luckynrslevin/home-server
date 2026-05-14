@@ -24,34 +24,26 @@ you later want to bring your own domain.
 ### 1. Create an account
 
 - Open <https://desec.io/> in your browser.
-- Click **Sign Up**.
+- Click **Create Account** button in the top menue.
   - Enter your email
   - chose "No, I'll add one later"
   - fill in CAPTCHA
   - accept the terms & sign up
-- Open the verification email from deSEC, click the confirmation link.
+  - Open the verification email from deSEC, click the confirmation link.
+  - Afterwards you will get a second email with a link to set your password (valid 24 hours).
 
 (~2 min.)
 
-### 2. Claim a subdomain
+### 2. Claim a dedyn.io subdomain
 
-After confirming your email and signing in, deSEC asks:
+After creating your account create your domain:
+  - Open <https://desec.io/> and click **Log In** button and log in with your username and password.
+  - Click "Domain Management" and **&#10753;** button to add a new domain
+  - Type in the domain you want, e.g. if you would like to register **mydomain**, type in **mydomain.dedyn.io** and register.
+  - If it's taken, pick another and re-check.
 
-**Do you want to set up a domain right away?**
-
-- [ ] Configure your own domain (Managed DNS or dynDNS)
-- [x] Register a new domain under dedyn.io (DynDNS)
-- [ ] No, I'll add one later
-
-Pick **Register a new domain under dedyn.io (DynDNS)**.
-
-- Type the subdomain you want — for example, `alice-home`.
-- Click **Check availability**. If it's taken, pick another and
-  re-check.
-- Confirm to claim `alice-home.dedyn.io`.
-
-You now own `alice-home.dedyn.io` and any subdomain under it
-(`pihole.alice-home.dedyn.io`, `paperless.alice-home.dedyn.io`,
+You now own `mydomain.dedyn.io` and any subdomain under it
+(`pihole.mydomain.dedyn.io`, `paperless.mydomain.dedyn.io`,
 etc.) — Caddy will mint a wildcard cert covering all of them in
 Step 4.
 
@@ -59,8 +51,13 @@ Step 4.
 
 ### 3. Create an API token
 
-deSEC's web UI shows your domain's dashboard after Step 2.
+After creating your domain, you need to create a API token caddy can use to automatically request creation
+of Let's Encrypt SSL certificates.
+- Click "Token Management" and **&#10753;** button to add a new API token
 
+
+  - Type in the domain you want, e.g. if you would like to register **mydomain**, type in **mydomain.dedyn.io** and register.
+  - If it's taken, pick another and re-check.
 - Open the **Token Management** page from the top-right account
   menu (user icon → Token Management).
 - Click **Create new token**.
