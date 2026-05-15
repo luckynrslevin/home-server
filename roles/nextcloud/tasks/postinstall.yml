@@ -47,7 +47,7 @@
   changed_when: "'installed' in _oidc_install.stdout and 'already installed' not in _oidc_install.stdout"
   failed_when:
     - _oidc_install.rc != 0
-    - "'already installed' not in _oidc_install.stderr"
+    - "'already installed' not in (_oidc_install.stderr ~ _oidc_install.stdout)"
 
 - name: Enable oidc app # noqa: no-changed-when
   become: true
@@ -75,4 +75,4 @@
   changed_when: "'installed' in _contacts_install.stdout and 'already installed' not in _contacts_install.stdout"
   failed_when:
     - _contacts_install.rc != 0
-    - "'already installed' not in _contacts_install.stderr"
+    - "'already installed' not in (_contacts_install.stderr ~ _contacts_install.stdout)"
