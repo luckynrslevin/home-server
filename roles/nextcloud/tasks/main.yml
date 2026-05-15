@@ -1,0 +1,77 @@
+---
+
+- name: Assert required Nextcloud secrets are set
+  ansible.builtin.assert:
+    that:
+      - nextcloud_admin_password | length > 0
+      - nextcloud_db_password | length > 0
+    fail_msg: >-
+      nextcloud_admin_password and nextcloud_db_password must be set
+      (vault-encrypted) in host_vars before deploying. Generate with:
+        openssl rand -base64 24 | ansible-vault encrypt_string \
+          --encrypt-vault-id default --stdin-name '<varname>'
+
+- name: Ensure rootless user group exists
+  ansible.builtin.group:
+    name: nextcloud
+    gid: "{{ my_linux_users.nextcloud.gid }}"
+    state: present
+
+- name: Ensure rootless user exists
+  ansible.builtin.user:
+    name: nextcloud
+    state: present
+    uid: "{{ my_linux_users.nextcloud.uid }}"
+    group: nextcloud
+    create_home: true
+
+- name: Enable linger for rootless user
+  become: true
+  ansible.builtin.command:
+    cmd: "loginctl enable-linger nextcloud"
+  changed_when: false
+
+- name: Enable podman auto-update timer for rootless user # noqa: no-changed-when
+  become: true
+  ansible.builtin.command:
+    cmd: >
+      sudo -u nextcloud XDG_RUNTIME_DIR=/run/user/{{ my_linux_users.nextcloud.uid }}
+      DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/{{ my_linux_users.nextcloud.uid }}/bus
+      systemctl --user enable --now podman-auto-update.timer
+  changed_when: false
+
+- name: Save current role path
+  ansible.builtin.set_fact:
+    nextcloud_role_path: "{{ role_path }}"
+
+# Deploy Nextcloud as a rootless Podman pod (apache + postgres + redis).
+# All three containers share the pod's network namespace, so the apache
+# container talks to postgres and redis on localhost.
+- name: Deploy nextcloud pod using podman_quadlet
+  ansible.builtin.include_role:
+    name: luckynrslevin.podman_quadlet
+  vars:
+    podman_quadlet_app_name: "nextcloud-pod"
+    podman_quadlet_rootless_user_name: nextcloud
+    podman_quadlet_files_templates_src_path: "{{ nextcloud_role_path }}"
+    podman_quadlet_file_names:
+      - nextcloud.pod.j2
+      - nextcloud.network
+      - nextcloud-postgres.container.j2
+      - nextcloud-redis.container.j2
+      - nextcloud-server.container.j2
+      - nextcloud-postgres-data.volume
+      - nextcloud-redis-data.volume
+      - nextcloud-data.volume
+      - nextcloud-config.volume
+      - nextcloud-html.volume
+
+- name: Run postinstall (OIDC Provider app, Caddy trusted-proxy, etc.)
+  ansible.builtin.include_tasks: postinstall.yml
+
+- name: Register backup manifest
+  ansible.builtin.set_fact:
+    _backup_manifests: >-
+      {{ _backup_manifests | default([]) +
+         [backup_manifest | combine({'_role_name': role_name})] }}
+  when: backup_manifest is defined

@@ -1,0 +1,78 @@
+---
+# Wait for Nextcloud's installer to finish (DB migrations on first boot
+# can take ~60s) before running occ commands.
+
+- name: Wait for Nextcloud /status.php to report installed
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:{{ nextcloud_listen_port }}/status.php"
+    status_code: 200
+    return_content: true
+  register: _nextcloud_status
+  retries: 30
+  delay: 5
+  until: _nextcloud_status.status == 200 and _nextcloud_status.json.installed | default(false)
+
+# --------------------------------------------------------------------------
+# Configure Nextcloud's trusted proxies + overwrite settings.
+# The image's entrypoint sets OVERWRITEPROTOCOL/HOST/CLIURL on first boot,
+# but the trusted_proxies array isn't covered by env vars and is required
+# for the X-Forwarded-* headers from Caddy to be honored.
+# --------------------------------------------------------------------------
+
+- name: Set Caddy as a trusted reverse proxy # noqa: no-changed-when
+  become: true
+  ansible.builtin.command:
+    cmd: >
+      sudo -u nextcloud XDG_RUNTIME_DIR=/run/user/{{ my_linux_users.nextcloud.uid }}
+      podman exec -u www-data nextcloud-server
+      php occ config:system:set trusted_proxies 0 --value=127.0.0.1
+    chdir: /tmp
+  changed_when: false
+
+# --------------------------------------------------------------------------
+# Install + enable the OpenID Connect Identity Provider app so other apps
+# (e.g. Paperless, future Vaultwarden) can OIDC-against Nextcloud.
+# Idempotent: occ app:install is a no-op if already installed.
+# --------------------------------------------------------------------------
+
+- name: Install oidc_provider app # noqa: no-changed-when
+  become: true
+  ansible.builtin.command:
+    cmd: >
+      sudo -u nextcloud XDG_RUNTIME_DIR=/run/user/{{ my_linux_users.nextcloud.uid }}
+      podman exec -u www-data nextcloud-server
+      php occ app:install oidc_provider
+    chdir: /tmp
+  register: _oidc_install
+  changed_when: "'installed' in _oidc_install.stdout and 'already installed' not in _oidc_install.stdout"
+  failed_when:
+    - _oidc_install.rc != 0
+    - "'already installed' not in _oidc_install.stderr"
+
+- name: Enable oidc_provider app # noqa: no-changed-when
+  become: true
+  ansible.builtin.command:
+    cmd: >
+      sudo -u nextcloud XDG_RUNTIME_DIR=/run/user/{{ my_linux_users.nextcloud.uid }}
+      podman exec -u www-data nextcloud-server
+      php occ app:enable oidc_provider
+    chdir: /tmp
+  changed_when: false
+
+# --------------------------------------------------------------------------
+# Contacts app (initial-scope feature per Plan C).
+# --------------------------------------------------------------------------
+
+- name: Install contacts app # noqa: no-changed-when
+  become: true
+  ansible.builtin.command:
+    cmd: >
+      sudo -u nextcloud XDG_RUNTIME_DIR=/run/user/{{ my_linux_users.nextcloud.uid }}
+      podman exec -u www-data nextcloud-server
+      php occ app:install contacts
+    chdir: /tmp
+  register: _contacts_install
+  changed_when: "'installed' in _contacts_install.stdout and 'already installed' not in _contacts_install.stdout"
+  failed_when:
+    - _contacts_install.rc != 0
+    - "'already installed' not in _contacts_install.stderr"

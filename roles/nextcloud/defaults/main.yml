@@ -1,0 +1,45 @@
+---
+# Container images
+nextcloud_image: "docker.io/library/nextcloud:apache"
+nextcloud_postgres_image: "public.ecr.aws/docker/library/postgres:16"
+nextcloud_redis_image: "public.ecr.aws/docker/library/redis:7-alpine"
+
+# Internal port the Nextcloud apache container listens on. Caddy
+# fronts this at https://cloud.<caddy_domain>/. Not exposed in the
+# firewall.
+nextcloud_listen_port: 8090
+
+# Admin account created on first startup. The container's entrypoint
+# uses NEXTCLOUD_ADMIN_USER + NEXTCLOUD_ADMIN_PASSWORD on the very
+# first boot to bootstrap the instance; subsequent restarts ignore
+# them. After first login, change the password via the web UI if you
+# want.
+nextcloud_admin_user: "ncadmin"
+# Set nextcloud_admin_password from a vault-encrypted secret in
+# host_vars. Without it, the role's assert at the top of tasks/main.yml
+# fails fast — no silent install with a default credential.
+nextcloud_admin_password: ""
+
+# Postgres user used by Nextcloud. Vault-encrypt nextcloud_db_password
+# in host_vars.
+nextcloud_db_user: "ncuser"
+nextcloud_db_name: "nextcloud"
+nextcloud_db_password: ""
+
+# Trusted domain Nextcloud will accept Host: headers for. Defaults to
+# cloud.<caddy_domain>; override only if you want a different
+# subdomain.
+nextcloud_subdomain: "cloud"
+
+# Backup manifest — consumed by the backup role and restore playbook.
+# nextcloud-html is the bind-mount target for the image's PHP source
+# tree; it's regenerated on every container start, no backup needed.
+backup_manifest:
+  service_user: nextcloud
+  service_unit: nextcloud-pod
+  volumes:
+    - { name: nextcloud-config, method: tar }
+    - { name: nextcloud-data, method: rsync, nas_share: nextcloud }
+  databases:
+    - { container: nextcloud-postgres, db_user: "{{ nextcloud_db_user }}", db_name: "{{ nextcloud_db_name }}", method: pgdump }
+  post_restore_tasks: restore.yml

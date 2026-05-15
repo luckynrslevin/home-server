@@ -1,0 +1,7 @@
+- name: Deploy Nextcloud on home server
+  hosts: homeservers
+  become: true
+  gather_facts: true
+
+  roles:
+    - nextcloud

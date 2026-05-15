@@ -1,0 +1,14 @@
+[Unit]
+Description=nextcloud
+After=network-online.target
+Wants=network-online.target
+
+[Pod]
+PodName=nextcloud
+Network=nextcloud.network
+
+# Apache listens on container :80; Caddy fronts at host :{{ nextcloud_listen_port }}.
+PublishPort={{ nextcloud_listen_port }}:80/tcp
+
+[Install]
+WantedBy=default.target
