@@ -77,6 +77,24 @@
     reload: true
   when: os_base_swap_size_mb | int > 0
 
+# Allow rootless containers (notably Caddy) to bind privileged ports
+# 80 + 443 directly. Without this, the alternative is the firewall
+# port-forward 80->9080 / 443->9443, which only fires for traffic
+# entering on the public LAN interface — pod-to-host traffic from
+# other rootless containers (e.g. paperless reaching Nextcloud's
+# OIDC discovery, ente-museum reaching MinIO via the proxied S3
+# endpoint) bypasses the NAT and lands on a closed port. Lowering
+# the unprivileged port boundary to 80 lets pasta publish Caddy on
+# :80/:443 directly and the whole pod-to-host story Just Works.
+- name: Lower unprivileged port boundary so rootless can bind 80/443
+  become: true
+  ansible.posix.sysctl:
+    name: net.ipv4.ip_unprivileged_port_start
+    value: "80"
+    state: present
+    sysctl_set: true
+    reload: true
+
 # ---------------------------------------------------------------- 1
 # podman 5 source on AlmaLinux 9 (and other RHEL-9 derivatives).
 # Fedora's default repo already ships podman 5.x; AL9/Rocky/CentOS 9
