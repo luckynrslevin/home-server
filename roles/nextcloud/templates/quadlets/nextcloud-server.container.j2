@@ -35,12 +35,16 @@ Environment=OVERWRITEHOST={{ nextcloud_subdomain }}.{{ caddy_domain }}
 Environment=OVERWRITECLIURL=https://{{ nextcloud_subdomain }}.{{ caddy_domain }}
 {% if smtp_host | default('') | length > 0 %}
 # Project-level SMTP — see docs/SMTP-Setup.md.
+# Note: systemd interprets `%` in Environment= values as a specifier
+# (e.g. `%f` becomes the unit fragment path). All values that may
+# contain `%` (notably SMTP passwords) are escaped to `%%` to keep
+# the literal character intact.
 Environment=SMTP_HOST={{ smtp_host }}
 Environment=SMTP_PORT={{ smtp_port }}
 Environment=SMTP_AUTHTYPE=LOGIN
-Environment=SMTP_NAME={{ smtp_username }}
-Environment=SMTP_PASSWORD={{ smtp_password }}
+Environment=SMTP_NAME={{ smtp_username | replace('%', '%%') }}
+Environment=SMTP_PASSWORD={{ smtp_password | replace('%', '%%') }}
 Environment=SMTP_SECURE={{ 'tls' if smtp_encryption == 'starttls' else ('ssl' if smtp_encryption == 'ssl' else '') }}
-Environment=MAIL_FROM_ADDRESS={{ smtp_from.split('@')[0] }}
-Environment=MAIL_DOMAIN={{ smtp_from.split('@')[1] }}
+Environment=MAIL_FROM_ADDRESS={{ smtp_from.split('@')[0] | replace('%', '%%') }}
+Environment=MAIL_DOMAIN={{ smtp_from.split('@')[1] | replace('%', '%%') }}
 {% endif %}
