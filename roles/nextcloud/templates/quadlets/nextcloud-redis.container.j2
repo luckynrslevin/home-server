@@ -1,0 +1,21 @@
+[Unit]
+Description=nextcloud redis (memcache + transactional file locking)
+PartOf=nextcloud-pod.service
+
+[Container]
+ContainerName=%N
+Image={{ nextcloud_redis_image }}
+AutoUpdate=registry
+
+Pod=nextcloud.pod
+
+Volume=nextcloud-redis-data.volume:/data
+
+# AOF persistence — Nextcloud's transactional file locking depends on Redis;
+# losing the lock state on a crash is annoying but not catastrophic. AOF gives
+# us reasonable durability without the throughput cost of fsync=always.
+Exec=redis-server --appendonly yes
+
+HealthCmd=redis-cli ping
+HealthInterval=10s
+HealthStartPeriod=10s

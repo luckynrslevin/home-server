@@ -1,0 +1,25 @@
+---
+# Nextcloud post-restore hook.
+# After re-importing nextcloud-data + nextcloud-config + the Postgres dump,
+# the file index in the DB needs to re-validate against the on-disk files
+# (mtimes / sizes / checksums). occ maintenance:repair --include-expensive
+# does this.
+
+- name: Wait for Nextcloud to come back up
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:{{ nextcloud_listen_port }}/status.php"
+    status_code: 200
+  register: _nc_post_restore_status
+  retries: 30
+  delay: 5
+  until: _nc_post_restore_status.status == 200
+
+- name: Run maintenance:repair (expensive, scans files) # noqa: no-changed-when
+  become: true
+  ansible.builtin.command:
+    cmd: >
+      sudo -u nextcloud XDG_RUNTIME_DIR=/run/user/{{ my_linux_users.nextcloud.uid }}
+      podman exec -u www-data nextcloud-server
+      php occ maintenance:repair --include-expensive
+    chdir: /tmp
+  changed_when: false

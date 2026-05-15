@@ -1,0 +1,46 @@
+[Unit]
+Description=nextcloud server (apache + php)
+PartOf=nextcloud-pod.service
+After=nextcloud-postgres.service nextcloud-redis.service
+
+[Container]
+ContainerName=%N
+Image={{ nextcloud_image }}
+AutoUpdate=registry
+
+Pod=nextcloud.pod
+
+# /var/www/html holds the Nextcloud PHP source — image-managed, regenerated
+# on every container start. /var/www/html/data is user files (the big one);
+# /var/www/html/config holds config.php + installed apps' settings; both are
+# split into their own volumes so backups and restores work cleanly.
+Volume=nextcloud-html.volume:/var/www/html
+Volume=nextcloud-data.volume:/var/www/html/data
+Volume=nextcloud-config.volume:/var/www/html/config
+
+# Bootstrap on first run — entrypoint reads these only when the install
+# hasn't been performed yet. Subsequent restarts ignore them.
+Environment=NEXTCLOUD_ADMIN_USER={{ nextcloud_admin_user }}
+Environment=NEXTCLOUD_ADMIN_PASSWORD={{ nextcloud_admin_password }}
+Environment=NEXTCLOUD_TRUSTED_DOMAINS={{ nextcloud_subdomain }}.{{ caddy_domain }}
+Environment=POSTGRES_HOST=localhost
+Environment=POSTGRES_USER={{ nextcloud_db_user }}
+Environment=POSTGRES_DB={{ nextcloud_db_name }}
+Environment=POSTGRES_PASSWORD={{ nextcloud_db_password }}
+Environment=REDIS_HOST=localhost
+Environment=REDIS_HOST_PORT=6379
+# Tell Nextcloud it's behind a reverse proxy so generated URLs are https://.
+Environment=OVERWRITEPROTOCOL=https
+Environment=OVERWRITEHOST={{ nextcloud_subdomain }}.{{ caddy_domain }}
+Environment=OVERWRITECLIURL=https://{{ nextcloud_subdomain }}.{{ caddy_domain }}
+{% if smtp_host | default('') | length > 0 %}
+# Project-level SMTP — see docs/SMTP-Setup.md.
+Environment=SMTP_HOST={{ smtp_host }}
+Environment=SMTP_PORT={{ smtp_port }}
+Environment=SMTP_AUTHTYPE=LOGIN
+Environment=SMTP_NAME={{ smtp_username }}
+Environment=SMTP_PASSWORD={{ smtp_password }}
+Environment=SMTP_SECURE={{ 'tls' if smtp_encryption == 'starttls' else ('ssl' if smtp_encryption == 'ssl' else '') }}
+Environment=MAIL_FROM_ADDRESS={{ smtp_from.split('@')[0] }}
+Environment=MAIL_DOMAIN={{ smtp_from.split('@')[1] }}
+{% endif %}

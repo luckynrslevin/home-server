@@ -141,6 +141,9 @@ Used for: entephoto Postgres (`entephoto-postgres` / `ente_db`).
 | entephoto | `entephoto-minio-data`            | rsync   |
 | jellyfin  | `systemd-jellyfin-config`         | tar     |
 | jellyfin  | `systemd-jellyfin-media`          | rsync   |
+| nextcloud | `nextcloud` (Postgres)            | pgdump  |
+| nextcloud | `nextcloud-config`                | tar     |
+| nextcloud | `nextcloud-data`                  | rsync   |
 | caddy     | `caddy-data`                      | tar     |
 
 > Only `caddy-data` is backed up (the LE-issued wildcard cert
