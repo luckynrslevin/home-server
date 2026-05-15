@@ -49,6 +49,19 @@ Environment=PAPERLESS_URL={{ paperless_url | default('') }}
 Environment=USERMAP_UID=1000
 Environment=USERMAP_GID=1000
 
+{% if paperless_oidc_enabled | default(false) %}
+# OIDC — federate auth to an external IdP (e.g. Nextcloud's
+# oidc_provider). Built-in via django-allauth in paperless-ngx 2.5+.
+# provider_id 'nextcloud' is also the path segment in the OIDC
+# callback URL registered on the IdP side:
+# https://<paperless>/accounts/oidc/nextcloud/login/callback/
+Environment=PAPERLESS_APPS=allauth.socialaccount.providers.openid_connect
+Environment=PAPERLESS_SOCIALACCOUNT_PROVIDERS={"openid_connect":{"APPS":[{"provider_id":"nextcloud","name":"Nextcloud","client_id":"{{ paperless_oidc_client_id }}","secret":"{{ paperless_oidc_client_secret | replace('%', '%%') }}","settings":{"server_url":"{{ paperless_oidc_provider_url }}/index.php/apps/oidc"}}]}}
+{% if paperless_oidc_redirect_login_to_sso | default(true) %}
+Environment=PAPERLESS_REDIRECT_LOGIN_TO_SSO=true
+{% endif %}
+{% endif %}
+
 # Consumer behaviour
 Environment=PAPERLESS_CONSUMER_RECURSIVE={{ paperless_consumer_recursive | bool | string | lower }}
 Environment=PAPERLESS_CONSUMER_SUBDIRS_AS_TAGS={{ paperless_consumer_subdirs_as_tags | bool | string | lower }}
