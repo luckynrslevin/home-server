@@ -40,6 +40,22 @@ paperless_consumer_recursive: false
 paperless_consumer_subdirs_as_tags: false
 paperless_consumer_delete_duplicates: false
 
+# OIDC (opt-in). When enabled, paperless federates auth to an
+# external OpenID Connect provider (e.g. Nextcloud's oidc_provider
+# app). Built-in via django-allauth as of paperless-ngx 2.5+.
+# Required when enabled: paperless_oidc_client_id (string),
+# paperless_oidc_client_secret (vault), paperless_oidc_provider_url
+# (e.g. "https://cloud.example.com").
+paperless_oidc_enabled: false
+paperless_oidc_client_id: ""
+paperless_oidc_client_secret: ""
+paperless_oidc_provider_url: ""
+# When true, hitting /accounts/login/ jumps straight to the IdP
+# login. Local Paperless admin/users can still reach the local form
+# via /accounts/login/?process=login. Set false to keep the local
+# login form as the default (with a "Sign in with Nextcloud" button).
+paperless_oidc_redirect_login_to_sso: true
+
 # SFTP sidecar (opt-in). When enabled, an atmoz/sftp container runs
 # alongside the paperless pod under the same rootless user and mounts
 # `paperless-consume.volume` as its SFTP drop target. A scanner (or any
