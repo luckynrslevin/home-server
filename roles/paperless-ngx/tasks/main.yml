@@ -41,7 +41,7 @@
     podman_quadlet_rootless_user_name: paperless
     podman_quadlet_files_templates_src_path: "{{ paperless_role_path }}"
     podman_quadlet_file_names:
-      - paperless-ngx.pod
+      - paperless-ngx.pod.j2
       - paperless-ngx.network
       - paperless-db.container.j2
       - paperless-redis.container.j2

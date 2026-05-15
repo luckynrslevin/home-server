@@ -1,0 +1,22 @@
+[Unit]
+Description=paperless-ngx document management
+After=network-online.target
+Wants=network-online.target
+
+[Pod]
+PodName=paperless-ngx
+Network=paperless-ngx.network
+{% if paperless_oidc_enabled | default(false) and paperless_oidc_provider_url | length > 0 %}
+# Resolve the OIDC provider hostname inside the pod to host-gateway, so
+# paperless can reach the IdP (e.g. Nextcloud) without depending on
+# the host's DNS. Caddy is rootless and publishes :9443 — pod-to-host
+# LAN-IP traffic doesn't traverse the firewall NAT 443->9443, so the
+# provider URL must include the high port too. Quadlet's [Pod] section
+# has no HostAdd key, so we pass --add-host as an extra podman arg.
+PodmanArgs=--add-host={{ paperless_oidc_provider_url.split('//')[1].split(':')[0].split('/')[0] }}:host-gateway
+{% endif %}
+
+PublishPort=8000:8000/tcp
+
+[Install]
+WantedBy=default.target
