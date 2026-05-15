@@ -68,15 +68,14 @@
       - name: caddy-etc
         files:
           - { src: 'Caddyfile.j2', mode: '0644' }
-    podman_quadlet_firewall_port_forwards:
-      - { port: 80, proto: 'tcp', toport: "{{ caddy_listen_port }}" }
-      - { port: 443, proto: 'tcp', toport: "{{ caddy_listen_port_https }}" }
-    # Also open the HTTPS listen port directly (not only via 443→9443
-    # forward) so containers on this host can reach Caddy on
-    # <subdomain>.<caddy_domain>:{{ caddy_listen_port_https }} via the
-    # host-gateway. Firewall port-forwards only apply to external traffic,
-    # so pod-to-host traffic needs the port itself open.
+    # Open the published ports in the firewall. Caddy now binds
+    # 80/443 directly (see os-base: ip_unprivileged_port_start=80),
+    # so no firewall NAT is needed — just ACCEPT rules for the
+    # listening ports themselves. This also means pod-to-host
+    # traffic (e.g. paperless to Nextcloud's OIDC endpoint) reaches
+    # Caddy on the canonical port without any `:9443` workaround.
     podman_quadlet_firewall_ports:
+      - "{{ caddy_listen_port }}/tcp"
       - "{{ caddy_listen_port_https }}/tcp"
 
 - name: Reload Caddy configuration # noqa: no-changed-when

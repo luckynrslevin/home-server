@@ -61,7 +61,7 @@ Environment=USERMAP_GID=1000
 # container with all keys/values unquoted and django-allauth's
 # JSON parser rejects it.
 Environment=PAPERLESS_APPS=allauth.socialaccount.providers.openid_connect
-Environment=PAPERLESS_SOCIALACCOUNT_PROVIDERS={\"openid_connect\":{\"APPS\":[{\"provider_id\":\"nextcloud\",\"name\":\"Nextcloud\",\"client_id\":\"{{ paperless_oidc_client_id }}\",\"secret\":\"{{ paperless_oidc_client_secret | replace('%', '%%') }}\",\"settings\":{\"server_url\":\"{{ paperless_oidc_provider_url }}/index.php/apps/oidc\"}}]}}
+Environment=PAPERLESS_SOCIALACCOUNT_PROVIDERS={\"openid_connect\":{\"APPS\":[{\"provider_id\":\"nextcloud\",\"name\":\"Nextcloud\",\"client_id\":\"{{ paperless_oidc_client_id }}\",\"secret\":\"{{ paperless_oidc_client_secret | replace('%', '%%') }}\",\"settings\":{\"server_url\":\"{{ paperless_oidc_provider_url }}\"}}]}}
 {% if paperless_oidc_redirect_login_to_sso | default(true) %}
 Environment=PAPERLESS_REDIRECT_LOGIN_TO_SSO=true
 {% endif %}

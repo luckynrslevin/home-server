@@ -3,11 +3,14 @@
 # Dockerfile + GitHub Actions workflow that publishes this tag.
 caddy_image: "ghcr.io/luckynrslevin/caddy-acme:latest"
 
-# Caddy listen port (unprivileged, mapped via firewall from 80)
-caddy_listen_port: 9080
-
-# Caddy HTTPS listen port (unprivileged, mapped via firewall from 443)
-caddy_listen_port_https: 9443
+# Caddy listen ports. With os-base lowering
+# net.ipv4.ip_unprivileged_port_start to 80, Caddy (rootless via
+# webproxy) binds these directly — no firewall NAT, and pod-to-host
+# traffic from other rootless containers reaches Caddy on the
+# canonical ports, so OIDC issuers / S3 endpoints / etc. don't need
+# `:9443` warts in their inventory URLs.
+caddy_listen_port: 80
+caddy_listen_port_https: 443
 
 # Domain name for the server (e.g. "myhome.dedyn.io"). Required —
 # every reverse-proxy subdomain hangs off this. site.yml asserts it
