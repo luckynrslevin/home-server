@@ -97,7 +97,7 @@ The role:
    on first boot can take ~60 s).
 5. Configures Caddy (127.0.0.1) as a trusted reverse proxy.
 6. Installs and enables the **OpenID Connect Identity Provider** app
-   (`oidc_provider`) so other apps can OIDC against Nextcloud.
+   (`oidc`) so other apps can OIDC against Nextcloud.
 7. Installs the **Contacts** app.
 
 ## Bootstrapping OIDC for other apps

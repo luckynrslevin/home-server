@@ -35,13 +35,13 @@
 # Idempotent: occ app:install is a no-op if already installed.
 # --------------------------------------------------------------------------
 
-- name: Install oidc_provider app # noqa: no-changed-when
+- name: Install oidc app # noqa: no-changed-when
   become: true
   ansible.builtin.command:
     cmd: >
       sudo -u nextcloud XDG_RUNTIME_DIR=/run/user/{{ my_linux_users.nextcloud.uid }}
       podman exec -u www-data nextcloud-server
-      php occ app:install oidc_provider
+      php occ app:install oidc
     chdir: /tmp
   register: _oidc_install
   changed_when: "'installed' in _oidc_install.stdout and 'already installed' not in _oidc_install.stdout"
@@ -49,13 +49,13 @@
     - _oidc_install.rc != 0
     - "'already installed' not in _oidc_install.stderr"
 
-- name: Enable oidc_provider app # noqa: no-changed-when
+- name: Enable oidc app # noqa: no-changed-when
   become: true
   ansible.builtin.command:
     cmd: >
       sudo -u nextcloud XDG_RUNTIME_DIR=/run/user/{{ my_linux_users.nextcloud.uid }}
       podman exec -u www-data nextcloud-server
-      php occ app:enable oidc_provider
+      php occ app:enable oidc
     chdir: /tmp
   changed_when: false
 
