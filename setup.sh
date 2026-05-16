@@ -442,39 +442,39 @@ TIMEZONE=${TIMEZONE:-$DEFAULT_TZ}
 # password. Skip to deploy without working email — apps still install
 # but can't send mail until you fill in these vars later.
 echo
-echo -e "${BOLD}--- SMTP relay (optional but recommended) ---${NC}"
+echo -e "${BOLD}--- SMTP relay (required) ---${NC}"
 echo
-echo "An external SMTP relay (e.g. Mailbox.org, Posteo) lets the apps"
-echo "send password resets, signup OTPs, and share notifications."
-echo "See docs/SMTP-Setup.md for setup details."
+echo "Nextcloud (password resets, share notifications), Ente Photos"
+echo "(signup OTPs) and Paperless need an external SMTP relay to send"
+echo "mail. See docs/SMTP-Setup.md for picking a provider (Mailbox.org"
+echo "/ Posteo / etc.) and generating an app password."
 echo
-ask "Configure SMTP relay now? [Y/n]:"
-read -r SMTP_CONFIGURE
-if [[ ! "$SMTP_CONFIGURE" =~ ^[Nn]$ ]]; then
-    ask "SMTP host [smtp.mailbox.org]:"
-    read -r SMTP_HOST
-    SMTP_HOST=${SMTP_HOST:-smtp.mailbox.org}
-    ask "SMTP port [587]:"
-    read -r SMTP_PORT
-    SMTP_PORT=${SMTP_PORT:-587}
-    ask "SMTP username (full email):"
-    read -r SMTP_USERNAME
-    if [[ -z "$SMTP_USERNAME" ]]; then
-        warn "Empty username — skipping SMTP."
-        SMTP_HOST=""
-    else
-        ask "SMTP password / app password (input hidden):"
-        read -rs SMTP_PASSWORD
-        echo
-        ask "Encryption (starttls / ssl) [starttls]:"
-        read -r SMTP_ENCRYPTION
-        SMTP_ENCRYPTION=${SMTP_ENCRYPTION:-starttls}
-        ask "From address [$SMTP_USERNAME]:"
-        read -r SMTP_FROM
-        SMTP_FROM=${SMTP_FROM:-$SMTP_USERNAME}
-        ok "SMTP relay configured."
-    fi
+ask "SMTP host [smtp.mailbox.org]:"
+read -r SMTP_HOST
+SMTP_HOST=${SMTP_HOST:-smtp.mailbox.org}
+ask "SMTP port [587]:"
+read -r SMTP_PORT
+SMTP_PORT=${SMTP_PORT:-587}
+ask "SMTP username (full email):"
+read -r SMTP_USERNAME
+if [[ -z "$SMTP_USERNAME" ]]; then
+    err "SMTP username is required."
+    exit 1
 fi
+ask "SMTP password / app password (input hidden):"
+read -rs SMTP_PASSWORD
+echo
+if [[ -z "$SMTP_PASSWORD" ]]; then
+    err "SMTP password is required."
+    exit 1
+fi
+ask "Encryption (starttls / ssl) [starttls]:"
+read -r SMTP_ENCRYPTION
+SMTP_ENCRYPTION=${SMTP_ENCRYPTION:-starttls}
+ask "From address [$SMTP_USERNAME]:"
+read -r SMTP_FROM
+SMTP_FROM=${SMTP_FROM:-$SMTP_USERNAME}
+ok "SMTP relay configured."
 
 echo
 echo -e "${BOLD}--- Service Selection ---${NC}"
@@ -485,34 +485,43 @@ echo
 
 declare -A SERVICES
 SERVICES=(
-    [dashboard]="Status dashboard showing all services — recommended"
+    [dashboard]="Status dashboard showing all services"
     [pihole]="Pi-hole DNS ad-blocker"
-    [syncthing]="Syncthing file synchronization"
-    [shairportsync]="Shairport-sync AirPlay audio receiver (needs audio device)"
     [entephoto]="Ente Photos (self-hosted photo storage)"
     [paperless-ngx]="Paperless-NGX document management (OCR + search)"
+    [syncthing]="Syncthing file synchronization"
+    [shairportsync]="Shairport-sync AirPlay audio receiver (needs audio device)"
     [jellyfin]="Jellyfin media server (movies, TV, music)"
     [music-assistant]="Music Assistant music server (optional local Squeezelite player on hosts with a USB DAC)"
-    [nextcloud]="Nextcloud (files + contacts + OpenID Connect identity provider for other apps)"
 )
 
-# Caddy is always deployed — it's the mandatory front-door reverse proxy.
-SELECTED_SERVICES=(caddy)
+# Caddy + Nextcloud are mandatory:
+#   - Caddy is the front-door reverse proxy for every HTTPS service.
+#   - Nextcloud is the household OIDC identity provider (Paperless and
+#     future apps log in against it) and the central file/contacts
+#     workspace.
+SELECTED_SERVICES=(caddy nextcloud)
 
-# Recommended order for deployment of optional services
-SERVICE_ORDER=(dashboard pihole syncthing shairportsync entephoto paperless-ngx jellyfin music-assistant nextcloud)
+# Optional services. Defaults reflect the recommended baseline:
+#   Y — dashboard, pihole, entephoto, paperless-ngx
+#   N — syncthing, shairportsync, jellyfin, music-assistant
+SERVICE_ORDER=(dashboard pihole entephoto paperless-ngx syncthing shairportsync jellyfin music-assistant)
+declare -A SERVICE_DEFAULT_YES=(
+    [dashboard]=1
+    [pihole]=1
+    [entephoto]=1
+    [paperless-ngx]=1
+)
 
 for svc in "${SERVICE_ORDER[@]}"; do
     desc="${SERVICES[$svc]}"
-    if [[ "$svc" == "dashboard" ]]; then
+    if [[ -n "${SERVICE_DEFAULT_YES[$svc]:-}" ]]; then
         ask "Deploy $svc? ($desc) [Y/n]:"
-    else
-        ask "Deploy $svc? ($desc) [y/N]:"
-    fi
-    read -r answer
-    if [[ "$svc" == "dashboard" ]]; then
+        read -r answer
         [[ ! "$answer" =~ ^[Nn]$ ]] && SELECTED_SERVICES+=("$svc")
     else
+        ask "Deploy $svc? ($desc) [y/N]:"
+        read -r answer
         [[ "$answer" =~ ^[Yy]$ ]] && SELECTED_SERVICES+=("$svc")
     fi
 done
