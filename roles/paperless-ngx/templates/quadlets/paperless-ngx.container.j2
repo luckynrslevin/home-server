@@ -49,6 +49,20 @@ Environment=PAPERLESS_URL={{ paperless_url | default('') }}
 Environment=USERMAP_UID=1000
 Environment=USERMAP_GID=1000
 
+{% if smtp_host | default('') | length > 0 %}
+# Project-level SMTP (issue #153 / docs/SMTP-Setup.md). Lets paperless
+# send password-reset, share-notification, and admin emails. The
+# `%` escape (replace('%', '%%')) is needed because systemd treats
+# `%` in Environment= values as a specifier.
+Environment=PAPERLESS_EMAIL_HOST={{ smtp_host }}
+Environment=PAPERLESS_EMAIL_PORT={{ smtp_port }}
+Environment=PAPERLESS_EMAIL_HOST_USER={{ smtp_username | replace('%', '%%') }}
+Environment=PAPERLESS_EMAIL_HOST_PASSWORD={{ smtp_password | replace('%', '%%') }}
+Environment=PAPERLESS_EMAIL_USE_TLS={{ 'true' if smtp_encryption == 'starttls' else 'false' }}
+Environment=PAPERLESS_EMAIL_USE_SSL={{ 'true' if smtp_encryption == 'ssl' else 'false' }}
+Environment=PAPERLESS_EMAIL_FROM={{ smtp_from | replace('%', '%%') }}
+{% endif %}
+
 {% if paperless_oidc_enabled | default(false) %}
 # OIDC — federate auth to an external IdP (e.g. Nextcloud's
 # oidc_provider). Built-in via django-allauth in paperless-ngx 2.5+.
