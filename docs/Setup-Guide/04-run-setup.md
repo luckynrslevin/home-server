@@ -15,10 +15,18 @@ images pull and services start" you can use to make coffee.
 |---|---|---|
 | **deSEC subdomain** (without `.dedyn.io`) | `mydomain` | 1 |
 | **deSEC API token** | the long opaque string | 1 |
+| **SMTP relay** (optional but recommended) | host / username / app-password | — |
 | **Which services to deploy?** | y/N per service (defaults are sensible) | — |
 
 Have your deSEC values from Step 1 ready in your clipboard /
 notes.
+
+> [!TIP]
+> The SMTP prompt accepts skipping (`n`), but several apps
+> (Nextcloud password resets, Ente signup OTPs, Paperless
+> notifications) need a working relay to be useful day-to-day.
+> See [SMTP-Setup.md](../SMTP-Setup.md) for picking a provider
+> (Mailbox.org / Posteo / etc.) and generating an app password.
 
 ## Run setup.sh
 
