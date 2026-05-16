@@ -197,13 +197,94 @@ ansible-galaxy install -r roles/requirements.yml --force 2>/dev/null
 ok "Galaxy roles installed."
 
 # ============================================================================
+# Step 3.5: Hostname + optional private overlay
+# ============================================================================
+# Capture hostname early so the overlay prompt can look for an
+# existing host_vars/<hostname>/main.yml. The hostname prompt in
+# Step 5 used to live here; consolidated into this block.
+
+DEFAULT_HOSTNAME=$(hostname -s 2>/dev/null)
+echo
+ask "Server hostname [$DEFAULT_HOSTNAME]:"
+read -r SERVER_HOSTNAME
+SERVER_HOSTNAME=${SERVER_HOSTNAME:-$DEFAULT_HOSTNAME}
+
+OVERLAY_DIR="$HOME/home-server-private"
+OVERLAY_URL=""
+USE_EXISTING_INVENTORY=false
+
+echo
+echo -e "${BOLD}--- Private overlay repo (optional) ---${NC}"
+echo
+echo "If you have a private git repo for inventory storage — either an"
+echo "existing one (rebuild path) or a fresh empty one prepared for"
+echo "this host (first-time path) — point to it here. We'll clone it"
+echo "and either reuse its inventory as-is or generate fresh inventory"
+echo "directly into it."
+echo "Leave empty to keep inventory local in ~/home-server/inventory/."
+echo
+ask "Private overlay repo URL [empty to skip]:"
+read -r OVERLAY_URL
+
+if [[ -n "$OVERLAY_URL" ]]; then
+    ask "Vault password for the overlay (input hidden — invent one if the repo is empty):"
+    read -rs OVERLAY_VAULT_PW
+    echo
+    if [[ -z "$OVERLAY_VAULT_PW" ]]; then
+        err "Vault password is required when using an overlay."
+        exit 1
+    fi
+
+    if [[ ! -d "$OVERLAY_DIR/.git" ]]; then
+        info "Cloning overlay into $OVERLAY_DIR ..."
+        git clone "$OVERLAY_URL" "$OVERLAY_DIR"
+    else
+        ok "Overlay already cloned at $OVERLAY_DIR — pulling latest."
+        (cd "$OVERLAY_DIR" && git pull --ff-only) || warn "git pull failed; continuing with existing tree"
+    fi
+
+    mkdir -p "$OVERLAY_DIR/inventory/host_vars"
+
+    # Vault pw lives in the overlay so future Case 3 rebuilds can
+    # re-read it. ~/.vaultpw is a symlink so ansible.cfg stays valid.
+    echo -n "$OVERLAY_VAULT_PW" > "$OVERLAY_DIR/vault.pw"
+    chmod 400 "$OVERLAY_DIR/vault.pw"
+
+    if [[ -f "$OVERLAY_DIR/inventory/host_vars/$SERVER_HOSTNAME/main.yml" ]]; then
+        USE_EXISTING_INVENTORY=true
+        ok "Overlay has existing inventory for '$SERVER_HOSTNAME' — using it as-is."
+    else
+        ok "Overlay has no inventory for '$SERVER_HOSTNAME' yet — will generate fresh into it."
+        existing_hosts=$(ls -1 "$OVERLAY_DIR/inventory/host_vars/" 2>/dev/null | tr '\n' ' ')
+        [[ -n "$existing_hosts" ]] && info "  Other hosts already in overlay: $existing_hosts"
+    fi
+fi
+
+# ============================================================================
 # Step 4: Configure vault password
 # ============================================================================
 info "Step 4/7: Setting up Ansible Vault..."
 
 VAULT_PW_FILE="$HOME/.vaultpw"
 
-if [[ -f "$VAULT_PW_FILE" ]]; then
+if [[ -n "$OVERLAY_URL" ]]; then
+    # Overlay path — point ~/.vaultpw at the overlay's vault.pw.
+    rm -f "$VAULT_PW_FILE"
+    ln -s "$OVERLAY_DIR/vault.pw" "$VAULT_PW_FILE"
+    ok "Vault password symlinked: $VAULT_PW_FILE → $OVERLAY_DIR/vault.pw"
+
+    if [[ "$USE_EXISTING_INVENTORY" == "true" ]]; then
+        if ! ANSIBLE_VAULT_PASSWORD_FILE="$VAULT_PW_FILE" \
+                ansible-vault view "$OVERLAY_DIR/inventory/host_vars/$SERVER_HOSTNAME/main.yml" \
+                &>/dev/null; then
+            err "Vault password doesn't decrypt the existing inventory at"
+            err "  $OVERLAY_DIR/inventory/host_vars/$SERVER_HOSTNAME/main.yml"
+            err "Re-run setup.sh with the correct vault password."
+            exit 1
+        fi
+        ok "Vault password verified — existing inventory decrypts cleanly."
+    fi
+elif [[ -f "$VAULT_PW_FILE" ]]; then
     ok "Vault password already exists at $VAULT_PW_FILE"
 else
     echo
@@ -236,11 +317,48 @@ roles_path = ./roles:./.ansible/roles:~/.ansible/roles:/usr/share/ansible/roles
 stdout_callback = default
 host_key_checking = False
 vault_password_file = $VAULT_PW_FILE
+
+[ssh_connection]
+pipelining = True
+use_tty = False
 EOF
+
+# Replace the public repo's inventory/ stub with a symlink into the
+# overlay so generated (Case 2) or existing (Case 3) inventory lives
+# in the overlay repo.
+if [[ -n "$OVERLAY_URL" ]]; then
+    if [[ ! -L inventory ]]; then
+        rm -rf inventory
+        ln -s "$OVERLAY_DIR/inventory" inventory
+        ok "Symlinked inventory/ → $OVERLAY_DIR/inventory"
+    fi
+fi
 
 # ============================================================================
 # Step 5: Gather host configuration
 # ============================================================================
+if [[ "$USE_EXISTING_INVENTORY" == "true" ]]; then
+    info "Step 5/7: Using existing inventory — skipping configuration prompts."
+    SERVER_IP=$(hostname -I 2>/dev/null | awk '{print $1}')
+    # Pull deSEC creds from existing inventory for the A-record refresh
+    # in Step 6.5. ansible-inventory decrypts vaulted vars in its output.
+    INV_JSON=$(ANSIBLE_VAULT_PASSWORD_FILE="$VAULT_PW_FILE" \
+        ansible-inventory --host "$SERVER_HOSTNAME" 2>/dev/null)
+    if [[ -z "$INV_JSON" ]]; then
+        err "ansible-inventory couldn't read host vars for '$SERVER_HOSTNAME'."
+        err "Check inventory/hosts.yml in the overlay."
+        exit 1
+    fi
+    DESEC_SUBDOMAIN=$(echo "$INV_JSON" | python3 -c "import json,sys; print(json.load(sys.stdin).get('caddy_acme_subdomain',''))")
+    DESEC_TOKEN=$(echo "$INV_JSON" | python3 -c "import json,sys; print(json.load(sys.stdin).get('caddy_acme_token',''))")
+    CADDY_DOMAIN=$(echo "$INV_JSON" | python3 -c "import json,sys; print(json.load(sys.stdin).get('caddy_domain',''))")
+    if [[ -z "$DESEC_SUBDOMAIN" || -z "$DESEC_TOKEN" ]]; then
+        err "Existing inventory is missing caddy_acme_subdomain / caddy_acme_token."
+        exit 1
+    fi
+    ok "Loaded inventory for $SERVER_HOSTNAME ($CADDY_DOMAIN)"
+else
+
 info "Step 5/7: Configuring your server..."
 
 echo
@@ -252,16 +370,11 @@ DEFAULT_IP=$(hostname -I 2>/dev/null | awk '{print $1}')
 DEFAULT_IFACE=$(ip route show default 2>/dev/null | awk '{print $5; exit}')
 DEFAULT_GATEWAY=$(ip route show default 2>/dev/null | awk '{print $3; exit}')
 DEFAULT_NETWORK=$(ip -4 addr show "$DEFAULT_IFACE" 2>/dev/null | grep inet | awk '{print $2}' | head -1)
-DEFAULT_HOSTNAME=$(hostname -s 2>/dev/null)
 DEFAULT_USER=$(whoami)
 
 ask "Server IP address [$DEFAULT_IP]:"
 read -r SERVER_IP
 SERVER_IP=${SERVER_IP:-$DEFAULT_IP}
-
-ask "Server hostname [$DEFAULT_HOSTNAME]:"
-read -r SERVER_HOSTNAME
-SERVER_HOSTNAME=${SERVER_HOSTNAME:-$DEFAULT_HOSTNAME}
 
 # --- TLS / cert strategy ---
 # --- TLS via deSEC + Let's Encrypt ---
@@ -439,7 +552,26 @@ vault_encrypt() {
 # --- Generate inventory/hosts.yml ---
 mkdir -p "inventory/host_vars/$SERVER_HOSTNAME"
 
-cat > inventory/hosts.yml << EOF
+# When the overlay already has a multi-host hosts.yml, merge instead
+# of clobber. Pure write for a brand-new file.
+if [[ -s inventory/hosts.yml ]]; then
+    python3 - "$SERVER_HOSTNAME" "$SERVER_USER" << 'PYEOF'
+import sys, yaml
+hostname, user = sys.argv[1], sys.argv[2]
+with open("inventory/hosts.yml") as f:
+    data = yaml.safe_load(f) or {}
+data.setdefault("all", {}).setdefault("children", {}).setdefault(
+    "homeservers", {}).setdefault("hosts", {})[hostname] = {
+        "ansible_host": "127.0.0.1",
+        "ansible_connection": "local",
+        "ansible_user": user,
+    }
+with open("inventory/hosts.yml", "w") as f:
+    yaml.safe_dump(data, f, default_flow_style=False, sort_keys=False)
+PYEOF
+    ok "Merged $SERVER_HOSTNAME into existing inventory/hosts.yml"
+else
+    cat > inventory/hosts.yml << EOF
 all:
   children:
     homeservers:
@@ -449,8 +581,8 @@ all:
           ansible_connection: local
           ansible_user: $SERVER_USER
 EOF
-
-ok "Generated inventory/hosts.yml"
+    ok "Generated inventory/hosts.yml"
+fi
 
 # --- Generate host_vars ---
 info "Generating secrets (this takes a moment)..."
@@ -789,6 +921,8 @@ fi
 
 ok "Generated inventory/host_vars/$SERVER_HOSTNAME/dashboard-config.yaml"
 
+fi  # end of USE_EXISTING_INVENTORY == false (Steps 5 + 6)
+
 # ============================================================================
 # Step 6.5: deSEC API — upsert the wildcard A record
 # ============================================================================
@@ -888,6 +1022,13 @@ echo "Configuration files:"
 echo "  $INSTALL_DIR/inventory/host_vars/$SERVER_HOSTNAME/main.yml"
 echo "  $INSTALL_DIR/inventory/host_vars/$SERVER_HOSTNAME/dashboard-config.yaml"
 echo
+
+if [[ -n "${OVERLAY_URL:-}" && "$USE_EXISTING_INVENTORY" != "true" ]]; then
+    echo -e "${BOLD}Persist your generated inventory to the overlay repo:${NC}"
+    echo "  cd $OVERLAY_DIR"
+    echo "  git add -A && git commit -m \"$SERVER_HOSTNAME: initial install\" && git push"
+    echo
+fi
 echo "Container images auto-update daily via podman-auto-update.timer."
 echo "See the Quickstart.md for more details."
 echo
