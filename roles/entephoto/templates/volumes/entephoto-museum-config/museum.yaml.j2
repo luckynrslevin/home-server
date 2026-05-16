@@ -45,3 +45,19 @@ internal:
 {% for admin_id in entephoto_admin_user_ids | default([]) %}
         - {{ admin_id }}
 {% endfor %}
+
+{% if smtp_host | default('') | length > 0 %}
+# Project-level SMTP (issue #153 / docs/SMTP-Setup.md). Without this,
+# museum can't deliver the email-verification OTP at signup and the
+# operator has to read the code out of postgres' otts table (see
+# issue #148). With it set, signups Just Work.
+smtp:
+    host: {{ smtp_host }}
+    port: {{ smtp_port }}
+    username: {{ smtp_username }}
+    password: {{ smtp_password | to_json }}
+    email: {{ smtp_from }}
+{% if smtp_encryption in ['starttls', 'ssl'] %}
+    encryption: {{ smtp_encryption }}
+{% endif %}
+{% endif %}
