@@ -1,6 +1,8 @@
 ---
-# Wait for Nextcloud's installer to finish (DB migrations on first boot
-# can take ~60s) before running occ commands.
+# Wait for Nextcloud's installer to finish before running occ commands.
+# First boot does DB migrations + asset compilation; on slower hardware
+# (aarch64, fresh image pull) this routinely takes 3-4 min. Failed-then-
+# retry on connection-reset is normal during early Apache startup.
 
 - name: Wait for Nextcloud /status.php to report installed
   ansible.builtin.uri:
@@ -8,7 +10,7 @@
     status_code: 200
     return_content: true
   register: _nextcloud_status
-  retries: 30
+  retries: 90
   delay: 5
   until: _nextcloud_status.status == 200 and _nextcloud_status.json.installed | default(false)
 
