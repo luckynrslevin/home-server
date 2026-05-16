@@ -319,6 +319,50 @@ ask "Timezone [$DEFAULT_TZ]:"
 read -r TIMEZONE
 TIMEZONE=${TIMEZONE:-$DEFAULT_TZ}
 
+# --- SMTP relay (project-level) ---
+# Needed by Nextcloud (password resets / share notifications), Ente
+# Photos (signup OTPs — without SMTP, the operator has to read codes
+# out of postgres), and Paperless-NGX (notifications). One relay
+# config used by every role.
+#
+# See docs/SMTP-Setup.md. Recommended: Mailbox.org with an app
+# password. Skip to deploy without working email — apps still install
+# but can't send mail until you fill in these vars later.
+echo
+echo -e "${BOLD}--- SMTP relay (optional but recommended) ---${NC}"
+echo
+echo "An external SMTP relay (e.g. Mailbox.org, Posteo) lets the apps"
+echo "send password resets, signup OTPs, and share notifications."
+echo "See docs/SMTP-Setup.md for setup details."
+echo
+ask "Configure SMTP relay now? [Y/n]:"
+read -r SMTP_CONFIGURE
+if [[ ! "$SMTP_CONFIGURE" =~ ^[Nn]$ ]]; then
+    ask "SMTP host [smtp.mailbox.org]:"
+    read -r SMTP_HOST
+    SMTP_HOST=${SMTP_HOST:-smtp.mailbox.org}
+    ask "SMTP port [587]:"
+    read -r SMTP_PORT
+    SMTP_PORT=${SMTP_PORT:-587}
+    ask "SMTP username (full email):"
+    read -r SMTP_USERNAME
+    if [[ -z "$SMTP_USERNAME" ]]; then
+        warn "Empty username — skipping SMTP."
+        SMTP_HOST=""
+    else
+        ask "SMTP password / app password (input hidden):"
+        read -rs SMTP_PASSWORD
+        echo
+        ask "Encryption (starttls / ssl) [starttls]:"
+        read -r SMTP_ENCRYPTION
+        SMTP_ENCRYPTION=${SMTP_ENCRYPTION:-starttls}
+        ask "From address [$SMTP_USERNAME]:"
+        read -r SMTP_FROM
+        SMTP_FROM=${SMTP_FROM:-$SMTP_USERNAME}
+        ok "SMTP relay configured."
+    fi
+fi
+
 echo
 echo -e "${BOLD}--- Service Selection ---${NC}"
 echo
@@ -336,13 +380,14 @@ SERVICES=(
     [paperless-ngx]="Paperless-NGX document management (OCR + search)"
     [jellyfin]="Jellyfin media server (movies, TV, music)"
     [music-assistant]="Music Assistant music server (optional local Squeezelite player on hosts with a USB DAC)"
+    [nextcloud]="Nextcloud (files + contacts + OpenID Connect identity provider for other apps)"
 )
 
 # Caddy is always deployed — it's the mandatory front-door reverse proxy.
 SELECTED_SERVICES=(caddy)
 
 # Recommended order for deployment of optional services
-SERVICE_ORDER=(dashboard pihole syncthing shairportsync entephoto paperless-ngx jellyfin music-assistant)
+SERVICE_ORDER=(dashboard pihole syncthing shairportsync entephoto paperless-ngx jellyfin music-assistant nextcloud)
 
 for svc in "${SERVICE_ORDER[@]}"; do
     desc="${SERVICES[$svc]}"
@@ -421,6 +466,8 @@ PAPERLESS_SECRET_KEY=$(openssl rand -hex 32)
 PAPERLESS_DB_PW=$(openssl rand -base64 24)
 PAPERLESS_ADMIN_PW=$(openssl rand -base64 24)
 JELLYFIN_ADMIN_PW=$(openssl rand -base64 24)
+NEXTCLOUD_ADMIN_PW=$(openssl rand -base64 24)
+NEXTCLOUD_DB_PW=$(openssl rand -base64 24)
 
 # Generate a stable, locally-administered unicast MAC for Music
 # Assistant's built-in Squeezelite player. First octet 0x02 sets the
@@ -480,6 +527,9 @@ my_linux_users:
   music-assistant:
     uid: 1014
     gid: 1014
+  nextcloud:
+    uid: 1015
+    gid: 1015
 ##################################################################################################
 
 ### Caddy reverse-proxy + Let's Encrypt via deSEC DNS-01
@@ -509,6 +559,7 @@ fi
 is_selected paperless-ngx   && echo '  - { subdomain: paperless, port: 8000 }'
 is_selected jellyfin        && echo '  - { subdomain: jellyfin, port: 8096 }'
 is_selected music-assistant && echo '  - { subdomain: music, port: 8095 }'
+is_selected nextcloud       && echo '  - { subdomain: cloud, port: 8090 }'
 echo ""
 
 cat << YAML
@@ -577,6 +628,26 @@ vault_encrypt "$PAPERLESS_ADMIN_PW" "paperless_admin_password"
 echo ""
 echo "### Jellyfin"
 vault_encrypt "$JELLYFIN_ADMIN_PW" "jellyfin_admin_password"
+
+if is_selected nextcloud; then
+    echo ""
+    echo "### Nextcloud"
+    vault_encrypt "$NEXTCLOUD_ADMIN_PW" "nextcloud_admin_password"
+    echo ""
+    vault_encrypt "$NEXTCLOUD_DB_PW" "nextcloud_db_password"
+fi
+
+if [[ -n "${SMTP_HOST:-}" ]]; then
+    echo ""
+    echo "### SMTP relay (project-level — used by Nextcloud, Ente, Paperless)"
+    echo "# See docs/SMTP-Setup.md for provider/credential setup + rotation."
+    echo "smtp_host: \"$SMTP_HOST\""
+    echo "smtp_port: $SMTP_PORT"
+    echo "smtp_username: \"$SMTP_USERNAME\""
+    echo "smtp_encryption: \"$SMTP_ENCRYPTION\""
+    echo "smtp_from: \"$SMTP_FROM\""
+    vault_encrypt "$SMTP_PASSWORD" "smtp_password"
+fi
 echo "##################################################################################################"
 } > inventory/host_vars/$SERVER_HOSTNAME/main.yml
 
@@ -695,6 +766,22 @@ cat << EOF
         url: https://music.${CADDY_DOMAIN}
     volumes:
       - music-assistant-data
+
+EOF
+fi
+
+if is_selected nextcloud; then
+cat << EOF
+  - name: Nextcloud
+    user: nextcloud
+    uid: 1015
+    service: nextcloud-pod
+    urls:
+      - label: Web UI
+        url: https://cloud.${CADDY_DOMAIN}
+    volumes:
+      - nextcloud-config
+      - nextcloud-data
 
 EOF
 fi
