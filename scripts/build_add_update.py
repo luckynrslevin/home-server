@@ -75,6 +75,57 @@ def resolve_secret(generator):
     return result.stdout.rstrip("\n")
 
 
+def _sh(cmd):
+    """Run a shell command; return stripped stdout, empty on failure."""
+    try:
+        r = subprocess.run(
+            ["sh", "-c", cmd], capture_output=True, text=True, check=True,
+        )
+        return r.stdout.strip()
+    except Exception:
+        return ""
+
+
+def host_detect(key):
+    """Resolve a `host_detect:<key>` default value from system state.
+    Mirrors the host-detect logic in setup.sh's install verb so
+    `setup.sh add <svc>` on a fresh host gets the same auto-resolution.
+    """
+    if key == "lan_subnet":
+        iface = _sh("ip route show default 2>/dev/null | awk '{print $5; exit}'")
+        if not iface:
+            return ""
+        cidr = _sh(
+            f"ip -4 addr show {iface} 2>/dev/null | grep inet | "
+            "awk '{print $2}' | head -1"
+        )
+        # Normalise host IP/CIDR (e.g. 192.168.1.5/24) → subnet CIDR.
+        if "/" not in cidr:
+            return cidr
+        ip, prefix = cidr.split("/", 1)
+        octets = ip.split(".")
+        if len(octets) == 4:
+            return f"{octets[0]}.{octets[1]}.{octets[2]}.0/{prefix}"
+        return cidr
+    if key == "lan_gateway":
+        return _sh("ip route show default 2>/dev/null | awk '{print $3; exit}'")
+    if key == "timezone":
+        return _sh("timedatectl show -p Timezone --value 2>/dev/null") or "UTC"
+    if key == "hostname":
+        return _sh("hostname -s 2>/dev/null")
+    if key == "server_user":
+        return _sh("whoami 2>/dev/null")
+    return ""
+
+
+def resolve_config_default(default):
+    """A `config`-type var's default is either a literal string or a
+    `host_detect:<key>` spec. Resolve to a concrete value."""
+    if isinstance(default, str) and default.startswith("host_detect:"):
+        return host_detect(default.split(":", 1)[1])
+    return default if default is not None else ""
+
+
 def main():
     p = argparse.ArgumentParser()
     p.add_argument("--meta", required=True)
@@ -128,9 +179,14 @@ def main():
         elif vtype == "literal":
             scalars[name] = {"value": var["value"], "vault": False}
         elif vtype == "config":
-            # caller must supply via --overrides (or via interactive
-            # prompt before invoking this script). Track for reporting.
-            config_needed.append(var)
+            # Auto-resolve via host_detect or literal default. Only
+            # fall through to config_needed if there's no default to
+            # work with (operator must supply via --overrides).
+            resolved = resolve_config_default(var.get("default"))
+            if resolved:
+                scalars[name] = {"value": resolved, "vault": False}
+            else:
+                config_needed.append(var)
         else:
             print(f"ERROR: unknown var type {vtype!r} for {name!r}", file=sys.stderr)
             sys.exit(1)

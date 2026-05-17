@@ -49,8 +49,10 @@ playbooks:
 on_remove:
   inventory_vars_to_clear:
     - pihole_api_password
-    - pihole_local_network
-    - pihole_local_router
+    # pihole_local_network and pihole_local_router stay — they're
+    # host-config (LAN subnet + gateway), not pihole-owned secrets.
+    # An operator removing pihole probably wants them remembered so
+    # re-adding pihole later picks them up without re-prompting.
   volumes_to_preserve_unless_purge:
     - systemd-pihole-etc
     - systemd-pihole-dnsmasq
