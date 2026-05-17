@@ -110,8 +110,8 @@ EXISTING_VARS_JSON='{}'
 # Scalars come back verbatim. Dicts/lists come back as JSON so callers
 # can re-parse.
 inv_get() {
-    EXISTING_VARS_JSON="$EXISTING_VARS_JSON" KEY="$1" python3 - <<'PY' 2>/dev/null || true
-import json, os, sys
+    EXISTING_VARS_JSON="$EXISTING_VARS_JSON" KEY="$1" VAULT_PW="${VAULT_PW_FILE:-}" python3 - <<'PY' 2>/dev/null || true
+import json, os, sys, subprocess
 try:
     d = json.loads(os.environ["EXISTING_VARS_JSON"])
 except Exception:
@@ -119,7 +119,32 @@ except Exception:
 v = d.get(os.environ["KEY"])
 if v is None:
     sys.exit(0)
-if isinstance(v, (dict, list)):
+# ansible-inventory --host does NOT auto-decrypt inline `!vault | ...`
+# blocks — it returns them as {"__ansible_vault": "$ANSIBLE_VAULT;..."}.
+# Decrypt transparently here so callers always see the plaintext value.
+# (ansible-vault decrypt doesn't read from stdin reliably; use a temp file.)
+if isinstance(v, dict) and "__ansible_vault" in v:
+    import tempfile
+    pw = os.environ.get("VAULT_PW", "")
+    if not pw:
+        sys.exit(0)
+    tmp = tempfile.NamedTemporaryFile("w", delete=False)
+    try:
+        tmp.write(v["__ansible_vault"])
+        tmp.close()
+        r = subprocess.run(
+            ["ansible-vault", "decrypt", "--vault-password-file", pw, "--output", "-", tmp.name],
+            capture_output=True, text=True, check=True,
+        )
+        sys.stdout.write(r.stdout)
+    except Exception:
+        sys.exit(0)
+    finally:
+        try:
+            os.unlink(tmp.name)
+        except OSError:
+            pass
+elif isinstance(v, (dict, list)):
     print(json.dumps(v))
 else:
     print(v)
@@ -789,18 +814,11 @@ info "Resolving secrets (reusing existing from inventory where present)..."
 # Inventory key names mirror the YAML emission below.
 resolve_secret() {
     # resolve_secret <shell_var_name> <inventory_key> <openssl args...>
+    # If <inventory_key> exists in inventory, reuse it (transparently
+    # decrypts vault blocks via inv_get). Otherwise generate via openssl.
     local shvar=$1 inv_key=$2; shift 2
     local existing
-    existing=$(EXISTING_VARS_JSON="$EXISTING_VARS_JSON" KEY="$inv_key" python3 -c "
-import json, os, sys
-try:
-    d = json.loads(os.environ['EXISTING_VARS_JSON'])
-except Exception:
-    sys.exit(0)
-v = d.get(os.environ['KEY'])
-if v is not None and not isinstance(v, (dict, list)):
-    print(v)
-" 2>/dev/null) || true
+    existing=$(inv_get "$inv_key")
     if [[ -n "$existing" ]]; then
         printf -v "$shvar" '%s' "$existing"
     else
