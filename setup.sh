@@ -556,7 +556,16 @@ print(' '.join(on_remove.get('volumes_to_preserve_unless_purge') or []))
             sudo loginctl disable-linger "$SERVICE_USER" 2>/dev/null || true
             sudo killall -u "$SERVICE_USER" 2>/dev/null || true
             sleep 1
-            sudo userdel -r "$SERVICE_USER" 2>/dev/null || true
+            # -r wipes the home dir (which contains rootless podman
+            # volumes under ~/.local/share/containers/). Only do that
+            # with --purge; otherwise userdel without -r preserves
+            # the home dir so a future `setup.sh add` can pick up the
+            # data again.
+            if [[ "$PURGE" == "true" ]]; then
+                sudo userdel -r "$SERVICE_USER" 2>/dev/null || true
+            else
+                sudo userdel "$SERVICE_USER" 2>/dev/null || true
+            fi
             sudo groupdel "$SERVICE_USER" 2>/dev/null || true
         fi
         # Ensure ruamel.yaml is available
