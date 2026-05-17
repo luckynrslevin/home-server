@@ -26,5 +26,6 @@ on_remove:
   inventory_vars_to_clear:
     - jellyfin_admin_password
   volumes_to_preserve_unless_purge:
-    - jellyfin-config
-    - jellyfin-media
+    - systemd-jellyfin-config
+    - systemd-jellyfin-cache
+    - systemd-jellyfin-media

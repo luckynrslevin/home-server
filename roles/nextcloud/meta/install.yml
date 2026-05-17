@@ -33,4 +33,6 @@ on_remove:
   volumes_to_preserve_unless_purge:
     - nextcloud-config
     - nextcloud-data
+    - nextcloud-html
     - nextcloud-postgres-data
+    - nextcloud-redis-data
