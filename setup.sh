@@ -105,11 +105,13 @@ USAGE
     esac
 done
 
-# --- Require file execution (not pipe) ---
-# This script is interactive and needs terminal stdin for prompts.
+# --- Require file execution (not pipe) — install verb only ---
+# The install flow has interactive prompts and needs terminal stdin.
 # When piped via `curl ... | bash`, stdin is consumed by the stream.
 # Detect this and download + run from a file instead.
-if [[ ! -t 0 ]]; then
+# Non-install verbs (backup, restore, upgrade, uninstall, add, remove)
+# are non-interactive and don't need a tty.
+if [[ "$VERB" == "install" && ! -t 0 ]]; then
     SELF_PATH="/tmp/home-server-setup.sh"
     curl -fsSL "https://raw.githubusercontent.com/luckynrslevin/home-server/main/setup.sh" \
         -o "$SELF_PATH" 2>/dev/null
