@@ -102,26 +102,53 @@ real Let's Encrypt certificates via DNS-01 against your deSEC
 subdomain, so every device trusts them out of the box (no per-device
 CA install).
 
-## Step 3 — Hand off to Ansible from your laptop (optional)
+## Step 3 — Day-2 lifecycle commands
+
+`setup.sh` is also the entry point for everything after the initial
+install. Operators rarely need to invoke ansible directly.
+
+```bash
+setup.sh add <service>          # add a service that wasn't picked at install
+setup.sh add                    # (no args) list available services + descriptions
+setup.sh remove <service>       # remove a service; data volumes preserved
+setup.sh remove <service> --purge   # remove + delete data volumes
+setup.sh upgrade                # bump within current major release, re-deploy
+setup.sh backup                 # trigger the backup systemd service now
+setup.sh restore                # restore from latest NAS backup
+setup.sh uninstall              # full wipe (= scripts/clean-host.sh)
+setup.sh --help                 # all verbs + flags
+```
+
+Examples:
+
+```bash
+# I picked syncthing during install but actually want Paperless too:
+setup.sh add paperless-ngx
+
+# Upgrade to the latest v2.x release after a few weeks:
+setup.sh upgrade
+
+# Decommission Jellyfin but keep its media volume for now:
+setup.sh remove jellyfin
+```
+
+Each verb is idempotent and prints the underlying ansible command on
+error so power users can drop down to `ansible-playbook` if they want
+to debug deeper. Adding a brand-new service to the project (writing a
+new role) is the only flow that doesn't go through `setup.sh`.
+
+## Hand off to Ansible from your laptop (optional)
 
 If you'd rather drive the host from your laptop instead of staying
 on the server, the project also supports the classic
 "Ansible-host pushes to managed host" model. See the project
-[README](../README.md) for that flow:
-
-1. Run `scripts/bootstrap-host.sh` on the server to harden sshd
-   (move off port 22, disable root login, disable password auth).
-2. Set up the `home-server-private` overlay on your laptop with
-   your inventory and vault.
-3. Symlink the overlay into the public repo clone.
-4. `ansible-playbook playbooks/site.yml --limit <host>` from the
-   laptop.
+[README](../README.md) for that flow.
 
 ## Troubleshooting
 
-If `setup.sh` aborts mid-deploy, the partial state is safe to
-re-run from — every role is idempotent. Re-running `setup.sh` from
-the same checkout picks up where it left off.
+If `setup.sh install` aborts mid-deploy, the partial state is safe to
+re-run from — every role is idempotent. Re-running picks up where it
+left off.
 
 For role-specific issues, each role has its own README under
 `roles/<name>/README.md` with debugging notes.
@@ -132,5 +159,5 @@ To wipe all home-server artifacts and start fresh (does **not**
 remove system packages or your primary user):
 
 ```bash
-bash ~/home-server/scripts/clean-host.sh
+setup.sh uninstall
 ```
