@@ -422,8 +422,14 @@ if [[ -n "$OVERLAY_URL" ]]; then
 
     # Persist vault.pw in the overlay so future rebuilds can re-read
     # it (priority #2 above). ~/.vaultpw becomes a symlink in Step 4.
-    echo -n "$OVERLAY_VAULT_PW" > "$OVERLAY_DIR/vault.pw"
-    chmod 400 "$OVERLAY_DIR/vault.pw"
+    # vault.pw is mode 400 once written, so unlink first to allow
+    # rewrite (e.g. when -v flag supplies a different password than
+    # what's already cached on disk).
+    if [[ ! -f "$OVERLAY_DIR/vault.pw" ]] || [[ "$(< "$OVERLAY_DIR/vault.pw")" != "$OVERLAY_VAULT_PW" ]]; then
+        rm -f "$OVERLAY_DIR/vault.pw"
+        echo -n "$OVERLAY_VAULT_PW" > "$OVERLAY_DIR/vault.pw"
+        chmod 400 "$OVERLAY_DIR/vault.pw"
+    fi
 
     if [[ -f "$OVERLAY_DIR/inventory/host_vars/$SERVER_HOSTNAME/main.yml" ]]; then
         USE_EXISTING_INVENTORY=true
