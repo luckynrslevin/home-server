@@ -41,5 +41,5 @@ backup_manifest:
     - { name: nextcloud-config, method: tar }
     - { name: nextcloud-data, method: rsync, nas_share: nextcloud }
   databases:
-    - { container: nextcloud-postgres, db_user: "{{ nextcloud_db_user }}", db_name: "{{ nextcloud_db_name }}", method: pgdump }
+    - { container: nextcloud-postgres, db_user: ncuser, db_name: nextcloud, method: pgdump }
   post_restore_tasks: restore.yml
