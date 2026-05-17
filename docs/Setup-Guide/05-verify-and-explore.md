@@ -36,7 +36,7 @@ If you see a padlock — congratulations, you're done. 🎉
 | **DNS doesn't resolve** the subdomain | Your laptop isn't using Pi-hole as DNS, OR you haven't picked Pi-hole in the service list | Set your laptop's DNS to the homeserver's IP, or add the homeserver to your router's DHCP DNS server. |
 | **Cert warning** | Caddy's first cert issuance hadn't completed yet when you opened the URL | Wait 1–2 min; reload. If still wrong, check `journalctl --user -u caddy -n 50` on the server for an ACME error. |
 | **Apex works, subdomains fail with `SSL_ERROR_INTERNAL_ERROR_ALERT`** | Apex cert issued; wildcard cert stuck in an ACME retry loop because the deSEC plugin left stale `_acme-challenge` TXT records. Rare since setup.sh pre-clears them, but possible if Caddy's apex + wildcard orders ever truly race. | `ssh <host> 'sudo -u webproxy XDG_RUNTIME_DIR=/run/user/1011 systemctl --user restart caddy'` then wait ~2 min. Background: [#170](https://github.com/luckynrslevin/home-server/issues/170). |
-| **Connection refused** | Server's firewall not yet open on 443 | Re-run `ansible-playbook playbooks/caddy.yml --connection=local --limit homeserver` on the server. |
+| **Connection refused** | Server's firewall not yet open on 443 | Re-run `setup.sh upgrade` on the server. |
 
 ## Explore
 
@@ -89,6 +89,12 @@ your data.
 
 - **Add more devices** — install the Ente / Syncthing / Jellyfin /
   Music Assistant mobile apps, point them at your subdomain.
+- **Add a service later** — `setup.sh add <service>` on the server.
+  Run `setup.sh add` with no args to see what's available.
+- **Upgrade** — `setup.sh upgrade` bumps to the latest release within
+  the current major and re-runs ansible.
+- **Backup / restore** — `setup.sh backup` triggers a backup now;
+  `setup.sh restore` pulls the latest NAS backup.
 - **Read the role docs** in `roles/<service>/README.md` for
   tuning knobs.
 - **Watch the project repo** for new services landing (Nextcloud,
