@@ -1,0 +1,26 @@
+# See roles/pihole/meta/install.yml for schema reference.
+
+display_name: "Syncthing"
+description: "Encrypted device-to-device file sync (no cloud)"
+
+# Syncthing has no secrets in inventory — per-device identity is
+# managed inside the web UI after first boot.
+inventory_vars: []
+
+side_effects:
+  caddy_reverse_proxy_services:
+    - { subdomain: syncthing, port: 8384, proto: https }
+  my_linux_users:
+    syncthg:
+      uid: 1003
+      gid: 1003
+
+playbooks:
+  - playbooks/syncthing.yml
+  - playbooks/caddy.yml
+  - playbooks/dashboard.yml
+
+on_remove:
+  inventory_vars_to_clear: []
+  volumes_to_preserve_unless_purge:
+    - systemd-syncthing

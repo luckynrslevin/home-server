@@ -1,0 +1,76 @@
+# See roles/pihole/meta/install.yml for schema reference.
+
+display_name: "Ente Photos"
+description: "Self-hosted end-to-end encrypted photo storage (server side of the Ente apps)"
+
+inventory_vars:
+  - name: entephoto_db_password
+    type: secret
+    generator: "openssl rand -base64 24"
+    vault: true
+  - name: entephoto_minio_password
+    type: secret
+    generator: "openssl rand -base64 24"
+    vault: true
+  - name: entephoto_encryption_key
+    type: secret
+    generator: "openssl rand -base64 32"
+    vault: true
+  - name: entephoto_hash_key
+    type: secret
+    generator: "openssl rand -base64 64 | tr -d '\n'"
+    vault: true
+  - name: entephoto_jwt_secret
+    type: secret
+    generator: "openssl rand -hex 32"
+    vault: true
+  - name: entephoto_api_url
+    type: computed
+    template: "https://photos-api.{{ caddy_domain }}"
+  - name: entephoto_photos_url
+    type: computed
+    template: "https://photos.{{ caddy_domain }}"
+  - name: entephoto_s3_endpoint
+    type: computed
+    template: "photos-s3.{{ caddy_domain }}"
+  - name: entephoto_s3_host
+    type: computed
+    template: "photos-s3.{{ caddy_domain }}"
+  - name: entephoto_s3_local_buckets
+    type: literal
+    value: false  # flips Ente's presigned URLs to https://
+
+side_effects:
+  caddy_reverse_proxy_services:
+    - { subdomain: photos, port: 3000 }
+    - { subdomain: accounts, port: 3001 }
+    - { subdomain: cast, port: 3002 }
+    - { subdomain: auth, port: 3003 }
+    - { subdomain: photos-api, port: 8080 }
+    - { subdomain: photos-s3, port: 3200 }
+  my_linux_users:
+    entephoto:
+      uid: 1008
+      gid: 1008
+
+playbooks:
+  - playbooks/entephoto.yml
+  - playbooks/caddy.yml
+  - playbooks/dashboard.yml
+
+on_remove:
+  inventory_vars_to_clear:
+    - entephoto_db_password
+    - entephoto_minio_password
+    - entephoto_encryption_key
+    - entephoto_hash_key
+    - entephoto_jwt_secret
+    - entephoto_api_url
+    - entephoto_photos_url
+    - entephoto_s3_endpoint
+    - entephoto_s3_host
+    - entephoto_s3_local_buckets
+  volumes_to_preserve_unless_purge:
+    - entephoto-postgres-data
+    - entephoto-minio-data
+    - entephoto-museum-config
