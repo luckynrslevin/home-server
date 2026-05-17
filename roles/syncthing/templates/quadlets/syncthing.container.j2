@@ -11,7 +11,7 @@ Image={{ syncthing_image }}
 AutoUpdate=registry
 
 Network=host
-HostName={{ ansible_host_name }}
+HostName={{ ansible_hostname }}
 
 Volume=syncthing-config.volume:/var/syncthing
 Volume=syncthing-data.volume:/data
