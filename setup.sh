@@ -354,22 +354,58 @@ case "$VERB" in
         ensure_install_dir
         TARGET=$(resolve_target_host)
         cd "$INSTALL_DIR"
-        # Bump release tag within the current major if a newer one
-        # exists. `major-upgrade` (across majors) deferred to its own
-        # later workflow.
-        current_tag=$(git describe --tags --exact-match 2>/dev/null || echo "main")
+        VAULT_PW_FILE="$HOME/.vaultpw"
+        # Resolve the "current" tag in priority order:
+        #   1. inventory's home_server_release (the durable record)
+        #   2. git describe --exact-match (whatever's checked out now)
+        # Then bump to the latest tag within that major.
+        # `major-upgrade` (across majors) deferred to its own later
+        # workflow.
+        current_tag=""
+        if [[ -r "$VAULT_PW_FILE" ]]; then
+            current_tag=$(ANSIBLE_VAULT_PASSWORD_FILE="$VAULT_PW_FILE" \
+                ansible-inventory --host "$TARGET" 2>/dev/null \
+                | python3 -c "import json,sys; print(json.load(sys.stdin).get('home_server_release','') or '')" 2>/dev/null || echo "")
+        fi
+        if [[ -z "$current_tag" ]]; then
+            current_tag=$(git describe --tags --exact-match 2>/dev/null || echo "")
+        fi
         if [[ "$current_tag" =~ ^v([0-9]+)\..* ]]; then
             major="${BASH_REMATCH[1]}"
             git fetch --tags --quiet || true
             latest_in_major=$(git tag --list "v${major}.*" --sort=-v:refname 2>/dev/null | head -1)
-            if [[ -n "$latest_in_major" && "$latest_in_major" != "$current_tag" ]]; then
+            if [[ -z "$latest_in_major" ]]; then
+                warn "No v${major}.x tags found. Re-running ansible against current checkout."
+            elif [[ "$latest_in_major" != "$current_tag" ]]; then
                 info "Bumping release: $current_tag → $latest_in_major"
                 git checkout --quiet "$latest_in_major"
+                # Persist the new tag back to inventory so subsequent
+                # operations agree with the on-disk state.
+                NEW_TAG="$latest_in_major"
+                if [[ -r "$VAULT_PW_FILE" ]] && python3 -c "import ruamel.yaml" 2>/dev/null; then
+                    info "Updating inventory's home_server_release → $NEW_TAG"
+                    python3 - "$INSTALL_DIR/inventory/host_vars/$TARGET/main.yml" "$NEW_TAG" <<'PY' 2>/dev/null || warn "Could not auto-update inventory home_server_release; do it by hand."
+import sys
+from ruamel.yaml import YAML
+inv_path, new_tag = sys.argv[1], sys.argv[2]
+yaml = YAML(typ='rt'); yaml.indent(mapping=2, sequence=4, offset=2)
+with open(inv_path) as f:
+    data = yaml.load(f) or {}
+data['home_server_release'] = new_tag
+with open(inv_path, 'w') as f:
+    yaml.dump(data, f)
+PY
+                fi
             else
                 ok "Already on latest v${major}.x release ($current_tag) — refreshing images + ansible state."
+                # Ensure checkout matches inventory even if no bump needed
+                if [[ -n "$current_tag" ]] && ! git describe --tags --exact-match 2>/dev/null | grep -qx "$current_tag"; then
+                    info "Checkout drift detected — checking out $current_tag"
+                    git checkout --quiet "$current_tag" || true
+                fi
             fi
         else
-            warn "No release tag pinned (on main). Just re-running ansible against current checkout."
+            warn "No release tag pinned (no home_server_release in inventory, no git tag at HEAD). Just re-running ansible against current checkout."
         fi
         info "Re-running ansible site.yml for $TARGET..."
         exec ansible-playbook playbooks/site.yml --limit "$TARGET"
