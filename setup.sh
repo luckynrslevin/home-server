@@ -333,12 +333,17 @@ cd "$HOME"
 
 if [[ -d "$INSTALL_DIR" ]]; then
     warn "$INSTALL_DIR already exists."
-    ask "Overwrite it? [y/N]:"
-    read -r overwrite
-    if [[ "$overwrite" =~ ^[Yy]$ ]]; then
+    if [[ "$YES_FLAG" == "true" ]]; then
+        info "Overwriting (auto-confirmed by -y)."
         rm -rf "$INSTALL_DIR"
     else
-        info "Using existing directory."
+        ask "Overwrite it? [y/N]:"
+        read -r overwrite
+        if [[ "$overwrite" =~ ^[Yy]$ ]]; then
+            rm -rf "$INSTALL_DIR"
+        else
+            info "Using existing directory."
+        fi
     fi
 fi
 
@@ -1242,8 +1247,13 @@ for svc in "${SELECTED_SERVICES[@]}"; do
     echo "  - $svc"
 done
 echo
-ask "Proceed with deployment? [Y/n]:"
-read -r proceed
+if [[ "$YES_FLAG" == "true" ]]; then
+    proceed="y"
+    info "Proceeding with deployment (auto-confirmed by -y)."
+else
+    ask "Proceed with deployment? [Y/n]:"
+    read -r proceed
+fi
 if [[ "$proceed" =~ ^[Nn]$ ]]; then
     echo
     ok "Setup complete! Configuration files generated at:"
