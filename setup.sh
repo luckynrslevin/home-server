@@ -458,15 +458,39 @@ if [[ -n "$OVERLAY_URL" ]]; then
     ok "Vault password symlinked: $VAULT_PW_FILE → $OVERLAY_DIR/vault.pw"
 
     if [[ "$USE_EXISTING_INVENTORY" == "true" ]]; then
-        if ! ANSIBLE_VAULT_PASSWORD_FILE="$VAULT_PW_FILE" \
-                ansible-vault view "$OVERLAY_DIR/inventory/host_vars/$SERVER_HOSTNAME/main.yml" \
-                &>/dev/null; then
-            err "Vault password doesn't decrypt the existing inventory at"
-            err "  $OVERLAY_DIR/inventory/host_vars/$SERVER_HOSTNAME/main.yml"
-            err "Re-run setup.sh with the correct vault password."
-            exit 1
+        # Verify vault password works against the existing inventory.
+        # `ansible-vault view` only handles whole-file-encrypted files;
+        # our main.yml uses inline `!vault |` blocks. Extract the first
+        # such block, decrypt it standalone, check exit code.
+        verify_tmp=$(mktemp)
+        python3 - "$OVERLAY_DIR/inventory/host_vars/$SERVER_HOSTNAME/main.yml" > "$verify_tmp" <<'PY'
+import sys
+with open(sys.argv[1]) as f:
+    lines = f.readlines()
+i = 0
+while i < len(lines):
+    if '$ANSIBLE_VAULT' in lines[i]:
+        indent = len(lines[i]) - len(lines[i].lstrip())
+        sys.stdout.write(lines[i].lstrip())
+        i += 1
+        while i < len(lines) and lines[i].strip() and lines[i].startswith(' ' * indent):
+            sys.stdout.write(lines[i].lstrip())
+            i += 1
+        break
+    i += 1
+PY
+        if [[ -s "$verify_tmp" ]]; then
+            if ! ANSIBLE_VAULT_PASSWORD_FILE="$VAULT_PW_FILE" \
+                    ansible-vault decrypt --output - "$verify_tmp" &>/dev/null; then
+                rm -f "$verify_tmp"
+                err "Vault password doesn't decrypt the existing inventory at"
+                err "  $OVERLAY_DIR/inventory/host_vars/$SERVER_HOSTNAME/main.yml"
+                err "Re-run setup.sh with the correct vault password."
+                exit 1
+            fi
+            ok "Vault password verified — existing inventory decrypts cleanly."
         fi
-        ok "Vault password verified — existing inventory decrypts cleanly."
+        rm -f "$verify_tmp"
     fi
 elif [[ -f "$VAULT_PW_FILE" ]]; then
     ok "Vault password already exists at $VAULT_PW_FILE"
