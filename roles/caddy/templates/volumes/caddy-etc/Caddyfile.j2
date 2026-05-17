@@ -11,6 +11,11 @@
 	acme_dns {{ caddy_acme_provider }} {
 		token {{ caddy_acme_token }}
 	}
+{% if caddy_acme_ca | default('') | length > 0 %}
+	# Override ACME directory (default = LE production). Used on test
+	# boxes to point at LE staging and dodge production rate limits.
+	acme_ca {{ caddy_acme_ca }}
+{% endif %}
 }
 
 # Single site block — one wildcard cert, host-matchers route by Host.

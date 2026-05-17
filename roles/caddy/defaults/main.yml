@@ -55,6 +55,17 @@ caddy_acme_zone: ""
 # provider supports it.
 caddy_acme_token: ""
 
+# ACME directory URL. Default = empty → Caddy uses Let's Encrypt
+# production. Set to the staging URL on test boxes to dodge LE's
+# 5-duplicate-cert-per-week rate limit while iterating:
+#
+#   caddy_acme_ca: "https://acme-staging-v02.api.letsencrypt.org/directory"
+#
+# Staging certs are signed by a fake CA (browsers will warn), so
+# only use this on hosts where you're testing the cert pipeline
+# itself, not for any real traffic. Switch back to "" for prod.
+caddy_acme_ca: ""
+
 # Backup manifest — consumed by the backup role and restore playbook.
 # Only caddy-data is backed up: it holds the LE-issued wildcard cert
 # and the ACME account key. Preserving it across an OS reinstall lets
