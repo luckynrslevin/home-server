@@ -29,22 +29,9 @@ if [[ "${1:-}" =~ ^(install|add|remove|upgrade|backup|restore|uninstall)$ ]]; th
     shift
 fi
 
-case "$VERB" in
-    install)
-        # Falls through to the rest of the script — today's full flow.
-        ;;
-    add|remove|upgrade|backup|restore|uninstall)
-        echo "ERROR: '$VERB' is not yet wired up." >&2
-        echo "       Available today: setup.sh install (the default)." >&2
-        echo "       Other verbs land in later phases of the unified-CLI work:" >&2
-        echo "         add / remove   — Phase 5/6 (per-service install wizard)" >&2
-        echo "         upgrade        — Phase 3 (image refresh + tag bump within major)" >&2
-        echo "         backup/restore — Phase 3 (wraps playbooks/backup.yml + restore.yml)" >&2
-        echo "         uninstall      — Phase 3 (wraps scripts/clean-host.sh)" >&2
-        echo "       For now use the underlying playbooks/scripts directly." >&2
-        exit 2
-        ;;
-esac
+# (Dispatch on $VERB happens later — after CLI flags, sanity checks
+# and helper definitions are loaded. Verb-specific behaviour lives
+# at the bottom of this file under "--- Verb dispatch ---".)
 
 # --- CLI flags ---
 # Optional non-interactive overrides for `install`. Any flag omitted
@@ -90,9 +77,8 @@ Verbs:
   restore      Restore from latest NAS backup. [Phase 3]
   uninstall    Full wipe (today's clean-host.sh). [Phase 3]
 
-(Only `install` is wired up today. Other verbs land in later
-phases of the unified-CLI work; use the underlying ansible
-playbooks or scripts/ until then.)
+(`add` and `remove` land in Phase 5/6; for now manage services
+by editing inventory + running playbooks directly.)
 
 Flags (for install):
   -i <url>     Private overlay repo URL (otherwise prompted).
@@ -303,6 +289,94 @@ if ! sudo -n true 2>/dev/null; then
     exit 1
 fi
 
+# ============================================================================
+# Verb dispatch (Phase 3 — non-install verbs exit here)
+# ============================================================================
+# `install` falls through to the full flow below. Other verbs are
+# self-contained: ensure prereqs (ansible already installed from a
+# prior `install`), then run the appropriate playbook/script.
+INSTALL_DIR="$HOME/home-server"
+
+ensure_ansible_on_path() {
+    if ! command -v ansible-playbook &>/dev/null; then
+        export PATH="$HOME/.local/bin:$PATH"
+    fi
+    if ! command -v ansible-playbook &>/dev/null; then
+        err "ansible-playbook not on PATH. Run \`setup.sh install\` first."
+        exit 1
+    fi
+}
+
+ensure_install_dir() {
+    if [[ ! -d "$INSTALL_DIR" ]]; then
+        err "$INSTALL_DIR not found. Run \`setup.sh install\` first."
+        exit 1
+    fi
+}
+
+resolve_target_host() {
+    # Use -h flag if given; otherwise system hostname.
+    printf '%s' "${HOSTNAME_FLAG:-$(hostname -s)}"
+}
+
+case "$VERB" in
+    install)
+        ;;  # Falls through to Step 1 below.
+    backup)
+        ensure_ansible_on_path
+        ensure_install_dir
+        TARGET=$(resolve_target_host)
+        info "Running backup for $TARGET..."
+        cd "$INSTALL_DIR"
+        exec ansible-playbook playbooks/backup.yml --limit "$TARGET"
+        ;;
+    restore)
+        ensure_ansible_on_path
+        ensure_install_dir
+        TARGET=$(resolve_target_host)
+        info "Restoring $TARGET from latest NAS backup..."
+        cd "$INSTALL_DIR"
+        exec ansible-playbook playbooks/restore.yml --limit "$TARGET"
+        ;;
+    upgrade)
+        ensure_ansible_on_path
+        ensure_install_dir
+        TARGET=$(resolve_target_host)
+        cd "$INSTALL_DIR"
+        # Bump release tag within the current major if a newer one
+        # exists. `major-upgrade` (across majors) deferred to its own
+        # later workflow.
+        current_tag=$(git describe --tags --exact-match 2>/dev/null || echo "main")
+        if [[ "$current_tag" =~ ^v([0-9]+)\..* ]]; then
+            major="${BASH_REMATCH[1]}"
+            git fetch --tags --quiet || true
+            latest_in_major=$(git tag --list "v${major}.*" --sort=-v:refname 2>/dev/null | head -1)
+            if [[ -n "$latest_in_major" && "$latest_in_major" != "$current_tag" ]]; then
+                info "Bumping release: $current_tag → $latest_in_major"
+                git checkout --quiet "$latest_in_major"
+            else
+                ok "Already on latest v${major}.x release ($current_tag) — refreshing images + ansible state."
+            fi
+        else
+            warn "No release tag pinned (on main). Just re-running ansible against current checkout."
+        fi
+        info "Re-running ansible site.yml for $TARGET..."
+        exec ansible-playbook playbooks/site.yml --limit "$TARGET"
+        ;;
+    uninstall)
+        if [[ ! -f "$INSTALL_DIR/scripts/clean-host.sh" ]]; then
+            err "$INSTALL_DIR/scripts/clean-host.sh not found. Cannot uninstall."
+            exit 1
+        fi
+        info "Running clean-host (wipes containers, users, configs)..."
+        exec bash "$INSTALL_DIR/scripts/clean-host.sh"
+        ;;
+    add|remove)
+        err "'$VERB' is not yet wired up. Coming in Phase 5/6 of the unified-CLI work."
+        exit 2
+        ;;
+esac
+
 echo
 echo -e "${BOLD}============================================${NC}"
 echo -e "${BOLD}   Home Server — Interactive Setup${NC}"
@@ -375,7 +449,7 @@ ok "Prerequisites installed: $(ansible-playbook --version 2>/dev/null | head -1)
 # ============================================================================
 # Step 2: Clone the repo
 # ============================================================================
-INSTALL_DIR="$HOME/home-server"
+# (INSTALL_DIR set above in Verb dispatch block, reused here.)
 
 # Move out of $INSTALL_DIR before any rm/clone — if the user
 # happens to be running setup.sh from inside ~/home-server (e.g.
