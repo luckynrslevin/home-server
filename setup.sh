@@ -71,7 +71,7 @@ Usage: setup.sh [VERB] [flags]
 Verbs:
   install      First install or interactive re-install (default).
   add <svc>    Add a service that wasn't deployed before.
-  remove       Remove a service. [Phase 6 — not yet wired]
+  remove <svc> Remove a service. Data volumes preserved unless --purge.
   upgrade      Pull newer images + bump release tag within current major.
   backup       Trigger the backup systemd service now.
   restore      Restore from latest NAS backup.
@@ -475,8 +475,132 @@ case "$VERB" in
         exit 0
         ;;
     remove)
-        err "'remove' is not yet wired up. Coming in Phase 6."
-        exit 2
+        SERVICE="${1:-}"
+        PURGE=false
+        shift || true
+        while [[ $# -gt 0 ]]; do
+            case "$1" in
+                --purge) PURGE=true ;;
+                *) err "Unknown remove flag: $1"; exit 2 ;;
+            esac
+            shift
+        done
+        if [[ -z "$SERVICE" ]]; then
+            err "Usage: setup.sh remove <service> [--purge]"
+            err "Run \`setup.sh add\` (no args) to list services."
+            exit 2
+        fi
+        ensure_install_dir
+        ensure_ansible_on_path
+        META="$INSTALL_DIR/roles/$SERVICE/meta/install.yml"
+        if [[ ! -f "$META" ]]; then
+            err "Unknown service '$SERVICE' (no roles/$SERVICE/meta/install.yml)."
+            exit 1
+        fi
+        TARGET=$(resolve_target_host)
+        cd "$INSTALL_DIR"
+        VAULT_PW_FILE="$HOME/.vaultpw"
+        if [[ ! -r "$VAULT_PW_FILE" ]]; then
+            err "$VAULT_PW_FILE not readable. Is the host installed?"
+            exit 1
+        fi
+        # Idempotency check: IS the service in deploy_services?
+        if ! ANSIBLE_VAULT_PASSWORD_FILE="$VAULT_PW_FILE" \
+                ansible-inventory --host "$TARGET" 2>/dev/null \
+                | python3 -c "import json,sys; d=json.load(sys.stdin); sys.exit(0 if '$SERVICE' in (d.get('deploy_services') or []) else 1)"; then
+            warn "$SERVICE is not in deploy_services for $TARGET — nothing to remove."
+            exit 1
+        fi
+        # Extract service user + uid + volumes from meta + role defaults
+        SERVICE_USER=$(python3 -c "
+import yaml, sys
+m = yaml.safe_load(open('$META'))
+users = ((m.get('side_effects') or {}).get('my_linux_users') or {})
+print(list(users.keys())[0] if users else '')
+")
+        SERVICE_UID=$(python3 -c "
+import yaml, sys
+m = yaml.safe_load(open('$META'))
+users = ((m.get('side_effects') or {}).get('my_linux_users') or {})
+print(list(users.values())[0].get('uid', '') if users else '')
+")
+        VOLUMES=$(python3 -c "
+import yaml
+m = yaml.safe_load(open('$META'))
+on_remove = m.get('on_remove') or {}
+print(' '.join(on_remove.get('volumes_to_preserve_unless_purge') or []))
+")
+        warn "Removing $SERVICE from $TARGET..."
+        if [[ -n "$SERVICE_USER" && -n "$SERVICE_UID" ]]; then
+            info "Stopping rootless services for user $SERVICE_USER (uid $SERVICE_UID)..."
+            sudo -u "$SERVICE_USER" \
+                XDG_RUNTIME_DIR=/run/user/"$SERVICE_UID" \
+                DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/"$SERVICE_UID"/bus \
+                systemctl --user stop '*' 2>/dev/null || true
+            if [[ "$PURGE" == "true" && -n "$VOLUMES" ]]; then
+                info "Purging data volumes: $VOLUMES"
+                for vol in $VOLUMES; do
+                    sudo -u "$SERVICE_USER" \
+                        XDG_RUNTIME_DIR=/run/user/"$SERVICE_UID" \
+                        podman volume rm "$vol" 2>/dev/null || true
+                done
+            else
+                if [[ -n "$VOLUMES" ]]; then
+                    info "Preserving data volumes (use --purge to delete):"
+                    for vol in $VOLUMES; do
+                        echo "  - $vol"
+                    done
+                fi
+            fi
+            info "Removing user $SERVICE_USER..."
+            sudo loginctl disable-linger "$SERVICE_USER" 2>/dev/null || true
+            sudo killall -u "$SERVICE_USER" 2>/dev/null || true
+            sleep 1
+            # -r wipes the home dir (which contains rootless podman
+            # volumes under ~/.local/share/containers/). Only do that
+            # with --purge; otherwise userdel without -r preserves
+            # the home dir so a future `setup.sh add` can pick up the
+            # data again.
+            if [[ "$PURGE" == "true" ]]; then
+                sudo userdel -r "$SERVICE_USER" 2>/dev/null || true
+            else
+                sudo userdel "$SERVICE_USER" 2>/dev/null || true
+            fi
+            sudo groupdel "$SERVICE_USER" 2>/dev/null || true
+        fi
+        # Ensure ruamel.yaml is available
+        if ! python3 -c "import ruamel.yaml" 2>/dev/null; then
+            info "Installing python3-ruamel-yaml..."
+            sudo dnf install -y python3-ruamel-yaml &>/dev/null
+        fi
+        info "Updating inventory..."
+        UPDATE_JSON=$(mktemp --suffix=.json)
+        # shellcheck disable=SC2064
+        trap "rm -f $UPDATE_JSON" EXIT
+        if ! python3 scripts/build_remove_update.py \
+                --meta "$META" --service "$SERVICE" --output "$UPDATE_JSON"; then
+            err "Failed to build remove spec for $SERVICE."
+            exit 1
+        fi
+        INV_FILE="$INSTALL_DIR/inventory/host_vars/$TARGET/main.yml"
+        if ! python3 scripts/inventory_merge.py \
+                --inventory "$INV_FILE" \
+                --vault-password-file "$VAULT_PW_FILE" \
+                --update "$UPDATE_JSON" \
+                --mode remove; then
+            err "Failed to update inventory."
+            exit 1
+        fi
+        ok "Inventory updated."
+        info "Refreshing caddy + dashboard..."
+        ansible-playbook playbooks/caddy.yml --limit "$TARGET" || warn "caddy refresh failed"
+        ansible-playbook playbooks/dashboard.yml --limit "$TARGET" || warn "dashboard refresh failed"
+        ok "$SERVICE removed from $TARGET."
+        echo
+        info "Persist the inventory update to the overlay:"
+        echo "  cd $HOME/home-server-private"
+        echo "  git add -A && git commit -m '$TARGET: remove $SERVICE' && git push"
+        exit 0
         ;;
 esac
 
