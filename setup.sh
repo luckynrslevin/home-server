@@ -18,6 +18,54 @@
 # ============================================================================
 set -euo pipefail
 
+# --- CLI flags ---
+# Optional non-interactive overrides. Any flag omitted falls back to
+# the interactive prompt later in the script. With -y / --yes the
+# script skips every prompt and uses inventory values (rebuild) or
+# generated defaults (fresh install) — fails fast on a missing
+# required value.
+OVERLAY_URL_FLAG=""
+HOSTNAME_FLAG=""
+VAULT_PW_FLAG_FILE=""
+YES_FLAG=false
+
+# --yes is a long form for -y. getopts only handles short flags, so
+# pre-process argv to translate.
+NORMALIZED_ARGS=()
+for arg in "$@"; do
+    case "$arg" in
+        --yes) NORMALIZED_ARGS+=("-y") ;;
+        --help|-\?) NORMALIZED_ARGS+=("-H") ;;
+        *) NORMALIZED_ARGS+=("$arg") ;;
+    esac
+done
+set -- "${NORMALIZED_ARGS[@]:-}"
+
+while getopts ":i:h:v:yH" opt; do
+    case $opt in
+        i) OVERLAY_URL_FLAG="$OPTARG" ;;
+        h) HOSTNAME_FLAG="$OPTARG" ;;
+        v) VAULT_PW_FLAG_FILE="$OPTARG" ;;
+        y) YES_FLAG=true ;;
+        H)
+            cat <<'USAGE'
+Usage: setup.sh [-i <overlay-url>] [-h <hostname>] [-v <vault-pw-file>] [-y|--yes]
+
+  -i <url>     Private overlay repo URL (otherwise prompted).
+  -h <name>    Server hostname (otherwise defaults to `hostname -s`).
+  -v <file>    Path to a file containing the overlay vault password
+               (otherwise prompted).
+  -y, --yes    Accept all defaults; skip every prompt. Fails fast if
+               any required value is missing.
+  --help       This help.
+USAGE
+            exit 0
+            ;;
+        \?) echo "ERROR: unknown flag: -$OPTARG" >&2; exit 1 ;;
+        :)  echo "ERROR: flag -$OPTARG requires a value" >&2; exit 1 ;;
+    esac
+done
+
 # --- Require file execution (not pipe) ---
 # This script is interactive and needs terminal stdin for prompts.
 # When piped via `curl ... | bash`, stdin is consumed by the stream.
@@ -50,6 +98,98 @@ ok()    { echo -e "${GREEN}==>${NC} $*"; }
 warn()  { echo -e "${YELLOW}==> WARNING:${NC} $*"; }
 err()   { echo -e "${RED}==> ERROR:${NC} $*" >&2; }
 ask()   { echo -en "${BOLD}$*${NC} "; }
+
+# --- Inventory-as-source-of-truth helpers ---
+# EXISTING_VARS_JSON holds the decrypted host_vars dict from a
+# previous setup.sh run. Populated by load_existing_inventory() after
+# the overlay (if any) is cloned + vault.pw symlinked. Empty until
+# then; empty for fresh installs.
+EXISTING_VARS_JSON='{}'
+
+# inv_get <key> — print the inventory value for <key>, or empty.
+# Scalars come back verbatim. Dicts/lists come back as JSON so callers
+# can re-parse.
+inv_get() {
+    EXISTING_VARS_JSON="$EXISTING_VARS_JSON" KEY="$1" python3 - <<'PY' 2>/dev/null || true
+import json, os, sys
+try:
+    d = json.loads(os.environ["EXISTING_VARS_JSON"])
+except Exception:
+    sys.exit(0)
+v = d.get(os.environ["KEY"])
+if v is None:
+    sys.exit(0)
+if isinstance(v, (dict, list)):
+    print(json.dumps(v))
+else:
+    print(v)
+PY
+}
+
+# prompt_default <var_name> <question> <hardcoded_fallback>
+# Picks a default in priority order: inventory > fallback. With -y,
+# uses default silently and errors if none. Interactive otherwise.
+prompt_default() {
+    local var=$1 question=$2 fallback=$3
+    local existing default answer
+    existing=$(inv_get "$var")
+    default=${existing:-$fallback}
+    if [[ "$YES_FLAG" == "true" ]]; then
+        if [[ -z "$default" ]]; then
+            err "Required value '$var' missing from inventory (and no fallback). -y requires a fully-populated inventory."
+            exit 1
+        fi
+        printf -v "$var" '%s' "$default"
+        return
+    fi
+    if [[ -n "$default" ]]; then
+        ask "$question [$default]:"
+    else
+        ask "$question:"
+    fi
+    read -r answer
+    printf -v "$var" '%s' "${answer:-$default}"
+}
+
+# prompt_default_hidden <var_name> <question>
+# Hidden-input version. Default is the existing inventory value (kept
+# hidden); empty input keeps the existing value.
+prompt_default_hidden() {
+    local var=$1 question=$2
+    local existing answer
+    existing=$(inv_get "$var")
+    if [[ "$YES_FLAG" == "true" ]]; then
+        if [[ -z "$existing" ]]; then
+            err "Required secret '$var' missing from inventory. -y requires a fully-populated inventory."
+            exit 1
+        fi
+        printf -v "$var" '%s' "$existing"
+        return
+    fi
+    if [[ -n "$existing" ]]; then
+        ask "$question [keep existing — type to override]:"
+    else
+        ask "$question:"
+    fi
+    read -rs answer
+    echo
+    printf -v "$var" '%s' "${answer:-$existing}"
+}
+
+# gen_or_inherit <var_name> <openssl args...>
+# If <var_name> is set in inventory, reuse the decrypted value;
+# otherwise generate via openssl. Used for service secrets so a
+# rebuild doesn't rotate every password.
+gen_or_inherit() {
+    local var=$1; shift
+    local existing
+    existing=$(inv_get "$var")
+    if [[ -n "$existing" ]]; then
+        printf -v "$var" '%s' "$existing"
+    else
+        printf -v "$var" '%s' "$(openssl "$@")"
+    fi
+}
 
 # --- Sanity checks ---
 if [[ $EUID -eq 0 ]]; then
@@ -203,33 +343,68 @@ ok "Galaxy roles installed."
 # existing host_vars/<hostname>/main.yml. The hostname prompt in
 # Step 5 used to live here; consolidated into this block.
 
+# Hostname: CLI flag wins, else `hostname -s` as default in prompt.
 DEFAULT_HOSTNAME=$(hostname -s 2>/dev/null)
-echo
-ask "Server hostname [$DEFAULT_HOSTNAME]:"
-read -r SERVER_HOSTNAME
-SERVER_HOSTNAME=${SERVER_HOSTNAME:-$DEFAULT_HOSTNAME}
+if [[ -n "$HOSTNAME_FLAG" ]]; then
+    SERVER_HOSTNAME="$HOSTNAME_FLAG"
+    ok "Server hostname: $SERVER_HOSTNAME (from -h)"
+elif [[ "$YES_FLAG" == "true" ]]; then
+    SERVER_HOSTNAME="$DEFAULT_HOSTNAME"
+    ok "Server hostname: $SERVER_HOSTNAME (from \`hostname -s\`)"
+else
+    echo
+    ask "Server hostname [$DEFAULT_HOSTNAME]:"
+    read -r SERVER_HOSTNAME
+    SERVER_HOSTNAME=${SERVER_HOSTNAME:-$DEFAULT_HOSTNAME}
+fi
 
 OVERLAY_DIR="$HOME/home-server-private"
 OVERLAY_URL=""
 USE_EXISTING_INVENTORY=false
 
-echo
-echo -e "${BOLD}--- Private overlay repo (optional) ---${NC}"
-echo
-echo "If you have a private git repo for inventory storage — either an"
-echo "existing one (rebuild path) or a fresh empty one prepared for"
-echo "this host (first-time path) — point to it here. We'll clone it"
-echo "and either reuse its inventory as-is or generate fresh inventory"
-echo "directly into it."
-echo "Leave empty to keep inventory local in ~/home-server/inventory/."
-echo
-ask "Private overlay repo URL [empty to skip]:"
-read -r OVERLAY_URL
+# Overlay repo URL: CLI flag wins, else interactive prompt (silent in
+# -y mode — empty is a valid "no overlay" answer).
+if [[ -n "$OVERLAY_URL_FLAG" ]]; then
+    OVERLAY_URL="$OVERLAY_URL_FLAG"
+    ok "Overlay repo: $OVERLAY_URL (from -i)"
+elif [[ "$YES_FLAG" != "true" ]]; then
+    echo
+    echo -e "${BOLD}--- Private overlay repo (optional) ---${NC}"
+    echo
+    echo "If you have a private git repo for inventory storage — either an"
+    echo "existing one (rebuild path) or a fresh empty one prepared for"
+    echo "this host (first-time path) — point to it here. We'll clone it"
+    echo "and either reuse its inventory as-is or generate fresh inventory"
+    echo "directly into it."
+    echo "Leave empty to keep inventory local in ~/home-server/inventory/."
+    echo
+    ask "Private overlay repo URL [empty to skip]:"
+    read -r OVERLAY_URL
+fi
 
 if [[ -n "$OVERLAY_URL" ]]; then
-    ask "Vault password for the overlay (input hidden — invent one if the repo is empty):"
-    read -rs OVERLAY_VAULT_PW
-    echo
+    # Vault password sourcing priority:
+    #   1. -v <file> flag
+    #   2. overlay's existing vault.pw (rebuild path)
+    #   3. interactive prompt
+    if [[ -n "$VAULT_PW_FLAG_FILE" ]]; then
+        if [[ ! -r "$VAULT_PW_FLAG_FILE" ]]; then
+            err "Vault password file not readable: $VAULT_PW_FLAG_FILE"
+            exit 1
+        fi
+        OVERLAY_VAULT_PW=$(< "$VAULT_PW_FLAG_FILE")
+        ok "Vault password loaded from $VAULT_PW_FLAG_FILE (from -v)"
+    elif [[ -d "$OVERLAY_DIR/.git" && -r "$OVERLAY_DIR/vault.pw" ]]; then
+        OVERLAY_VAULT_PW=$(< "$OVERLAY_DIR/vault.pw")
+        ok "Vault password reused from $OVERLAY_DIR/vault.pw"
+    elif [[ "$YES_FLAG" == "true" ]]; then
+        err "Overlay vault password required for -y mode (use -v <file> or pre-place vault.pw)."
+        exit 1
+    else
+        ask "Vault password for the overlay (input hidden — invent one if the repo is empty):"
+        read -rs OVERLAY_VAULT_PW
+        echo
+    fi
     if [[ -z "$OVERLAY_VAULT_PW" ]]; then
         err "Vault password is required when using an overlay."
         exit 1
@@ -245,19 +420,22 @@ if [[ -n "$OVERLAY_URL" ]]; then
 
     mkdir -p "$OVERLAY_DIR/inventory/host_vars"
 
-    # Vault pw lives in the overlay so future Case 3 rebuilds can
-    # re-read it. ~/.vaultpw is a symlink so ansible.cfg stays valid.
+    # Persist vault.pw in the overlay so future rebuilds can re-read
+    # it (priority #2 above). ~/.vaultpw becomes a symlink in Step 4.
     echo -n "$OVERLAY_VAULT_PW" > "$OVERLAY_DIR/vault.pw"
     chmod 400 "$OVERLAY_DIR/vault.pw"
 
     if [[ -f "$OVERLAY_DIR/inventory/host_vars/$SERVER_HOSTNAME/main.yml" ]]; then
         USE_EXISTING_INVENTORY=true
-        ok "Overlay has existing inventory for '$SERVER_HOSTNAME' — using it as-is."
+        ok "Overlay has existing inventory for '$SERVER_HOSTNAME' — will reuse as defaults."
     else
         ok "Overlay has no inventory for '$SERVER_HOSTNAME' yet — will generate fresh into it."
         existing_hosts=$(ls -1 "$OVERLAY_DIR/inventory/host_vars/" 2>/dev/null | tr '\n' ' ')
         [[ -n "$existing_hosts" ]] && info "  Other hosts already in overlay: $existing_hosts"
     fi
+elif [[ "$YES_FLAG" == "true" ]]; then
+    err "-y mode requires an inventory source (-i <overlay-url> or pre-staged inventory)."
+    exit 1
 fi
 
 # ============================================================================
@@ -334,53 +512,32 @@ if [[ -n "$OVERLAY_URL" ]]; then
     fi
 fi
 
-# ============================================================================
-# Step 5: Gather host configuration
-# ============================================================================
-if [[ "$USE_EXISTING_INVENTORY" == "true" ]]; then
-    info "Step 5/7: Using existing inventory — skipping configuration prompts."
-    SERVER_IP=$(hostname -I 2>/dev/null | awk '{print $1}')
-    # Pull deSEC creds from existing inventory for the A-record refresh
-    # in Step 6.5. ansible-inventory decrypts vaulted vars in its output.
-    INV_JSON=$(ANSIBLE_VAULT_PASSWORD_FILE="$VAULT_PW_FILE" \
-        ansible-inventory --host "$SERVER_HOSTNAME" 2>/dev/null)
-    if [[ -z "$INV_JSON" ]]; then
-        err "ansible-inventory couldn't read host vars for '$SERVER_HOSTNAME'."
-        err "Check inventory/hosts.yml in the overlay."
-        exit 1
-    fi
-    DESEC_SUBDOMAIN=$(echo "$INV_JSON" | python3 -c "import json,sys; print(json.load(sys.stdin).get('caddy_acme_subdomain',''))")
-    DESEC_TOKEN=$(echo "$INV_JSON" | python3 -c "import json,sys; print(json.load(sys.stdin).get('caddy_acme_token',''))")
-    CADDY_DOMAIN=$(echo "$INV_JSON" | python3 -c "import json,sys; print(json.load(sys.stdin).get('caddy_domain',''))")
-    if [[ -z "$DESEC_SUBDOMAIN" || -z "$DESEC_TOKEN" ]]; then
-        err "Existing inventory is missing caddy_acme_subdomain / caddy_acme_token."
-        exit 1
-    fi
-    ok "Loaded inventory for $SERVER_HOSTNAME ($CADDY_DOMAIN)"
-else
-
 info "Step 5/7: Configuring your server..."
+
+# Load existing inventory (if any) so every prompt below can default
+# from its previous value. Decrypts vault blocks in the dict.
+if [[ -f "inventory/host_vars/$SERVER_HOSTNAME/main.yml" ]]; then
+    EXISTING_VARS_JSON=$(ANSIBLE_VAULT_PASSWORD_FILE="$VAULT_PW_FILE" \
+        ansible-inventory --host "$SERVER_HOSTNAME" 2>/dev/null) || EXISTING_VARS_JSON='{}'
+    if [[ "$EXISTING_VARS_JSON" != "{}" ]]; then
+        ok "Loaded existing inventory for $SERVER_HOSTNAME — values will populate prompt defaults."
+    fi
+fi
+
+# Server IP is detected fresh every run (DHCP may have moved the host
+# between rebuilds; we don't want to PATCH a stale A record).
+SERVER_IP=$(hostname -I 2>/dev/null | awk '{print $1}')
 
 echo
 echo -e "${BOLD}--- Network Configuration ---${NC}"
 echo
 
-# Detect IP and network automatically
-DEFAULT_IP=$(hostname -I 2>/dev/null | awk '{print $1}')
 DEFAULT_IFACE=$(ip route show default 2>/dev/null | awk '{print $5; exit}')
-DEFAULT_GATEWAY=$(ip route show default 2>/dev/null | awk '{print $3; exit}')
-DEFAULT_NETWORK=$(ip -4 addr show "$DEFAULT_IFACE" 2>/dev/null | grep inet | awk '{print $2}' | head -1)
+DEFAULT_GATEWAY_DETECTED=$(ip route show default 2>/dev/null | awk '{print $3; exit}')
+DEFAULT_NETWORK_DETECTED=$(ip -4 addr show "$DEFAULT_IFACE" 2>/dev/null | grep inet | awk '{print $2}' | head -1)
 DEFAULT_USER=$(whoami)
 
-ask "Server IP address [$DEFAULT_IP]:"
-read -r SERVER_IP
-SERVER_IP=${SERVER_IP:-$DEFAULT_IP}
-
-# --- TLS / cert strategy ---
 # --- TLS via deSEC + Let's Encrypt ---
-# Single supported path: real LE certs via DNS-01 against deSEC.
-# User signs up at desec.io, claims a *.dedyn.io subdomain, and
-# generates an API token; we prompt for both.
 echo
 echo -e "${BOLD}--- deSEC + Let's Encrypt ---${NC}"
 echo
@@ -392,55 +549,42 @@ echo "  2. Claim a *.dedyn.io subdomain at first sign-in."
 echo "  3. Create an API token in Token Management."
 echo "See docs/Setup-Guide/01-deSEC-account.md for the click-by-click."
 echo
-ask "deSEC subdomain (without .dedyn.io):"
-read -r DESEC_SUBDOMAIN
+prompt_default        caddy_acme_subdomain "deSEC subdomain (without .dedyn.io)" ""
+DESEC_SUBDOMAIN="$caddy_acme_subdomain"
 if [[ -z "$DESEC_SUBDOMAIN" ]]; then
-    err "Subdomain is required."
+    err "deSEC subdomain is required."
     exit 1
 fi
-ask "deSEC API token (input hidden):"
-read -rs DESEC_TOKEN
-echo
+prompt_default_hidden caddy_acme_token     "deSEC API token (input hidden)"
+DESEC_TOKEN="$caddy_acme_token"
 if [[ -z "$DESEC_TOKEN" ]]; then
-    err "Token is required."
+    err "deSEC token is required."
     exit 1
 fi
 CADDY_DOMAIN="${DESEC_SUBDOMAIN}.dedyn.io"
 ok "Caddy domain: $CADDY_DOMAIN"
 
-ask "Your username [$DEFAULT_USER]:"
-read -r SERVER_USER
-SERVER_USER=${SERVER_USER:-$DEFAULT_USER}
+prompt_default ansible_user            "Your username"                "$DEFAULT_USER"
+SERVER_USER="$ansible_user"
 
-ask "LAN subnet (for Pi-hole) [$DEFAULT_NETWORK]:"
-read -r LAN_NETWORK
-LAN_NETWORK=${LAN_NETWORK:-$DEFAULT_NETWORK}
-# Convert to CIDR notation if needed (e.g., 192.168.1.5/24 → 192.168.1.0/24)
+prompt_default pihole_local_network    "LAN subnet (for Pi-hole)"     "$DEFAULT_NETWORK_DETECTED"
+LAN_NETWORK="$pihole_local_network"
+# Normalise host IP/CIDR (e.g. 192.168.1.5/24) to subnet CIDR (192.168.1.0/24).
 LAN_PREFIX=$(echo "$LAN_NETWORK" | cut -d/ -f2)
 LAN_NETWORK_BASE=$(echo "$LAN_NETWORK" | cut -d/ -f1 | awk -F. '{printf "%s.%s.%s.0", $1, $2, $3}')
 LAN_CIDR="${LAN_NETWORK_BASE}/${LAN_PREFIX}"
 
-ask "LAN gateway/router [$DEFAULT_GATEWAY]:"
-read -r LAN_GATEWAY
-LAN_GATEWAY=${LAN_GATEWAY:-$DEFAULT_GATEWAY}
+prompt_default pihole_local_router     "LAN gateway/router"           "$DEFAULT_GATEWAY_DETECTED"
+LAN_GATEWAY="$pihole_local_router"
 
 echo
 echo -e "${BOLD}--- Timezone ---${NC}"
 echo
-DEFAULT_TZ=$(timedatectl show -p Timezone --value 2>/dev/null || echo "UTC")
-ask "Timezone [$DEFAULT_TZ]:"
-read -r TIMEZONE
-TIMEZONE=${TIMEZONE:-$DEFAULT_TZ}
+DEFAULT_TZ_DETECTED=$(timedatectl show -p Timezone --value 2>/dev/null || echo "UTC")
+prompt_default paperless_time_zone     "Timezone"                     "$DEFAULT_TZ_DETECTED"
+TIMEZONE="$paperless_time_zone"
 
 # --- SMTP relay (project-level) ---
-# Needed by Nextcloud (password resets / share notifications), Ente
-# Photos (signup OTPs — without SMTP, the operator has to read codes
-# out of postgres), and Paperless-NGX (notifications). One relay
-# config used by every role.
-#
-# See docs/SMTP-Setup.md. Recommended: Mailbox.org with an app
-# password. Skip to deploy without working email — apps still install
-# but can't send mail until you fill in these vars later.
 echo
 echo -e "${BOLD}--- SMTP relay (required) ---${NC}"
 echo
@@ -449,42 +593,38 @@ echo "(signup OTPs) and Paperless need an external SMTP relay to send"
 echo "mail. See docs/SMTP-Setup.md for picking a provider (Mailbox.org"
 echo "/ Posteo / etc.) and generating an app password."
 echo
-ask "SMTP host [smtp.mailbox.org]:"
-read -r SMTP_HOST
-SMTP_HOST=${SMTP_HOST:-smtp.mailbox.org}
-ask "SMTP port [587]:"
-read -r SMTP_PORT
-SMTP_PORT=${SMTP_PORT:-587}
-ask "SMTP username (full email):"
-read -r SMTP_USERNAME
+prompt_default        smtp_host       "SMTP host"                    "smtp.mailbox.org"
+SMTP_HOST="$smtp_host"
+prompt_default        smtp_port       "SMTP port"                    "587"
+SMTP_PORT="$smtp_port"
+prompt_default        smtp_username   "SMTP username (full email)"   ""
+SMTP_USERNAME="$smtp_username"
 if [[ -z "$SMTP_USERNAME" ]]; then
     err "SMTP username is required."
     exit 1
 fi
-ask "SMTP password / app password (input hidden):"
-read -rs SMTP_PASSWORD
-echo
+prompt_default_hidden smtp_password   "SMTP password / app password (input hidden)"
+SMTP_PASSWORD="$smtp_password"
 if [[ -z "$SMTP_PASSWORD" ]]; then
     err "SMTP password is required."
     exit 1
 fi
-ask "Encryption (starttls / ssl) [starttls]:"
-read -r SMTP_ENCRYPTION
-SMTP_ENCRYPTION=${SMTP_ENCRYPTION:-starttls}
-ask "From address [$SMTP_USERNAME]:"
-read -r SMTP_FROM
-SMTP_FROM=${SMTP_FROM:-$SMTP_USERNAME}
+prompt_default        smtp_encryption "Encryption (starttls / ssl)"  "starttls"
+SMTP_ENCRYPTION="$smtp_encryption"
+prompt_default        smtp_from       "From address"                 "$SMTP_USERNAME"
+SMTP_FROM="$smtp_from"
 ok "SMTP relay configured."
 
 echo
 echo -e "${BOLD}--- Service Selection ---${NC}"
 echo
-echo "Choose which services to deploy. You can always add more later"
-echo "by running individual playbooks."
+echo "Caddy + Nextcloud are always deployed (front-door reverse proxy"
+echo "+ household OIDC identity provider). For the rest, defaults"
+echo "follow the recommended baseline; previous \`deploy_services\`"
+echo "from inventory takes priority."
 echo
 
-declare -A SERVICES
-SERVICES=(
+declare -A SERVICES=(
     [dashboard]="Status dashboard showing all services"
     [pihole]="Pi-hole DNS ad-blocker"
     [entephoto]="Ente Photos (self-hosted photo storage)"
@@ -495,16 +635,8 @@ SERVICES=(
     [music-assistant]="Music Assistant music server (optional local Squeezelite player on hosts with a USB DAC)"
 )
 
-# Caddy + Nextcloud are mandatory:
-#   - Caddy is the front-door reverse proxy for every HTTPS service.
-#   - Nextcloud is the household OIDC identity provider (Paperless and
-#     future apps log in against it) and the central file/contacts
-#     workspace.
 SELECTED_SERVICES=(caddy nextcloud)
 
-# Optional services. Defaults reflect the recommended baseline:
-#   Y — dashboard, pihole, entephoto, paperless-ngx
-#   N — syncthing, shairportsync, jellyfin, music-assistant
 SERVICE_ORDER=(dashboard pihole entephoto paperless-ngx syncthing shairportsync jellyfin music-assistant)
 declare -A SERVICE_DEFAULT_YES=(
     [dashboard]=1
@@ -513,9 +645,35 @@ declare -A SERVICE_DEFAULT_YES=(
     [paperless-ngx]=1
 )
 
+# If inventory has a deploy_services list, prefer it: a service is
+# defaulted Y iff it's in the existing list.
+EXISTING_DEPLOY_SERVICES=$(inv_get deploy_services)
+declare -A INV_DEPLOY=()
+if [[ -n "$EXISTING_DEPLOY_SERVICES" ]]; then
+    while IFS= read -r svc; do
+        [[ -n "$svc" ]] && INV_DEPLOY[$svc]=1
+    done < <(echo "$EXISTING_DEPLOY_SERVICES" | python3 -c "import json,sys; print('\n'.join(json.load(sys.stdin)))")
+fi
+
 for svc in "${SERVICE_ORDER[@]}"; do
     desc="${SERVICES[$svc]}"
-    if [[ -n "${SERVICE_DEFAULT_YES[$svc]:-}" ]]; then
+    # Resolve default-Y from (a) prior inventory, else (b) hardcoded baseline.
+    if [[ -n "$EXISTING_DEPLOY_SERVICES" ]]; then
+        if [[ -n "${INV_DEPLOY[$svc]:-}" ]]; then
+            default_yes=1
+        else
+            default_yes=0
+        fi
+    else
+        default_yes=${SERVICE_DEFAULT_YES[$svc]:-0}
+    fi
+
+    if [[ "$YES_FLAG" == "true" ]]; then
+        [[ "$default_yes" == "1" ]] && SELECTED_SERVICES+=("$svc")
+        continue
+    fi
+
+    if [[ "$default_yes" == "1" ]]; then
         ask "Deploy $svc? ($desc) [Y/n]:"
         read -r answer
         [[ ! "$answer" =~ ^[Nn]$ ]] && SELECTED_SERVICES+=("$svc")
@@ -594,29 +752,61 @@ EOF
 fi
 
 # --- Generate host_vars ---
-info "Generating secrets (this takes a moment)..."
+info "Resolving secrets (reusing existing from inventory where present)..."
 
-# Generate all secrets
-PIHOLE_PW=$(openssl rand -base64 24)
-ENTEPHOTO_DB_PW=$(openssl rand -base64 24)
-ENTEPHOTO_MINIO_PW=$(openssl rand -base64 24)
-ENTEPHOTO_ENC_KEY=$(openssl rand -base64 32)
-ENTEPHOTO_HASH_KEY=$(openssl rand -base64 64 | tr -d '\n')
-ENTEPHOTO_JWT=$(openssl rand -hex 32)
-PAPERLESS_SECRET_KEY=$(openssl rand -hex 32)
-PAPERLESS_DB_PW=$(openssl rand -base64 24)
-PAPERLESS_ADMIN_PW=$(openssl rand -base64 24)
-JELLYFIN_ADMIN_PW=$(openssl rand -base64 24)
-NEXTCLOUD_ADMIN_PW=$(openssl rand -base64 24)
-NEXTCLOUD_DB_PW=$(openssl rand -base64 24)
+# Resolve each secret: if the inventory already has a value, reuse it
+# (so a rebuild doesn't rotate every password). Otherwise generate.
+# Inventory key names mirror the YAML emission below.
+resolve_secret() {
+    # resolve_secret <shell_var_name> <inventory_key> <openssl args...>
+    local shvar=$1 inv_key=$2; shift 2
+    local existing
+    existing=$(EXISTING_VARS_JSON="$EXISTING_VARS_JSON" KEY="$inv_key" python3 -c "
+import json, os, sys
+try:
+    d = json.loads(os.environ['EXISTING_VARS_JSON'])
+except Exception:
+    sys.exit(0)
+v = d.get(os.environ['KEY'])
+if v is not None and not isinstance(v, (dict, list)):
+    print(v)
+" 2>/dev/null) || true
+    if [[ -n "$existing" ]]; then
+        printf -v "$shvar" '%s' "$existing"
+    else
+        printf -v "$shvar" '%s' "$(openssl "$@")"
+    fi
+}
 
-# Generate a stable, locally-administered unicast MAC for Music
-# Assistant's built-in Squeezelite player. First octet 0x02 sets the
-# locally-administered bit (b1=1) and clears the multicast bit
-# (b0=0). SlimProto uses the MAC as the player's identity, so a
-# stable value keeps the player recognized across redeploys and
-# clean re-installs.
-MUSIC_ASSISTANT_MAC="02:$(openssl rand -hex 5 | sed 's/\(..\)/\1:/g;s/:$//')"
+resolve_secret PIHOLE_PW            pihole_api_password         rand -base64 24
+resolve_secret ENTEPHOTO_DB_PW      entephoto_db_password       rand -base64 24
+resolve_secret ENTEPHOTO_MINIO_PW   entephoto_minio_password    rand -base64 24
+resolve_secret ENTEPHOTO_ENC_KEY    entephoto_encryption_key    rand -base64 32
+# Hash key is 64-byte base64; tr strips the trailing newline from openssl.
+existing_hash=$(inv_get entephoto_hash_key)
+if [[ -n "$existing_hash" ]]; then
+    ENTEPHOTO_HASH_KEY="$existing_hash"
+else
+    ENTEPHOTO_HASH_KEY=$(openssl rand -base64 64 | tr -d '\n')
+fi
+resolve_secret ENTEPHOTO_JWT        entephoto_jwt_secret        rand -hex 32
+resolve_secret PAPERLESS_SECRET_KEY paperless_secret_key        rand -hex 32
+resolve_secret PAPERLESS_DB_PW      paperless_db_password       rand -base64 24
+resolve_secret PAPERLESS_ADMIN_PW   paperless_admin_password    rand -base64 24
+resolve_secret JELLYFIN_ADMIN_PW    jellyfin_admin_password     rand -base64 24
+resolve_secret NEXTCLOUD_ADMIN_PW   nextcloud_admin_password    rand -base64 24
+resolve_secret NEXTCLOUD_DB_PW      nextcloud_db_password       rand -base64 24
+
+# Music Assistant's Squeezelite player identifies by MAC under
+# SlimProto. Keep the value stable across rebuilds — reuse from
+# inventory if present; otherwise generate a locally-administered
+# unicast MAC (first octet 0x02 → b1=1, b0=0).
+existing_mac=$(inv_get music_assistant_squeezelite_mac)
+if [[ -n "$existing_mac" ]]; then
+    MUSIC_ASSISTANT_MAC="$existing_mac"
+else
+    MUSIC_ASSISTANT_MAC="02:$(openssl rand -hex 5 | sed 's/\(..\)/\1:/g;s/:$//')"
+fi
 
 # Build the host_vars file
 {
@@ -640,6 +830,20 @@ cat << YAML
 
 ##################################################################################################
 ### Linux users — service accounts with fixed UIDs
+YAML
+
+# If inventory already has my_linux_users, emit that block verbatim
+# (preserves operator additions like extra service accounts).
+# Otherwise emit the canonical UID map.
+existing_users=$(inv_get my_linux_users)
+if [[ -n "$existing_users" ]]; then
+    echo "$existing_users" | python3 -c "
+import json, sys, yaml
+d = json.load(sys.stdin)
+print(yaml.safe_dump({'my_linux_users': d}, default_flow_style=False, sort_keys=False).rstrip())
+"
+else
+    cat << YAML
 my_linux_users:
   $SERVER_USER:
     uid: 1000
@@ -671,6 +875,10 @@ my_linux_users:
   nextcloud:
     uid: 1015
     gid: 1015
+YAML
+fi
+
+cat << YAML
 ##################################################################################################
 
 ### Caddy reverse-proxy + Let's Encrypt via deSEC DNS-01
@@ -683,24 +891,33 @@ echo ""
 vault_encrypt "$DESEC_TOKEN" "caddy_acme_token"
 echo ""
 
-# Emit caddy_reverse_proxy_services for selected services so each
-# selected web UI is fronted at https://<sub>.$CADDY_DOMAIN with a
-# real Let's Encrypt cert.
-echo "caddy_reverse_proxy_services:"
-is_selected pihole       && echo '  - { subdomain: pihole, port: 8443, proto: https }'
-is_selected syncthing    && echo '  - { subdomain: syncthing, port: 8384, proto: https }'
-if is_selected entephoto; then
-  echo '  - { subdomain: photos, port: 3000 }'
-  echo '  - { subdomain: accounts, port: 3001 }'
-  echo '  - { subdomain: cast, port: 3002 }'
-  echo '  - { subdomain: auth, port: 3003 }'
-  echo '  - { subdomain: photos-api, port: 8080 }'
-  echo '  - { subdomain: photos-s3, port: 3200 }'
+# caddy_reverse_proxy_services: prefer existing inventory block if
+# present (preserves operator port overrides / hand-added services);
+# otherwise emit canonical entries for the selected services.
+existing_rps=$(inv_get caddy_reverse_proxy_services)
+if [[ -n "$existing_rps" ]]; then
+    echo "$existing_rps" | python3 -c "
+import json, sys, yaml
+d = json.load(sys.stdin)
+print(yaml.safe_dump({'caddy_reverse_proxy_services': d}, default_flow_style=False, sort_keys=False).rstrip())
+"
+else
+    echo "caddy_reverse_proxy_services:"
+    is_selected pihole       && echo '  - { subdomain: pihole, port: 8443, proto: https }'
+    is_selected syncthing    && echo '  - { subdomain: syncthing, port: 8384, proto: https }'
+    if is_selected entephoto; then
+      echo '  - { subdomain: photos, port: 3000 }'
+      echo '  - { subdomain: accounts, port: 3001 }'
+      echo '  - { subdomain: cast, port: 3002 }'
+      echo '  - { subdomain: auth, port: 3003 }'
+      echo '  - { subdomain: photos-api, port: 8080 }'
+      echo '  - { subdomain: photos-s3, port: 3200 }'
+    fi
+    is_selected paperless-ngx   && echo '  - { subdomain: paperless, port: 8000 }'
+    is_selected jellyfin        && echo '  - { subdomain: jellyfin, port: 8096 }'
+    is_selected music-assistant && echo '  - { subdomain: music, port: 8095 }'
+    is_selected nextcloud       && echo '  - { subdomain: cloud, port: 8090 }'
 fi
-is_selected paperless-ngx   && echo '  - { subdomain: paperless, port: 8000 }'
-is_selected jellyfin        && echo '  - { subdomain: jellyfin, port: 8096 }'
-is_selected music-assistant && echo '  - { subdomain: music, port: 8095 }'
-is_selected nextcloud       && echo '  - { subdomain: cloud, port: 8090 }'
 echo ""
 
 cat << YAML
@@ -929,8 +1146,6 @@ fi
 } > inventory/host_vars/$SERVER_HOSTNAME/dashboard-config.yaml
 
 ok "Generated inventory/host_vars/$SERVER_HOSTNAME/dashboard-config.yaml"
-
-fi  # end of USE_EXISTING_INVENTORY == false (Steps 5 + 6)
 
 # ============================================================================
 # Step 6.5: deSEC API — upsert the wildcard A record
