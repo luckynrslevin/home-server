@@ -790,18 +790,26 @@ fi
 ok "Generated inventory/host_vars/$SERVER_HOSTNAME/dashboard-config.yaml"
 
 # ============================================================================
-# Step 6.5: deSEC API — upsert the wildcard A record
+# Step 6.5: deSEC API — upsert A records + clear stale ACME challenge TXT
 # ============================================================================
 # Writes `*.<sub>.dedyn.io` and `<sub>.dedyn.io` → SERVER_IP so LAN
 # clients (Pi-hole) and roaming Tailscale clients both resolve every
 # Caddy subdomain to this host's LAN IP. Caddy then issues a wildcard
 # LE cert against deSEC's DNS-01 challenge during the deploy below.
 # PATCH on the rrset collection is idempotent — safe to re-run.
-info "Step 6.5/7: Writing wildcard A record at deSEC..."
+#
+# Also clears `_acme-challenge.<sub>` TXT. Mitigates issue #170:
+# Caddy's deSEC plugin occasionally leaves stale TXT records from
+# a failed previous order, and the apex + wildcard cert challenges
+# race on the same TXT name. Starting from a clean state ensures
+# Caddy's first DNS-01 round sees only its own values; sending the
+# rrset with records=[] tells deSEC to delete it. No-op if absent.
+info "Step 6.5/7: Writing A records + clearing stale _acme-challenge TXT at deSEC..."
 api_body=$(cat <<JSON
 [
   {"subname":"","type":"A","ttl":3600,"records":["$SERVER_IP"]},
-  {"subname":"*","type":"A","ttl":3600,"records":["$SERVER_IP"]}
+  {"subname":"*","type":"A","ttl":3600,"records":["$SERVER_IP"]},
+  {"subname":"_acme-challenge","type":"TXT","ttl":3600,"records":[]}
 ]
 JSON
 )
