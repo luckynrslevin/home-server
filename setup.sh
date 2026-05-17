@@ -418,10 +418,16 @@ case "$VERB" in
             exit 1
         fi
         # Ensure ruamel.yaml is available for the merge step.
+        # Step 1 of `install` adds python3-ruamel-yaml via dnf; this
+        # lazy install covers hosts that ran install before that line
+        # landed (Phase 5b).
         if ! python3 -c "import ruamel.yaml" 2>/dev/null; then
-            info "Installing ruamel.yaml for inventory merge (one-time)..."
-            pipx inject ansible-core ruamel.yaml --quiet 2>/dev/null || \
-                pip install --user ruamel.yaml >/dev/null
+            info "Installing python3-ruamel-yaml for inventory merge (one-time)..."
+            sudo dnf install -y python3-ruamel-yaml &>/dev/null
+            if ! python3 -c "import ruamel.yaml" 2>/dev/null; then
+                err "Failed to install python3-ruamel-yaml. Required for setup.sh add."
+                exit 1
+            fi
         fi
         info "Resolving inventory updates for $SERVICE from $META..."
         UPDATE_JSON=$(mktemp --suffix=.json)
@@ -510,8 +516,8 @@ if [[ "${ID:-}" =~ ^(almalinux|rocky|centos|rhel)$ ]]; then
     PIPX_PYTHON_ARG=(--python python3.11)
 fi
 
-sudo dnf install -y podman git python3-pyyaml pipx &>/dev/null \
-    || sudo dnf install -y podman git python3-pyyaml pipx
+sudo dnf install -y podman git python3-pyyaml python3-ruamel-yaml pipx &>/dev/null \
+    || sudo dnf install -y podman git python3-pyyaml python3-ruamel-yaml pipx
 
 # Hard-fail if pipx still isn't on PATH — usually means EPEL is
 # misconfigured on AL/Rocky.
