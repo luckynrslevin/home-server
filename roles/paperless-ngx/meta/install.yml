@@ -44,6 +44,9 @@ on_remove:
     # leaves the (now-orphaned) OIDC client in Nextcloud and the
     # inventory keys for it. Operator removes those manually.
   volumes_to_preserve_unless_purge:
-    - paperless-db-data
-    - paperless-media
     - paperless-data
+    - paperless-db-data
+    - paperless-redis-data
+    - paperless-media
+    - paperless-consume
+    - paperless-export
