@@ -325,12 +325,24 @@ case "$VERB" in
     install)
         ;;  # Falls through to Step 1 below.
     backup)
-        ensure_ansible_on_path
-        ensure_install_dir
-        TARGET=$(resolve_target_host)
-        info "Running backup for $TARGET..."
-        cd "$INSTALL_DIR"
-        exec ansible-playbook playbooks/backup.yml --limit "$TARGET"
+        # The backup is a standalone systemd service deployed by the
+        # backup role during `install`. Trigger it via systemctl, not
+        # by re-running playbooks/backup.yml (which would only
+        # re-deploy the service unit + script, not run a backup).
+        if ! systemctl list-unit-files home-server-backup.service &>/dev/null; then
+            err "home-server-backup.service not installed. Run \`setup.sh install\` first."
+            exit 1
+        fi
+        info "Triggering home-server-backup.service (waiting for completion)..."
+        # --wait blocks until the unit finishes; exit code reflects success/failure.
+        if sudo systemctl start --wait home-server-backup.service; then
+            ok "Backup completed."
+            sudo journalctl -u home-server-backup.service --since "10 minutes ago" --no-pager | tail -20
+            exit 0
+        else
+            err "Backup failed. Check: journalctl -u home-server-backup.service"
+            exit 1
+        fi
         ;;
     restore)
         ensure_ansible_on_path
