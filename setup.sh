@@ -27,6 +27,7 @@ set -euo pipefail
 OVERLAY_URL_FLAG=""
 HOSTNAME_FLAG=""
 VAULT_PW_FLAG_FILE=""
+RELEASE_FLAG=""
 YES_FLAG=false
 
 # --yes is a long form for -y. getopts only handles short flags, so
@@ -41,20 +42,24 @@ for arg in "$@"; do
 done
 set -- "${NORMALIZED_ARGS[@]:-}"
 
-while getopts ":i:h:v:yH" opt; do
+while getopts ":i:h:v:r:yH" opt; do
     case $opt in
         i) OVERLAY_URL_FLAG="$OPTARG" ;;
         h) HOSTNAME_FLAG="$OPTARG" ;;
         v) VAULT_PW_FLAG_FILE="$OPTARG" ;;
+        r) RELEASE_FLAG="$OPTARG" ;;
         y) YES_FLAG=true ;;
         H)
             cat <<'USAGE'
-Usage: setup.sh [-i <overlay-url>] [-h <hostname>] [-v <vault-pw-file>] [-y|--yes]
+Usage: setup.sh [-i <overlay-url>] [-h <hostname>] [-v <vault-pw-file>] [-r <tag>] [-y|--yes]
 
   -i <url>     Private overlay repo URL (otherwise prompted).
   -h <name>    Server hostname (otherwise defaults to `hostname -s`).
   -v <file>    Path to a file containing the overlay vault password
                (otherwise prompted).
+  -r <tag>     Release tag to install (e.g. v2.1.0). On rebuild,
+               defaults to the tag recorded in inventory. On fresh
+               install, defaults to the latest stable `v*` tag.
   -y, --yes    Accept all defaults; skip every prompt. Fails fast if
                any required value is missing.
   --help       This help.
@@ -584,6 +589,57 @@ if [[ -f "inventory/host_vars/$SERVER_HOSTNAME/main.yml" ]]; then
     fi
 fi
 
+# --- Release pinning ---
+# Resolve which tag of the home-server repo to deploy. Priority:
+#   1. -r <tag> CLI flag (explicit operator choice)
+#   2. home_server_release in inventory (rebuild — stay on the same
+#      release that was installed last time, so `add service` and
+#      `upgrade` are bounded to that major)
+#   3. latest stable v* tag from the cloned repo (fresh install)
+#   4. main (no tags yet — graceful fallback)
+#
+# The script's Step 2 clone always pulls main initially (since we
+# don't know the answer yet). Now that we have the answer, switch
+# checkout to the resolved tag.
+INVENTORY_RELEASE=$(inv_get home_server_release)
+if [[ -n "$RELEASE_FLAG" ]]; then
+    HOME_SERVER_RELEASE="$RELEASE_FLAG"
+    info "Release tag (from -r): $HOME_SERVER_RELEASE"
+elif [[ -n "$INVENTORY_RELEASE" ]]; then
+    HOME_SERVER_RELEASE="$INVENTORY_RELEASE"
+    info "Release tag (from inventory): $HOME_SERVER_RELEASE"
+else
+    # Fresh install — pick the latest stable v* tag, or main if no tags exist.
+    (cd "$INSTALL_DIR" && git fetch --tags --quiet 2>/dev/null) || true
+    LATEST_TAG=$(cd "$INSTALL_DIR" && git tag --list 'v*' --sort=-v:refname 2>/dev/null | head -1)
+    LATEST_TAG=${LATEST_TAG:-main}
+    if [[ "$YES_FLAG" == "true" ]]; then
+        HOME_SERVER_RELEASE="$LATEST_TAG"
+        info "Release tag (auto-detected): $HOME_SERVER_RELEASE"
+    else
+        ask "Release tag to install [$LATEST_TAG]:"
+        read -r release_input
+        HOME_SERVER_RELEASE="${release_input:-$LATEST_TAG}"
+    fi
+fi
+
+# Switch the home-server checkout to the resolved tag.
+# `git -C` runs git in that dir without polluting cwd.
+if [[ "$HOME_SERVER_RELEASE" != "main" ]]; then
+    if ! git -C "$INSTALL_DIR" rev-parse --verify "$HOME_SERVER_RELEASE" &>/dev/null; then
+        git -C "$INSTALL_DIR" fetch --tags --quiet || true
+    fi
+    if git -C "$INSTALL_DIR" checkout --quiet "$HOME_SERVER_RELEASE" 2>/dev/null; then
+        ok "home-server checked out at $HOME_SERVER_RELEASE"
+    else
+        err "Failed to check out $HOME_SERVER_RELEASE — tag doesn't exist."
+        err "Available tags: $(git -C "$INSTALL_DIR" tag --list 'v*' --sort=-v:refname | tr '\n' ' ')"
+        exit 1
+    fi
+else
+    info "Staying on main (no release tag pinned)."
+fi
+
 # Server IP is detected fresh every run (DHCP may have moved the host
 # between rebuilds; we don't want to PATCH a stale A record).
 SERVER_IP=$(hostname -I 2>/dev/null | awk '{print $1}')
@@ -869,6 +925,12 @@ cat << YAML
 # Pin the system hostname so os-base never renames the box on a
 # re-deploy (the role's default would be inventory_hostname).
 os_base_hostname: $SERVER_HOSTNAME
+
+# home-server release pinned for this host. Used by setup.sh to
+# decide which tag to check out on rebuild + add-service flows
+# (so an `add` doesn't accidentally pull in a different major).
+# Override at install time with \`setup.sh -r <tag>\`.
+home_server_release: $HOME_SERVER_RELEASE
 
 ##################################################################################################
 ### Services to deploy on this host (used by playbooks/site.yml)
