@@ -1,0 +1,34 @@
+# See roles/pihole/meta/install.yml for schema reference.
+
+display_name: "Music Assistant"
+description: "Music server with built-in Squeezelite/AirPlay/Cast player support"
+
+inventory_vars:
+  - name: music_assistant_squeezelite_mac
+    type: secret
+    # SlimProto identifies players by MAC, so this needs to be stable
+    # across redeploys. First octet 0x02 = locally-administered unicast.
+    generator: "printf '02:%s\n' \"$(openssl rand -hex 5 | sed 's/\\(..\\)/\\1:/g;s/:$//')\""
+    vault: false  # not sensitive; stored plaintext for readability
+
+side_effects:
+  caddy_reverse_proxy_services:
+    - { subdomain: music, port: 8095 }
+  my_linux_users:
+    music-assistant:
+      uid: 1014
+      gid: 1014
+
+playbooks:
+  - playbooks/music-assistant.yml
+  - playbooks/caddy.yml
+  - playbooks/dashboard.yml
+
+on_remove:
+  inventory_vars_to_clear:
+    - music_assistant_squeezelite_mac
+  volumes_to_preserve_unless_purge:
+    - music-assistant-data
+
+# Manual first-run setup at https://music.<caddy_domain>/setup is
+# required after deploy — see issue #66 for the automation tracker.

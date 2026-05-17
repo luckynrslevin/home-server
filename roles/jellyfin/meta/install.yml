@@ -1,0 +1,30 @@
+# See roles/pihole/meta/install.yml for schema reference.
+
+display_name: "Jellyfin"
+description: "Media server for movies, TV and music"
+
+inventory_vars:
+  - name: jellyfin_admin_password
+    type: secret
+    generator: "openssl rand -base64 24"
+    vault: true
+
+side_effects:
+  caddy_reverse_proxy_services:
+    - { subdomain: jellyfin, port: 8096 }
+  my_linux_users:
+    jellyfin:
+      uid: 1012
+      gid: 1012
+
+playbooks:
+  - playbooks/jellyfin.yml
+  - playbooks/caddy.yml
+  - playbooks/dashboard.yml
+
+on_remove:
+  inventory_vars_to_clear:
+    - jellyfin_admin_password
+  volumes_to_preserve_unless_purge:
+    - jellyfin-config
+    - jellyfin-media

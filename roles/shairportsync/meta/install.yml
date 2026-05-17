@@ -1,0 +1,26 @@
+# See roles/pihole/meta/install.yml for schema reference.
+
+display_name: "Shairport-sync"
+description: "AirPlay 2 audio receiver — rootful, needs host audio device"
+
+# Rootful container — runs as root because shairport needs host
+# audio/network access. No HTTPS UI, so no Caddy entry.
+rootful: true
+
+inventory_vars: []
+
+side_effects:
+  # No caddy entry (audio-only, no web UI).
+  # No service user — runs as root.
+  my_linux_users:
+    shairport:
+      uid: 1001
+      gid: 1001
+
+playbooks:
+  - playbooks/shairportsync.yml
+  - playbooks/dashboard.yml
+
+on_remove:
+  inventory_vars_to_clear: []
+  volumes_to_preserve_unless_purge: []

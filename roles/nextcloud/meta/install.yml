@@ -1,0 +1,36 @@
+# See roles/pihole/meta/install.yml for schema reference.
+
+display_name: "Nextcloud"
+description: "Files + contacts; also acts as OIDC identity provider for other apps (e.g. Paperless, see docs/SSO-Bootstrap.md)"
+
+inventory_vars:
+  - name: nextcloud_admin_password
+    type: secret
+    generator: "openssl rand -base64 24"
+    vault: true
+  - name: nextcloud_db_password
+    type: secret
+    generator: "openssl rand -base64 24"
+    vault: true
+
+side_effects:
+  caddy_reverse_proxy_services:
+    - { subdomain: cloud, port: 8090 }
+  my_linux_users:
+    nextcloud:
+      uid: 1015
+      gid: 1015
+
+playbooks:
+  - playbooks/nextcloud.yml
+  - playbooks/caddy.yml
+  - playbooks/dashboard.yml
+
+on_remove:
+  inventory_vars_to_clear:
+    - nextcloud_admin_password
+    - nextcloud_db_password
+  volumes_to_preserve_unless_purge:
+    - nextcloud-config
+    - nextcloud-data
+    - nextcloud-postgres-data

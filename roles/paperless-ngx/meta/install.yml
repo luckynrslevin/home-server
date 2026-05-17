@@ -1,0 +1,49 @@
+# See roles/pihole/meta/install.yml for schema reference.
+
+display_name: "Paperless-NGX"
+description: "Document OCR + tagging + search. Optional SSO via Nextcloud (see docs/SSO-Bootstrap.md)."
+
+inventory_vars:
+  - name: paperless_url
+    type: computed
+    template: "https://paperless.{{ caddy_domain }}"
+  - name: paperless_secret_key
+    type: secret
+    generator: "openssl rand -hex 32"
+    vault: true
+  - name: paperless_db_password
+    type: secret
+    generator: "openssl rand -base64 24"
+    vault: true
+  - name: paperless_admin_password
+    type: secret
+    generator: "openssl rand -base64 24"
+    vault: true
+
+side_effects:
+  caddy_reverse_proxy_services:
+    - { subdomain: paperless, port: 8000 }
+  my_linux_users:
+    paperless:
+      uid: 1007
+      gid: 1007
+
+playbooks:
+  - playbooks/paperless-ngx.yml
+  - playbooks/caddy.yml
+  - playbooks/dashboard.yml
+
+on_remove:
+  inventory_vars_to_clear:
+    - paperless_url
+    - paperless_secret_key
+    - paperless_db_password
+    - paperless_admin_password
+    # paperless_oidc_* deliberately not listed — if the operator has
+    # wired SSO via the SSO-Bootstrap walkthrough, removing Paperless
+    # leaves the (now-orphaned) OIDC client in Nextcloud and the
+    # inventory keys for it. Operator removes those manually.
+  volumes_to_preserve_unless_purge:
+    - paperless-db-data
+    - paperless-media
+    - paperless-data
