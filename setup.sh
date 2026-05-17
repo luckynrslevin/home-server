@@ -70,15 +70,12 @@ Usage: setup.sh [VERB] [flags]
 
 Verbs:
   install      First install or interactive re-install (default).
-  add          Add a service that wasn't deployed before. [Phase 5]
-  remove       Remove a service. [Phase 6]
-  upgrade      Pull newer images + bump release tag. [Phase 3]
-  backup       Run backup now. [Phase 3]
-  restore      Restore from latest NAS backup. [Phase 3]
-  uninstall    Full wipe (today's clean-host.sh). [Phase 3]
-
-(`add` and `remove` land in Phase 5/6; for now manage services
-by editing inventory + running playbooks directly.)
+  add <svc>    Add a service that wasn't deployed before.
+  remove       Remove a service. [Phase 6 — not yet wired]
+  upgrade      Pull newer images + bump release tag within current major.
+  backup       Trigger the backup systemd service now.
+  restore      Restore from latest NAS backup.
+  uninstall    Full wipe (= scripts/clean-host.sh).
 
 Flags (for install):
   -i <url>     Private overlay repo URL (otherwise prompted).
@@ -385,8 +382,100 @@ case "$VERB" in
         info "Running clean-host (wipes containers, users, configs)..."
         exec bash "$INSTALL_DIR/scripts/clean-host.sh"
         ;;
-    add|remove)
-        err "'$VERB' is not yet wired up. Coming in Phase 5/6 of the unified-CLI work."
+    add)
+        SERVICE="${1:-}"
+        if [[ -z "$SERVICE" ]]; then
+            err "Usage: setup.sh add <service>"
+            err "Available services:"
+            for m in "$INSTALL_DIR"/roles/*/meta/install.yml; do
+                svc=$(basename "$(dirname "$(dirname "$m")")")
+                desc=$(python3 -c "import yaml; print(yaml.safe_load(open('$m')).get('description',''))" 2>/dev/null)
+                printf "  %-18s %s\n" "$svc" "$desc"
+            done
+            exit 2
+        fi
+        ensure_install_dir
+        ensure_ansible_on_path
+        META="$INSTALL_DIR/roles/$SERVICE/meta/install.yml"
+        if [[ ! -f "$META" ]]; then
+            err "Unknown service '$SERVICE' (no roles/$SERVICE/meta/install.yml)."
+            err "Run \`setup.sh add\` with no args to see available services."
+            exit 1
+        fi
+        TARGET=$(resolve_target_host)
+        cd "$INSTALL_DIR"
+        VAULT_PW_FILE="$HOME/.vaultpw"
+        if [[ ! -r "$VAULT_PW_FILE" ]]; then
+            err "$VAULT_PW_FILE not readable. Run \`setup.sh install\` first."
+            exit 1
+        fi
+        # Idempotency check: is the service already deployed?
+        if ANSIBLE_VAULT_PASSWORD_FILE="$VAULT_PW_FILE" \
+                ansible-inventory --host "$TARGET" 2>/dev/null \
+                | python3 -c "import json,sys; d=json.load(sys.stdin); sys.exit(0 if '$SERVICE' in (d.get('deploy_services') or []) else 1)"; then
+            warn "$SERVICE is already in deploy_services for $TARGET."
+            warn "Use \`setup.sh upgrade\` to re-deploy with latest images."
+            exit 1
+        fi
+        # Ensure ruamel.yaml is available for the merge step.
+        # Step 1 of `install` adds python3-ruamel-yaml via dnf; this
+        # lazy install covers hosts that ran install before that line
+        # landed (Phase 5b).
+        if ! python3 -c "import ruamel.yaml" 2>/dev/null; then
+            info "Installing python3-ruamel-yaml for inventory merge (one-time)..."
+            sudo dnf install -y python3-ruamel-yaml &>/dev/null
+            if ! python3 -c "import ruamel.yaml" 2>/dev/null; then
+                err "Failed to install python3-ruamel-yaml. Required for setup.sh add."
+                exit 1
+            fi
+        fi
+        info "Resolving inventory updates for $SERVICE from $META..."
+        UPDATE_JSON=$(mktemp --suffix=.json)
+        # shellcheck disable=SC2064
+        trap "rm -f $UPDATE_JSON" EXIT
+        if ! python3 scripts/build_add_update.py \
+                --meta "$META" \
+                --service "$SERVICE" \
+                --vault-password-file "$VAULT_PW_FILE" \
+                --target-host "$TARGET" \
+                --inventory-dir "$INSTALL_DIR/inventory" \
+                --output "$UPDATE_JSON"; then
+            err "Failed to build update spec for $SERVICE."
+            exit 1
+        fi
+        INV_FILE="$INSTALL_DIR/inventory/host_vars/$TARGET/main.yml"
+        info "Merging into $INV_FILE..."
+        if ! python3 scripts/inventory_merge.py \
+                --inventory "$INV_FILE" \
+                --vault-password-file "$VAULT_PW_FILE" \
+                --update "$UPDATE_JSON" \
+                --mode add; then
+            err "Failed to merge inventory."
+            exit 1
+        fi
+        ok "Inventory updated."
+        # Run the role's playbooks
+        info "Deploying $SERVICE (running role playbooks)..."
+        # shellcheck disable=SC2046
+        while IFS= read -r pb; do
+            [[ -z "$pb" ]] && continue
+            info "  → $pb"
+            if ! ansible-playbook "$pb" --limit "$TARGET"; then
+                err "Playbook $pb failed. Inventory has been updated but"
+                err "the role isn't fully deployed. Investigate, then re-run:"
+                err "  cd $INSTALL_DIR && ansible-playbook $pb --limit $TARGET"
+                exit 1
+            fi
+        done < <(python3 -c "import yaml; [print(pb) for pb in yaml.safe_load(open('$META'))['playbooks']]")
+        ok "$SERVICE deployed."
+        echo
+        info "Persist the inventory update to the overlay:"
+        echo "  cd $HOME/home-server-private"
+        echo "  git add -A && git commit -m '$TARGET: add $SERVICE' && git push"
+        exit 0
+        ;;
+    remove)
+        err "'remove' is not yet wired up. Coming in Phase 6."
         exit 2
         ;;
 esac
@@ -427,8 +516,8 @@ if [[ "${ID:-}" =~ ^(almalinux|rocky|centos|rhel)$ ]]; then
     PIPX_PYTHON_ARG=(--python python3.11)
 fi
 
-sudo dnf install -y podman git python3-pyyaml pipx &>/dev/null \
-    || sudo dnf install -y podman git python3-pyyaml pipx
+sudo dnf install -y podman git python3-pyyaml python3-ruamel-yaml pipx &>/dev/null \
+    || sudo dnf install -y podman git python3-pyyaml python3-ruamel-yaml pipx
 
 # Hard-fail if pipx still isn't on PATH — usually means EPEL is
 # misconfigured on AL/Rocky.
