@@ -18,12 +18,40 @@
 # ============================================================================
 set -euo pipefail
 
+# --- Subcommand dispatch ---
+# setup.sh is a multi-verb CLI. Today only `install` is wired up;
+# other verbs ship in later phases (Phase 3-6) of the unified-CLI
+# work. No-arg invocation defaults to `install` to preserve the
+# Quickstart `curl | bash setup.sh` UX.
+VERB="install"
+if [[ "${1:-}" =~ ^(install|add|remove|upgrade|backup|restore|uninstall)$ ]]; then
+    VERB="$1"
+    shift
+fi
+
+case "$VERB" in
+    install)
+        # Falls through to the rest of the script — today's full flow.
+        ;;
+    add|remove|upgrade|backup|restore|uninstall)
+        echo "ERROR: '$VERB' is not yet wired up." >&2
+        echo "       Available today: setup.sh install (the default)." >&2
+        echo "       Other verbs land in later phases of the unified-CLI work:" >&2
+        echo "         add / remove   — Phase 5/6 (per-service install wizard)" >&2
+        echo "         upgrade        — Phase 3 (image refresh + tag bump within major)" >&2
+        echo "         backup/restore — Phase 3 (wraps playbooks/backup.yml + restore.yml)" >&2
+        echo "         uninstall      — Phase 3 (wraps scripts/clean-host.sh)" >&2
+        echo "       For now use the underlying playbooks/scripts directly." >&2
+        exit 2
+        ;;
+esac
+
 # --- CLI flags ---
-# Optional non-interactive overrides. Any flag omitted falls back to
-# the interactive prompt later in the script. With -y / --yes the
-# script skips every prompt and uses inventory values (rebuild) or
-# generated defaults (fresh install) — fails fast on a missing
-# required value.
+# Optional non-interactive overrides for `install`. Any flag omitted
+# falls back to the interactive prompt later in the script. With
+# -y / --yes the script skips every prompt and uses inventory values
+# (rebuild) or generated defaults (fresh install) — fails fast on a
+# missing required value.
 OVERLAY_URL_FLAG=""
 HOSTNAME_FLAG=""
 VAULT_PW_FLAG_FILE=""
@@ -51,8 +79,22 @@ while getopts ":i:h:v:r:yH" opt; do
         y) YES_FLAG=true ;;
         H)
             cat <<'USAGE'
-Usage: setup.sh [-i <overlay-url>] [-h <hostname>] [-v <vault-pw-file>] [-r <tag>] [-y|--yes]
+Usage: setup.sh [VERB] [flags]
 
+Verbs:
+  install      First install or interactive re-install (default).
+  add          Add a service that wasn't deployed before. [Phase 5]
+  remove       Remove a service. [Phase 6]
+  upgrade      Pull newer images + bump release tag. [Phase 3]
+  backup       Run backup now. [Phase 3]
+  restore      Restore from latest NAS backup. [Phase 3]
+  uninstall    Full wipe (today's clean-host.sh). [Phase 3]
+
+(Only `install` is wired up today. Other verbs land in later
+phases of the unified-CLI work; use the underlying ansible
+playbooks or scripts/ until then.)
+
+Flags (for install):
   -i <url>     Private overlay repo URL (otherwise prompted).
   -h <name>    Server hostname (otherwise defaults to `hostname -s`).
   -v <file>    Path to a file containing the overlay vault password
@@ -63,6 +105,12 @@ Usage: setup.sh [-i <overlay-url>] [-h <hostname>] [-v <vault-pw-file>] [-r <tag
   -y, --yes    Accept all defaults; skip every prompt. Fails fast if
                any required value is missing.
   --help       This help.
+
+Examples:
+  bash setup.sh                              # interactive first install
+  bash setup.sh -i git@github.com:you/overlay.git
+                                             # first install with overlay URL
+  bash setup.sh -y                           # rebuild non-interactive
 USAGE
             exit 0
             ;;
