@@ -140,6 +140,17 @@ def _append_seq_preserving_comments(seq, item):
         seq.ca.items[len(seq) - 1] = saved
 
 
+def _is_commented_collection(node):
+    """True if <node> is a ruamel CommentedMap or CommentedSeq with items.
+    TaggedScalar (e.g. !vault-wrapped strings) has .ca but is NOT a collection;
+    len() on it raises TypeError."""
+    if not isinstance(node, (CommentedMap, CommentedSeq)):
+        return False
+    try:
+        return len(node) > 0
+    except TypeError:
+        return False
+
 def _deepest_last_path(node):
     """Walk into the LAST entry of a CommentedMap/CommentedSeq recursively
     until we reach a scalar (or an empty/non-CommentedSeq value). Return
@@ -155,13 +166,11 @@ def _deepest_last_path(node):
     """
     path = []
     while True:
-        if hasattr(node, "items") and hasattr(node, "ca") and len(node) > 0 and hasattr(node, "keys"):
-            # CommentedMap
+        if isinstance(node, CommentedMap) and len(node) > 0:
             last_key = list(node.keys())[-1]
             path.append((node, last_key))
             node = node[last_key]
-        elif hasattr(node, "ca") and hasattr(node, "__len__") and not hasattr(node, "keys") and len(node) > 0:
-            # CommentedSeq
+        elif isinstance(node, CommentedSeq) and len(node) > 0:
             last_idx = len(node) - 1
             path.append((node, last_idx))
             node = node[last_idx]
@@ -225,7 +234,7 @@ def _set_dict_entry_preserving_comments(mapping, key, value):
         # collection, walk into it to attach at the deepest last item;
         # otherwise attach directly to the new key.
         new_value = mapping[key]
-        if hasattr(new_value, "ca") and len(new_value) > 0:
+        if _is_commented_collection(new_value):
             _attach_to_deepest_last(new_value, saved)
         else:
             mapping.ca.items[key] = saved
@@ -280,7 +289,7 @@ def _remove_dict_entry_preserving_comments(mapping, key):
     if saved is not None and len(mapping) > 0:
         new_last_key = list(mapping.keys())[-1]
         new_last_value = mapping[new_last_key]
-        if hasattr(new_last_value, "ca") and len(new_last_value) > 0:
+        if _is_commented_collection(new_last_value):
             _attach_to_deepest_last(new_last_value, saved)
         else:
             mapping.ca.items[new_last_key] = saved
@@ -304,7 +313,7 @@ def _remove_seq_item_preserving_comments(seq, item):
     if saved is not None and len(seq) > 0:
         new_last_idx = len(seq) - 1
         new_last = seq[new_last_idx]
-        if hasattr(new_last, "ca") and len(new_last) > 0:
+        if _is_commented_collection(new_last):
             _attach_to_deepest_last(new_last, saved)
         else:
             seq.ca.items[new_last_idx] = saved
