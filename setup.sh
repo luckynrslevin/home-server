@@ -1127,6 +1127,7 @@ echo
 
 declare -A SERVICES=(
     [dashboard]="Status dashboard showing all services"
+    [backup]="Nightly backup to a NAS via NFS (needs LAN-reachable NAS)"
     [pihole]="Pi-hole DNS ad-blocker"
     [entephoto]="Ente Photos (self-hosted photo storage)"
     [paperless-ngx]="Paperless-NGX document management (OCR + search)"
@@ -1138,9 +1139,10 @@ declare -A SERVICES=(
 
 SELECTED_SERVICES=(caddy nextcloud)
 
-SERVICE_ORDER=(dashboard pihole entephoto paperless-ngx syncthing shairportsync jellyfin music-assistant)
+SERVICE_ORDER=(dashboard backup pihole entephoto paperless-ngx syncthing shairportsync jellyfin music-assistant)
 declare -A SERVICE_DEFAULT_YES=(
     [dashboard]=1
+    [backup]=1
     [pihole]=1
     [entephoto]=1
     [paperless-ngx]=1
@@ -1195,6 +1197,29 @@ is_selected() {
     done
     return 1
 }
+
+# --- NAS prompts (only if backup is selected) ---
+if is_selected backup; then
+    echo
+    echo -e "${BOLD}--- Backup NAS ---${NC}"
+    echo
+    echo "Backup is a nightly rsync/tar/pgdump to a LAN-reachable NAS"
+    echo "via NFS. You need:"
+    echo "  - The NAS reachable on your LAN (DHCP-reserved IP)."
+    echo "  - An NFS share exported to this host's IP, with subdirs"
+    echo "    matching each service that backs up via rsync (\`backup-pihole\`,"
+    echo "    \`backup-syncthing\`, etc. — see roles/backup/README.md)."
+    echo
+    prompt_default backup_nas_hostname "NAS hostname" "nas"
+    prompt_default backup_nas_ip       "NAS IP address" ""
+    if [[ -z "$backup_nas_ip" ]]; then
+        err "NAS IP is required when backup is selected."
+        err "(Set up a DHCP reservation on your router, then re-run.)"
+        exit 1
+    fi
+    prompt_default backup_nas_volume   "NAS share root path" "/volume1"
+    prompt_default backup_time         "Daily backup time (HH:MM:SS)" "02:00:00"
+fi
 
 # ============================================================================
 # Step 6: Generate configuration files
@@ -1505,6 +1530,16 @@ if [[ -n "${SMTP_HOST:-}" ]]; then
     echo "smtp_encryption: \"$SMTP_ENCRYPTION\""
     echo "smtp_from: \"$SMTP_FROM\""
     vault_encrypt "$SMTP_PASSWORD" "smtp_password"
+fi
+
+if is_selected backup; then
+    echo ""
+    echo "### Backup — nightly rsync/tar/pgdump to a LAN NAS via NFS"
+    echo "# See roles/backup/README.md for NAS-side prep (exports + dirs)."
+    echo "backup_nas_hostname: \"$backup_nas_hostname\""
+    echo "backup_nas_ip: \"$backup_nas_ip\""
+    echo "backup_nas_volume: \"$backup_nas_volume\""
+    echo "backup_time: \"$backup_time\""
 fi
 echo "##################################################################################################"
 } > inventory/host_vars/$SERVER_HOSTNAME/main.yml

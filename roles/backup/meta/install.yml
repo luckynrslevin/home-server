@@ -1,0 +1,42 @@
+# See roles/pihole/meta/install.yml for schema reference.
+
+display_name: "Backup"
+description: "Nightly rsync/tar/pgdump of every deployed service's data to a LAN NAS via NFS"
+
+# NAS connection info — no sensible defaults. Operator must supply.
+# `backup_nas_ip` has no default (requires LAN-specific value);
+# the others have role defaults that work for a typical Synology
+# layout but can be overridden.
+inventory_vars:
+  - name: backup_nas_hostname
+    type: config
+    prompt: "NAS hostname"
+    default: "nas"
+  - name: backup_nas_ip
+    type: config
+    prompt: "NAS IP address"
+    default: ""
+  - name: backup_nas_volume
+    type: config
+    prompt: "NAS share root path"
+    default: "/volume1"
+  - name: backup_time
+    type: config
+    prompt: "Daily backup time (HH:MM:SS)"
+    default: "02:00:00"
+
+# No side-effects: no web subdomain (CLI-only), no service user
+# (runs as root via systemd service).
+side_effects: {}
+
+playbooks:
+  - playbooks/backup.yml
+  - playbooks/dashboard.yml  # refresh tile (if backup adds one)
+
+on_remove:
+  inventory_vars_to_clear:
+    # NAS coordinates are host-config (multiple services might want
+    # them in the future) so we KEEP them on remove. Drop manually
+    # if needed.
+    []
+  volumes_to_preserve_unless_purge: []
