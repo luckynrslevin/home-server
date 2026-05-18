@@ -108,7 +108,7 @@ done
 # Detect this and download + run from a file instead.
 # Non-install verbs (backup, restore, upgrade, uninstall, add, remove)
 # are non-interactive and don't need a tty.
-if [[ "$VERB" == "install" && ! -t 0 ]]; then
+if [[ "$VERB" == "install" && "$YES_FLAG" != "true" && ! -t 0 ]]; then
     SELF_PATH="/tmp/home-server-setup.sh"
     curl -fsSL "https://raw.githubusercontent.com/luckynrslevin/home-server/main/setup.sh" \
         -o "$SELF_PATH" 2>/dev/null
