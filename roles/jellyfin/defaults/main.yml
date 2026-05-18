@@ -15,7 +15,7 @@ jellyfin_time_zone: "Europe/Berlin"
 # Set jellyfin_admin_password from a vault-encrypted secret in your
 # private inventory (setup.sh generates this automatically). Leaving
 # it empty disables the postinstall step.
-jellyfin_admin_user: jellyadmin
+jellyfin_admin_user: jellyfinadmin
 jellyfin_admin_password: ""
 
 # Default locale for the metadata wizard. Override in host_vars when
