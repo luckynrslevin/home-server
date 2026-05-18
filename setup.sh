@@ -676,8 +676,8 @@ if [[ "${ID:-}" =~ ^(almalinux|rocky|centos|rhel)$ ]]; then
     PIPX_PYTHON_ARG=(--python python3.11)
 fi
 
-sudo dnf install -y podman git python3-pyyaml python3-ruamel-yaml pipx &>/dev/null \
-    || sudo dnf install -y podman git python3-pyyaml python3-ruamel-yaml pipx
+sudo dnf install -y podman git openssl python3-pyyaml python3-ruamel-yaml pipx &>/dev/null \
+    || sudo dnf install -y podman git openssl python3-pyyaml python3-ruamel-yaml pipx
 
 # Hard-fail if pipx still isn't on PATH — usually means EPEL is
 # misconfigured on AL/Rocky.
