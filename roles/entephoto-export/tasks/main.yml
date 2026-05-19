@@ -79,7 +79,7 @@
   ansible.builtin.set_fact:
     entephoto_export_role_path: "{{ role_path }}"
 
-- name: Deploy entephoto-export quadlet (timer + container)
+- name: Deploy entephoto-export quadlet (container + volume only)
   ansible.builtin.include_role:
     name: luckynrslevin.podman_quadlet
   vars:
@@ -88,8 +88,46 @@
     podman_quadlet_files_templates_src_path: "{{ entephoto_export_role_path }}"
     podman_quadlet_file_names:
       - entephoto-export.container.j2
-      - entephoto-export.timer.j2
       - entephoto-export-state.volume
+
+# The .timer is a plain systemd user unit, NOT a quadlet artifact —
+# luckynrslevin.podman_quadlet only handles .container/.pod/.volume/
+# .network. Template it directly into ~/.config/systemd/user/ and
+# enable via the user manager.
+- name: Ensure user systemd unit dir exists
+  become: true
+  become_user: entephoto
+  ansible.builtin.file:
+    path: "/home/entephoto/.config/systemd/user"
+    state: directory
+    mode: "0755"
+
+- name: Deploy entephoto-export systemd timer
+  become: true
+  become_user: entephoto
+  ansible.builtin.template:
+    src: quadlets/entephoto-export.timer.j2
+    dest: "/home/entephoto/.config/systemd/user/entephoto-export.timer"
+    mode: "0644"
+  register: _entephoto_export_timer
+
+- name: Reload systemd user daemon (timer added/changed)  # noqa: no-changed-when
+  become: true
+  ansible.builtin.command:
+    cmd: >
+      sudo -u entephoto XDG_RUNTIME_DIR=/run/user/{{ my_linux_users.entephoto.uid }}
+      DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/{{ my_linux_users.entephoto.uid }}/bus
+      systemctl --user daemon-reload
+  when: _entephoto_export_timer is changed
+
+- name: Enable + start entephoto-export.timer  # noqa: no-changed-when
+  become: true
+  ansible.builtin.command:
+    cmd: >
+      sudo -u entephoto XDG_RUNTIME_DIR=/run/user/{{ my_linux_users.entephoto.uid }}
+      DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/{{ my_linux_users.entephoto.uid }}/bus
+      systemctl --user enable --now entephoto-export.timer
+  changed_when: false
 
 # First-run bootstrap — drive `ente account add` non-interactively
 # using credentials from vault inventory. Skipped if state volume
