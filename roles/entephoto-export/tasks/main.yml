@@ -154,6 +154,18 @@
       systemctl --user enable --now entephoto-export.timer
   changed_when: false
 
+# CLI defaults to api.ente.com. Without this config it talks to the
+# public service and `account add` returns 401 (the user doesn't
+# exist there). Templating into the state volume's _data dir so
+# every podman run that mounts the volume picks it up.
+- name: Render Ente CLI config.yaml (sets self-hosted endpoint)
+  become: true
+  become_user: entephoto
+  ansible.builtin.template:
+    src: cli-config.yaml.j2
+    dest: "/home/entephoto/.local/share/containers/storage/volumes/entephoto-export-state/_data/config.yaml"
+    mode: "0644"
+
 # First-run bootstrap — drive `ente account add` non-interactively
 # using credentials from vault inventory. Skipped if state volume
 # already has auth seeded (idempotent re-runs) or if credentials
