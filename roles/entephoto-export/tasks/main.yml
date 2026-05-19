@@ -204,7 +204,7 @@
   # CLI prints "Configured accounts: 0" with rc=0 when none seeded.
   # Re-runs after a successful bootstrap show a non-zero count and
   # the actual email — skip the bootstrap in that case.
-  when: entephoto_export_account_email | length > 0
-        and entephoto_export_account_password | length > 0
-        and (_ente_auth_check.rc != 0
-             or 'Configured accounts: 0' in (_ente_auth_check.stdout | default('')))
+  when:
+    - entephoto_export_account_email | length > 0
+    - entephoto_export_account_password | length > 0
+    - _ente_auth_check.rc != 0 or 'Configured accounts: 0' in (_ente_auth_check.stdout | default(''))
