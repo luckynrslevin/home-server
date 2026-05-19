@@ -188,6 +188,7 @@
   ansible.builtin.command:
     cmd: >-
       podman run --rm
+      --network host
       -v entephoto-export-state:/data
       -e ENTE_CLI_CONFIG_DIR=/data
       -e ENTE_CLI_SECRETS_PATH=/data/secrets.txt
@@ -225,6 +226,7 @@
     command: >-
       timeout 120
       podman run --rm -it
+      --network host
       -v entephoto-export-state:/data
       -e ENTE_CLI_CONFIG_DIR=/data
       -e ENTE_CLI_SECRETS_PATH=/data/secrets.txt
