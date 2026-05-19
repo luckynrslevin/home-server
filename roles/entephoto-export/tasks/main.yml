@@ -1,7 +1,10 @@
 ---
 # `ansible.builtin.expect` (used for non-interactive `ente account add`)
-# needs python3-pexpect on the target.
-- name: Ensure python3-pexpect is present (for expect bootstrap)
+# imports pexpect on the target. The system rpm `python3-pexpect` lands
+# in /usr/bin/python3 (3.9 on AL9, 3.13 on Fedora 43), so install it
+# and pin the bootstrap task's interpreter to that same python. Avoids
+# pip-installing into a parallel 3.11.
+- name: Ensure python3-pexpect rpm is installed
   become: true
   ansible.builtin.package:
     name: python3-pexpect
@@ -174,6 +177,12 @@
 - name: Bootstrap Ente CLI account (first-run only) # noqa: no-changed-when
   become: true
   become_user: entephoto
+  vars:
+    # python3-pexpect is installed for the system /usr/bin/python3,
+    # not the parallel /usr/bin/python3.11 that ansible auto-selects
+    # when present. Pin this task to /usr/bin/python3 so the expect
+    # module's `import pexpect` succeeds.
+    ansible_python_interpreter: /usr/bin/python3
   ansible.builtin.expect:
     command: >-
       podman run --rm -i
