@@ -19,6 +19,10 @@ Volume=entephoto-export-state.volume:/data
 Volume={{ entephoto_export_nas_path }}:/export:Z
 
 Environment=ENTE_CLI_CONFIG_DIR=/data
+# Ente CLI defaults to OS keyring for secrets, which requires DBus in
+# the container. Headless deployments use a file instead — the CLI
+# auto-creates this file with a random 32-char key on first run.
+Environment=ENTE_CLI_SECRETS_PATH=/data/secrets.txt
 
 # Upstream Containerfile sets CMD=./ente-cli with no ENTRYPOINT.
 # Override the entrypoint so Exec= arguments are the CLI subcommand,

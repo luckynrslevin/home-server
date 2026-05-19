@@ -166,6 +166,7 @@
       podman run --rm
       -v entephoto-export-state:/data
       -e ENTE_CLI_CONFIG_DIR=/data
+      -e ENTE_CLI_SECRETS_PATH=/data/secrets.txt
       --entrypoint ./ente-cli
       {{ entephoto_export_image }}
       account list
@@ -189,6 +190,7 @@
       podman run --rm -i
       -v entephoto-export-state:/data
       -e ENTE_CLI_CONFIG_DIR=/data
+      -e ENTE_CLI_SECRETS_PATH=/data/secrets.txt
       --entrypoint ./ente-cli
       {{ entephoto_export_image }}
       account add
