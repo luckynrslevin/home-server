@@ -176,6 +176,14 @@
   when: entephoto_export_account_email | length > 0
         and entephoto_export_account_password | length > 0
 
+- name: Decide whether bootstrap is needed
+  ansible.builtin.set_fact:
+    _ente_bootstrap_needed: >-
+      {{ entephoto_export_account_email | length > 0
+         and entephoto_export_account_password | length > 0
+         and (_ente_auth_check.rc | default(1) != 0
+              or 'Configured accounts: 0' in (_ente_auth_check.stdout | default(''))) }}
+
 - name: Bootstrap Ente CLI account (first-run only) # noqa: no-changed-when
   become: true
   become_user: entephoto
@@ -200,11 +208,7 @@
       "(?i)(enter exportDir|export.*directory).*": "/export"
       "(?i)(enter password|password.*).*": "{{ entephoto_export_account_password }}"
     timeout: 60
-  no_log: true
-  # CLI prints "Configured accounts: 0" with rc=0 when none seeded.
-  # Re-runs after a successful bootstrap show a non-zero count and
-  # the actual email — skip the bootstrap in that case.
-  when:
-    - entephoto_export_account_email | length > 0
-    - entephoto_export_account_password | length > 0
-    - _ente_auth_check.rc != 0 or 'Configured accounts: 0' in (_ente_auth_check.stdout | default(''))
+  # TEMPORARY: no_log disabled while iterating on expect patterns.
+  # Re-enable before merge.
+  no_log: false
+  when: _ente_bootstrap_needed | bool
