@@ -24,7 +24,7 @@ set -euo pipefail
 # work. No-arg invocation defaults to `install` to preserve the
 # Quickstart `curl | bash setup.sh` UX.
 VERB="install"
-if [[ "${1:-}" =~ ^(install|add|remove|upgrade|backup|restore|uninstall)$ ]]; then
+if [[ "${1:-}" =~ ^(install|add|remove|upgrade|backup|restore|uninstall|secret)$ ]]; then
     VERB="$1"
     shift
 fi
@@ -418,6 +418,37 @@ PY
         info "Running clean-host (wipes containers, users, configs)..."
         exec bash "$INSTALL_DIR/scripts/clean-host.sh"
         ;;
+    secret)
+        # setup.sh secret <key>  →  decrypt and print an inventory secret.
+        # Useful for recovering an operator-supplied secret (e.g. an
+        # account password) that's been vault-encrypted into inventory.
+        KEY="${1:-}"
+        if [[ -z "$KEY" ]]; then
+            err "Usage: setup.sh secret <inventory-key>"
+            err "Example: setup.sh secret entephoto_export_account_password"
+            exit 2
+        fi
+        ensure_install_dir
+        ensure_ansible_on_path
+        cd "$INSTALL_DIR"
+        VAULT_PW_FILE="$HOME/.vaultpw"
+        if [[ ! -r "$VAULT_PW_FILE" ]]; then
+            err "$VAULT_PW_FILE not readable. Run \`setup.sh install\` first."
+            exit 1
+        fi
+        TARGET=$(resolve_target_host)
+        # inv_get reads $EXISTING_VARS_JSON, populate it from inventory first.
+        EXISTING_VARS_JSON=$(ANSIBLE_VAULT_PASSWORD_FILE="$VAULT_PW_FILE" \
+            ansible-inventory --host "$TARGET" 2>/dev/null) || EXISTING_VARS_JSON='{}'
+        value=$(inv_get "$KEY")
+        if [[ -z "$value" ]]; then
+            err "Key '$KEY' not found in inventory for $TARGET (or empty)."
+            exit 1
+        fi
+        # Plain stdout so the value pipes cleanly into other tools.
+        printf '%s\n' "$value"
+        exit 0
+        ;;
     add)
         SERVICE="${1:-}"
         if [[ -z "$SERVICE" ]]; then
@@ -467,17 +498,67 @@ PY
         fi
         info "Resolving inventory updates for $SERVICE from $META..."
         UPDATE_JSON=$(mktemp --suffix=.json)
+        PROMPTS_TXT=$(mktemp --suffix=.txt)
         # shellcheck disable=SC2064
-        trap "rm -f $UPDATE_JSON" EXIT
+        trap "rm -f $UPDATE_JSON $PROMPTS_TXT" EXIT
+        PROMPTED_ARGS=()
+        # Discovery pass: build_add_update.py exits 3 with PROMPTS_NEEDED
+        # on stdout if the role declares `secret_prompt` vars. We collect
+        # operator-supplied values and re-invoke with --prompted-secrets.
         if ! python3 scripts/build_add_update.py \
                 --meta "$META" \
                 --service "$SERVICE" \
                 --vault-password-file "$VAULT_PW_FILE" \
                 --target-host "$TARGET" \
                 --inventory-dir "$INSTALL_DIR/inventory" \
-                --output "$UPDATE_JSON"; then
-            err "Failed to build update spec for $SERVICE."
-            exit 1
+                --output "$UPDATE_JSON" > "$PROMPTS_TXT" 2>&1; then
+            if grep -q '^PROMPTS_NEEDED$' "$PROMPTS_TXT"; then
+                info "Role needs operator-supplied secret(s):"
+                # Inner `read` MUST come from /dev/tty — the while loop's
+                # stdin is the file we're iterating over, so a bare
+                # `read pval` would silently consume the next line of
+                # PROMPTS_TXT (the password's own metadata) as the user's
+                # input. /dev/tty bypasses the redirect.
+                while IFS=$'\t' read -r pkey ptext pconfirm pmask; do
+                    [[ "$pkey" == "PROMPTS_NEEDED" || -z "$pkey" ]] && continue
+                    # Default mask=true if the older build_add_update.py
+                    # didn't emit the field (back-compat).
+                    pmask="${pmask:-true}"
+                    read_flags="-r"
+                    [[ "$pmask" == "true" ]] && read_flags="-rs"
+                    echo
+                    ask "$ptext:"
+                    # shellcheck disable=SC2086
+                    read $read_flags pval </dev/tty
+                    [[ "$pmask" == "true" ]] && echo
+                    if [[ "$pconfirm" == "true" ]]; then
+                        ask "$ptext (confirm):"
+                        # shellcheck disable=SC2086
+                        read $read_flags pval2 </dev/tty
+                        [[ "$pmask" == "true" ]] && echo
+                        if [[ "$pval" != "$pval2" ]]; then
+                            err "Values do not match. Aborting."
+                            exit 1
+                        fi
+                    fi
+                    PROMPTED_ARGS+=("$pkey=$pval")
+                done < "$PROMPTS_TXT"
+                if ! python3 scripts/build_add_update.py \
+                        --meta "$META" \
+                        --service "$SERVICE" \
+                        --vault-password-file "$VAULT_PW_FILE" \
+                        --target-host "$TARGET" \
+                        --inventory-dir "$INSTALL_DIR/inventory" \
+                        --prompted-secrets "${PROMPTED_ARGS[@]}" \
+                        --output "$UPDATE_JSON"; then
+                    err "Failed to build update spec after collecting prompts."
+                    exit 1
+                fi
+            else
+                err "Failed to build update spec for $SERVICE."
+                cat "$PROMPTS_TXT" >&2
+                exit 1
+            fi
         fi
         INV_FILE="$INSTALL_DIR/inventory/host_vars/$TARGET/main.yml"
         info "Merging into $INV_FILE..."

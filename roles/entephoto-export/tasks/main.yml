@@ -1,0 +1,284 @@
+---
+# `ansible.builtin.expect` (used for non-interactive `ente account add`)
+# imports pexpect on the target. The system rpm `python3-pexpect` lands
+# in /usr/bin/python3 (3.9 on AL9, 3.13 on Fedora 43), so install it
+# and pin the bootstrap task's interpreter to that same python. Avoids
+# pip-installing into a parallel 3.11.
+- name: Ensure python3-pexpect rpm is installed
+  become: true
+  ansible.builtin.package:
+    name: python3-pexpect
+    state: present
+
+- name: Ensure rootless user group exists
+  ansible.builtin.group:
+    name: entephoto
+    gid: "{{ my_linux_users.entephoto.gid }}"
+    state: present
+
+- name: Ensure rootless user exists
+  ansible.builtin.user:
+    name: entephoto
+    state: present
+    uid: "{{ my_linux_users.entephoto.uid }}"
+    group: entephoto
+    create_home: true
+
+- name: Enable linger for rootless user
+  become: true
+  ansible.builtin.command:
+    cmd: "loginctl enable-linger entephoto"
+  changed_when: false
+
+# NFS mount on the host. Persistent via fstab so the share is up
+# before the rootless user's systemd starts the timer/container.
+- name: Ensure NFS mountpoint exists on host
+  become: true
+  ansible.builtin.file:
+    path: "{{ entephoto_export_nas_path }}"
+    state: directory
+    mode: "0755"
+    setype: container_file_t
+  when: ansible_mounts | selectattr('mount', 'equalto', entephoto_export_nas_path)
+        | list | length == 0
+
+- name: Mount NFS export share
+  become: true
+  ansible.posix.mount:
+    src: "{{ entephoto_export_nas_host }}:/volume1/{{ entephoto_export_nas_share }}/{{ inventory_hostname_short }}"
+    path: "{{ entephoto_export_nas_path }}"
+    fstype: nfs
+    opts: "{{ entephoto_export_nas_opts }}"
+    state: mounted
+
+# Pre-create the CLI temp dir on NFS so ENTE_CLI_TMP_PATH=/export/.cli-tmp
+# in the quadlet works on first run. The CLI mkdir's a subdir under
+# the configured tmp path but doesn't create the parent. NFS server
+# (Synology) remaps uid/gid via its own user space, so we can't
+# enforce ownership from here — 0777 ensures the container's writes
+# succeed regardless of how the export gets squashed.
+- name: Pre-create CLI temp dir on NFS export
+  become: true
+  ansible.builtin.file:
+    path: "{{ entephoto_export_nas_path }}/.cli-tmp"
+    state: directory
+    mode: "0777"
+
+# Build the Ente CLI image from upstream. No pre-built image is
+# published. Re-builds are cheap (cache hit) so this is idempotent
+# in practice; explicitly check with `podman image exists` first to
+# avoid a rebuild on every run.
+- name: Check whether CLI image is already built
+  become: true
+  become_user: entephoto
+  ansible.builtin.command:
+    cmd: "podman image exists {{ entephoto_export_image }}"
+  register: _ente_cli_image_check
+  failed_when: false
+  changed_when: false
+
+- name: Clone Ente repo for CLI build (only when image missing)
+  become: true
+  become_user: entephoto
+  ansible.builtin.git:
+    repo: "{{ entephoto_export_source_repo }}"
+    dest: "/home/entephoto/ente-src"
+    version: "{{ entephoto_export_source_ref }}"
+    depth: 1
+    force: true
+  when: _ente_cli_image_check.rc != 0
+
+- name: Build Ente CLI image (only when missing) # noqa: no-changed-when
+  become: true
+  become_user: entephoto
+  ansible.builtin.command:
+    cmd: >-
+      podman build
+      -t {{ entephoto_export_image }}
+      -f /home/entephoto/ente-src/cli/Dockerfile
+      /home/entephoto/ente-src/cli
+  when: _ente_cli_image_check.rc != 0
+
+- name: Save current role path
+  ansible.builtin.set_fact:
+    entephoto_export_role_path: "{{ role_path }}"
+
+# Bypass luckynrslevin.podman_quadlet because it auto-restarts the
+# .service on deploy — wrong semantics for a one-shot fired by a timer
+# (and on a fresh host the first invocation would fail anyway since
+# `ente account add` hasn't seeded auth yet). Template the quadlet
+# files ourselves, daemon-reload, and let the timer drive runs after
+# bootstrap.
+- name: Ensure quadlet dirs exist
+  become: true
+  become_user: entephoto
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    mode: "0755"
+  loop:
+    - /home/entephoto/.config/containers/systemd
+    - /home/entephoto/.config/systemd/user
+
+- name: Deploy entephoto-export.container quadlet
+  become: true
+  become_user: entephoto
+  ansible.builtin.template:
+    src: quadlets/entephoto-export.container.j2
+    dest: "/home/entephoto/.config/containers/systemd/entephoto-export.container"
+    mode: "0644"
+  register: _entephoto_export_container
+
+- name: Deploy entephoto-export-state.volume quadlet
+  become: true
+  become_user: entephoto
+  ansible.builtin.copy:
+    src: quadlets/entephoto-export-state.volume
+    dest: "/home/entephoto/.config/containers/systemd/entephoto-export-state.volume"
+    mode: "0644"
+  register: _entephoto_export_volume
+
+- name: Deploy entephoto-export.timer
+  become: true
+  become_user: entephoto
+  ansible.builtin.template:
+    src: quadlets/entephoto-export.timer.j2
+    dest: "/home/entephoto/.config/systemd/user/entephoto-export.timer"
+    mode: "0644"
+  register: _entephoto_export_timer
+
+- name: Reload systemd user daemon if any unit changed  # noqa: no-changed-when
+  become: true
+  ansible.builtin.command:
+    cmd: >
+      sudo -u entephoto XDG_RUNTIME_DIR=/run/user/{{ my_linux_users.entephoto.uid }}
+      DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/{{ my_linux_users.entephoto.uid }}/bus
+      systemctl --user daemon-reload
+  when: _entephoto_export_container is changed
+        or _entephoto_export_volume is changed
+        or _entephoto_export_timer is changed
+
+- name: Enable + start entephoto-export.timer
+  become: true
+  ansible.builtin.command:
+    cmd: >
+      sudo -u entephoto XDG_RUNTIME_DIR=/run/user/{{ my_linux_users.entephoto.uid }}
+      DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/{{ my_linux_users.entephoto.uid }}/bus
+      systemctl --user enable --now entephoto-export.timer
+  changed_when: false
+
+# Materialize the named volume so its _data/ dir exists for the
+# config render below. Podman creates the dir lazily on first run
+# of a container that mounts the volume, but we need to write to
+# it before any container runs.
+- name: Ensure state volume materialized  # noqa: no-changed-when
+  become: true
+  become_user: entephoto
+  ansible.builtin.command:
+    cmd: podman volume create entephoto-export-state
+  failed_when: false
+  changed_when: false
+
+# CLI defaults to api.ente.com. Without this config it talks to the
+# public service and `account add` returns 401 (the user doesn't
+# exist there). Templating into the state volume's _data dir so
+# every podman run that mounts the volume picks it up.
+- name: Render Ente CLI config.yaml (sets self-hosted endpoint)
+  become: true
+  become_user: entephoto
+  ansible.builtin.template:
+    src: cli-config.yaml.j2
+    dest: "/home/entephoto/.local/share/containers/storage/volumes/entephoto-export-state/_data/config.yaml"
+    mode: "0644"
+
+# First-run bootstrap — drive `ente account add` non-interactively
+# using credentials from vault inventory. Skipped if state volume
+# already has auth seeded (idempotent re-runs) or if credentials
+# are absent (operator opted out of automated bootstrap).
+- name: Check whether CLI auth state is already seeded
+  become: true
+  become_user: entephoto
+  ansible.builtin.command:
+    cmd: >-
+      podman run --rm
+      --network host
+      -v entephoto-export-state:/data
+      -e ENTE_CLI_CONFIG_DIR=/data
+      -e ENTE_CLI_SECRETS_PATH=/data/secrets.txt
+      --entrypoint ./ente-cli
+      {{ entephoto_export_image }}
+      account list
+  register: _ente_auth_check
+  failed_when: false
+  changed_when: false
+  when: entephoto_export_account_email | length > 0
+        and entephoto_export_account_password | length > 0
+
+- name: Decide whether bootstrap is needed
+  ansible.builtin.set_fact:
+    _ente_bootstrap_needed: >-
+      {{ entephoto_export_account_email | length > 0
+         and entephoto_export_account_password | length > 0
+         and (_ente_auth_check.rc | default(1) != 0
+              or 'Configured accounts: 0' in (_ente_auth_check.stdout | default(''))) }}
+
+- name: Bootstrap Ente CLI account (first-run only) # noqa: no-changed-when
+  become: true
+  become_user: entephoto
+  vars:
+    # python3-pexpect is installed for the system /usr/bin/python3,
+    # not the parallel /usr/bin/python3.11 that ansible auto-selects
+    # when present. Pin this task to /usr/bin/python3 so the expect
+    # module's `import pexpect` succeeds.
+    ansible_python_interpreter: /usr/bin/python3
+  ansible.builtin.expect:
+    # Outer `timeout` wraps the whole interaction — ansible.builtin.expect's
+    # `timeout:` is per-response-match, so a CLI that keeps re-prompting
+    # the same question (e.g. invalid input) will loop forever inside the
+    # expect timeout window.
+    command: >-
+      timeout 120
+      podman run --rm -it
+      --network host
+      -v entephoto-export-state:/data
+      -e ENTE_CLI_CONFIG_DIR=/data
+      -e ENTE_CLI_SECRETS_PATH=/data/secrets.txt
+      --entrypoint ./ente-cli
+      {{ entephoto_export_image }}
+      account add
+    responses:
+      "(?i)enter app.*": "photos"
+      "(?i)enter email.*": "{{ entephoto_export_account_email }}"
+      # The CLI validates this path exists. /export is only mounted
+      # in the timer-fired quadlet container, not here — use /data
+      # (the state volume), which always exists. The actual export
+      # run overrides --dir /export on the command line so this
+      # stored value is never used.
+      "(?i)(enter exportDir|export.*directory).*": "/data"
+      "(?i)(enter password|password.*).*": "{{ entephoto_export_account_password }}"
+    timeout: 60
+  # Hides the templated password from playbook stdout / -vvv logs.
+  no_log: true
+  when: _ente_bootstrap_needed | bool
+
+# Bootstrap stored ExportDir=/data (the only path that existed inside
+# the one-shot container). The timer-fired quadlet mounts the NAS at
+# /export and the CLI's `export` command has no --dir flag — it uses
+# the account's stored ExportDir. Update it once, with /srv/photos-export
+# bound so the CLI can validate the path exists.
+- name: Pin account export directory to /export # noqa: no-changed-when
+  become: true
+  become_user: entephoto
+  ansible.builtin.command:
+    cmd: >-
+      podman run --rm --network host
+      -v entephoto-export-state:/data
+      -v {{ entephoto_export_nas_path }}:/export:Z
+      -e ENTE_CLI_CONFIG_DIR=/data
+      -e ENTE_CLI_SECRETS_PATH=/data/secrets.txt
+      --entrypoint ./ente-cli
+      {{ entephoto_export_image }}
+      account update --email {{ entephoto_export_account_email | quote }}
+      --dir /export
+  when: entephoto_export_account_email | length > 0
+  changed_when: false

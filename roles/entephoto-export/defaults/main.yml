@@ -1,0 +1,32 @@
+---
+# Local image tag for the CLI image built from the upstream
+# ente-io/ente repo. Built locally because upstream publishes no
+# pre-built CLI image.
+entephoto_export_image: "localhost/ente-cli:latest"
+
+# Upstream source for the CLI build.
+entephoto_export_source_repo: "https://github.com/ente-io/ente.git"
+entephoto_export_source_ref: "main"
+
+# NFS share that receives the decrypted export. Convention is
+# `backup-photos-export/<hostname>/` so multiple hosts can share
+# one share without clobbering each other (mirrors backup-jellyfin-media
+# and the other backup-* per-host layouts).
+entephoto_export_nas_host: "{{ backup_nas_hostname | default('nas') }}"
+entephoto_export_nas_share: "backup-photos-export"
+entephoto_export_nas_path: "/srv/photos-export"
+entephoto_export_nas_opts: "rw,noatime,vers=4,_netdev"
+
+# Daily run time (OnCalendar value). Default keeps it well clear of
+# the 02:00 backup window.
+entephoto_export_schedule: "*-*-* 03:00:00"
+
+# Endpoint the CLI talks to. Defaults to the Caddy-fronted museum on
+# the same host using the project's standard subdomain.
+entephoto_export_api_endpoint: "https://photos-api.{{ caddy_domain }}"
+
+# Ente account credentials. Set in inventory (vault-encrypted) by
+# `setup.sh add entephoto-export`. Empty values disable the first-run
+# bootstrap (re-runs are still unattended once auth state is seeded).
+entephoto_export_account_email: ""
+entephoto_export_account_password: ""

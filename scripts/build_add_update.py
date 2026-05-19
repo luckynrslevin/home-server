@@ -4,11 +4,18 @@ scripts/build_add_update.py — translate a role's meta/install.yml into
 the update.json that scripts/inventory_merge.py consumes for add mode.
 
 Resolves each declared inventory_var:
-  - secret  → run `generator` (shell command); emit vaulted scalar
-  - config  → leave for setup.sh's interactive prompt (skipped here;
-              caller supplies via --extra-overrides if non-interactive)
-  - computed → render `template` Jinja against existing inventory
-  - literal → emit value verbatim
+  - secret        → run `generator` (shell command); emit vaulted scalar
+  - secret_prompt → operator supplies the value (e.g. existing account
+                    password). Caller passes via --prompted-secrets;
+                    if absent, build_add_update.py exits 3 and prints
+                    the list of needed prompts on stdout (machine
+                    readable) so the wrapper can collect them and
+                    re-invoke.
+  - config        → leave for setup.sh's interactive prompt (skipped
+                    here; caller supplies via --extra-overrides if
+                    non-interactive)
+  - computed      → render `template` Jinja against existing inventory
+  - literal       → emit value verbatim
 
 Side-effects → list/dict update entries (caddy_reverse_proxy_services,
 my_linux_users). The service name itself is always appended to
@@ -135,6 +142,9 @@ def main():
     p.add_argument("--inventory-dir", default="inventory")
     p.add_argument("--overrides", nargs="*", default=[],
                    help="key=value pairs to use for `config`-type vars")
+    p.add_argument("--prompted-secrets", nargs="*", default=[],
+                   help="key=value pairs supplying operator-provided "
+                        "secrets for `secret_prompt`-type vars")
     p.add_argument("--output", required=True)
     args = p.parse_args()
 
@@ -153,6 +163,11 @@ def main():
         if "=" in kv:
             k, v = kv.split("=", 1)
             overrides[k] = v
+    prompted = {}
+    for kv in args.prompted_secrets:
+        if "=" in kv:
+            k, v = kv.split("=", 1)
+            prompted[k] = v
 
     # Existing inventory (for idempotency + computed-template context)
     existing = load_existing_inventory(
@@ -162,6 +177,7 @@ def main():
     # Resolve inventory_vars
     scalars = {}
     config_needed = []  # config-type vars not in inventory or overrides
+    prompt_needed = []  # secret_prompt vars not in inventory or --prompted-secrets
     for var in meta.get("inventory_vars", []) or []:
         name = var["name"]
         vtype = var["type"]
@@ -170,9 +186,14 @@ def main():
         if name in overrides:
             scalars[name] = {"value": overrides[name], "vault": False}
             continue
+        if name in prompted:
+            scalars[name] = {"value": prompted[name], "vault": var.get("vault", True)}
+            continue
         if vtype == "secret":
             value = resolve_secret(var["generator"])
             scalars[name] = {"value": value, "vault": var.get("vault", True)}
+        elif vtype == "secret_prompt":
+            prompt_needed.append(var)
         elif vtype == "computed":
             value = render_template(var["template"], existing)
             scalars[name] = {"value": value, "vault": False}
@@ -198,6 +219,22 @@ def main():
             prompt = var.get("prompt", var["name"])
             print(f"  --overrides {var['name']}=<...>  ({prompt})", file=sys.stderr)
         sys.exit(2)
+
+    if prompt_needed:
+        # Machine-readable on stdout, human-readable on stderr.
+        # Wrapper (setup.sh add) reads stdout to know which prompts
+        # to ask the operator for, then re-invokes with --prompted-secrets.
+        print("PROMPTS_NEEDED")
+        for var in prompt_needed:
+            prompt_text = var.get("prompt", var["name"])
+            confirm = "true" if var.get("confirm", False) else "false"
+            # `mask` controls echo: true = hide input (passwords).
+            # Default true since `secret_prompt` is intended for secrets;
+            # roles set `mask: false` on visible fields like email.
+            mask = "true" if var.get("mask", True) else "false"
+            # name<TAB>prompt_text<TAB>confirm<TAB>mask
+            print(f"{var['name']}\t{prompt_text}\t{confirm}\t{mask}")
+        sys.exit(3)
 
     # Side effects → lists + dicts
     lists = {}

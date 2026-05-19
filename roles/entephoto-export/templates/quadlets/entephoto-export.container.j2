@@ -1,0 +1,47 @@
+[Unit]
+Description=Ente Photos decrypted export to NAS
+# Started by the .timer; not at boot.
+After=network-online.target
+Wants=network-online.target
+RequiresMountsFor={{ entephoto_export_nas_path }}
+
+[Container]
+ContainerName=%N
+Image={{ entephoto_export_image }}
+Network=host
+
+# State volume holds the CLI's auth tokens + per-account sync state
+# so subsequent runs are incremental.
+Volume=entephoto-export-state.volume:/data
+
+# NAS export directory — destination for decrypted photos +
+# Google-Takeout-style metadata sidecars.
+Volume={{ entephoto_export_nas_path }}:/export:Z
+
+Environment=ENTE_CLI_CONFIG_DIR=/data
+# Ente CLI defaults to OS keyring for secrets, which requires DBus in
+# the container. Headless deployments use a file instead — the CLI
+# auto-creates this file with a random 32-char key on first run.
+Environment=ENTE_CLI_SECRETS_PATH=/data/secrets.txt
+# Per-photo decrypt scratch dir. Default is the container's /tmp
+# (overlayfs = local disk), which transiently holds the encrypted
+# blob being decrypted. Pin it under the NAS mount so even large
+# media files never touch local disk — eliminates any risk of
+# filling the host's filesystem during a backfill of a big library.
+Environment=ENTE_CLI_TMP_PATH=/export/.cli-tmp
+
+# Upstream Containerfile sets CMD=./ente-cli with no ENTRYPOINT.
+# Override the entrypoint so Exec= arguments are the CLI subcommand,
+# not an attempt to exec `export` as a binary.
+Entrypoint=./ente-cli
+
+# Run the export once and exit. The .timer reschedules.
+# Export dir comes from the account's stored ExportDir (set by the
+# role's "Pin account export directory" task to /export).
+Exec=export
+
+[Service]
+# One-shot: timer fires it, container runs to completion, exits 0.
+Type=oneshot
+Restart=no
+TimeoutStartSec=0
