@@ -200,7 +200,7 @@
     # expect timeout window.
     command: >-
       timeout 120
-      podman run --rm -i
+      podman run --rm -it
       -v entephoto-export-state:/data
       -e ENTE_CLI_CONFIG_DIR=/data
       -e ENTE_CLI_SECRETS_PATH=/data/secrets.txt
