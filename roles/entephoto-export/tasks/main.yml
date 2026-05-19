@@ -194,7 +194,12 @@
     # module's `import pexpect` succeeds.
     ansible_python_interpreter: /usr/bin/python3
   ansible.builtin.expect:
+    # Outer `timeout` wraps the whole interaction — ansible.builtin.expect's
+    # `timeout:` is per-response-match, so a CLI that keeps re-prompting
+    # the same question (e.g. invalid input) will loop forever inside the
+    # expect timeout window.
     command: >-
+      timeout 120
       podman run --rm -i
       -v entephoto-export-state:/data
       -e ENTE_CLI_CONFIG_DIR=/data
@@ -205,7 +210,12 @@
     responses:
       "(?i)enter app.*": "photos"
       "(?i)enter email.*": "{{ entephoto_export_account_email }}"
-      "(?i)(enter exportDir|export.*directory).*": "/export"
+      # The CLI validates this path exists. /export is only mounted
+      # in the timer-fired quadlet container, not here — use /data
+      # (the state volume), which always exists. The actual export
+      # run overrides --dir /export on the command line so this
+      # stored value is never used.
+      "(?i)(enter exportDir|export.*directory).*": "/data"
       "(?i)(enter password|password.*).*": "{{ entephoto_export_account_password }}"
     timeout: 60
   # TEMPORARY: no_log disabled while iterating on expect patterns.
