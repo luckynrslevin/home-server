@@ -51,6 +51,18 @@
     opts: "{{ entephoto_export_nas_opts }}"
     state: mounted
 
+# Pre-create the CLI temp dir on NFS so ENTE_CLI_TMP_PATH=/export/.cli-tmp
+# in the quadlet works on first run. The CLI mkdir's a subdir under
+# the configured tmp path but doesn't create the parent.
+- name: Pre-create CLI temp dir on NFS export
+  become: true
+  ansible.builtin.file:
+    path: "{{ entephoto_export_nas_path }}/.cli-tmp"
+    state: directory
+    owner: "{{ my_linux_users.entephoto.uid }}"
+    group: "{{ my_linux_users.entephoto.gid }}"
+    mode: "0755"
+
 # Build the Ente CLI image from upstream. No pre-built image is
 # published. Re-builds are cheap (cache hit) so this is idempotent
 # in practice; explicitly check with `podman image exists` first to
