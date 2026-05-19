@@ -514,15 +514,20 @@ PY
                 --output "$UPDATE_JSON" > "$PROMPTS_TXT" 2>&1; then
             if grep -q '^PROMPTS_NEEDED$' "$PROMPTS_TXT"; then
                 info "Role needs operator-supplied secret(s):"
+                # Inner `read` MUST come from /dev/tty — the while loop's
+                # stdin is the file we're iterating over, so a bare
+                # `read pval` would silently consume the next line of
+                # PROMPTS_TXT (the password's own metadata) as the user's
+                # input. /dev/tty bypasses the redirect.
                 while IFS=$'\t' read -r pkey ptext pconfirm; do
                     [[ "$pkey" == "PROMPTS_NEEDED" || -z "$pkey" ]] && continue
                     echo
                     ask "$ptext:"
-                    read -rs pval
+                    read -rs pval </dev/tty
                     echo
                     if [[ "$pconfirm" == "true" ]]; then
                         ask "$ptext (confirm):"
-                        read -rs pval2
+                        read -rs pval2 </dev/tty
                         echo
                         if [[ "$pval" != "$pval2" ]]; then
                             err "Values do not match. Aborting."
