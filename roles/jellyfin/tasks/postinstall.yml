@@ -115,8 +115,20 @@
 
 # --------------------------------------------------------------------------
 # Authenticate as admin to drive library setup (post-wizard auth required).
+#
+# Jellyfin 10.11 quirk: POST /Startup/User accepts a `Password` field
+# but doesn't reliably persist it — the user ends up with no password
+# even though the API returned 200. So we:
+#   1. Try the inventory password first (works on rebuilds where the
+#      password was previously set via the explicit step below).
+#   2. Fall back to empty password (the actual post-wizard state on
+#      a fresh install).
+#   3. If we got in via the empty-password fallback, immediately set
+#      the inventory password via /Users/{id}/Password so future
+#      auth attempts work and subsequent re-runs go through the
+#      happy path.
 # --------------------------------------------------------------------------
-- name: Authenticate as admin
+- name: Authenticate as admin (try inventory password)
   ansible.builtin.uri:
     url: "http://127.0.0.1:8096/Users/AuthenticateByName"
     method: POST
@@ -126,9 +138,44 @@
       Pw: "{{ jellyfin_admin_password }}"
     headers:
       Authorization: 'MediaBrowser Client="ansible-postinstall", Device="home-server", DeviceId="home-server-postinstall", Version="1.0"'
+    status_code: [200, 401]
+    return_content: true
+  register: _jellyfin_auth_first
+  no_log: true
+
+- name: Authenticate as admin (empty password fallback — fresh 10.11 wizard)
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:8096/Users/AuthenticateByName"
+    method: POST
+    body_format: json
+    body:
+      Username: "{{ jellyfin_admin_user }}"
+      Pw: ""
+    headers:
+      Authorization: 'MediaBrowser Client="ansible-postinstall", Device="home-server", DeviceId="home-server-postinstall", Version="1.0"'
     status_code: 200
     return_content: true
-  register: _jellyfin_auth
+  register: _jellyfin_auth_fallback
+  when: _jellyfin_auth_first.status == 401
+  no_log: true
+
+- name: Select the successful auth response
+  ansible.builtin.set_fact:
+    _jellyfin_auth: "{{ _jellyfin_auth_fallback if _jellyfin_auth_first.status == 401 else _jellyfin_auth_first }}"
+  no_log: true
+
+- name: Set admin password to inventory value (only if fallback was used)
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:8096/Users/{{ _jellyfin_auth.json.User.Id }}/Password"
+    method: POST
+    body_format: json
+    body:
+      CurrentPw: ""
+      NewPw: "{{ jellyfin_admin_password }}"
+    headers:
+      Authorization: 'MediaBrowser Token="{{ _jellyfin_auth.json.AccessToken }}"'
+    status_code: [200, 204]
+  when: _jellyfin_auth_first.status == 401
   no_log: true
 
 - name: Cache admin access token
