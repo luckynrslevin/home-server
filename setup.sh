@@ -517,6 +517,14 @@ PY
         while [[ $# -gt 0 ]]; do
             case "$1" in
                 --purge) PURGE=true ;;
+                # Re-accept the top-level CLI flags so they can also
+                # appear after the verb's positional arg, e.g.
+                # `setup.sh remove jellyfin -h homeserver --purge`.
+                # getopts at the top of the script only catches flags
+                # that come before any positional arg.
+                -h) shift; HOSTNAME_FLAG="${1:-}" ;;
+                -v) shift; VAULT_PW_FLAG_FILE="${1:-}" ;;
+                -y|--yes) YES_FLAG=true ;;
                 *) err "Unknown remove flag: $1"; exit 2 ;;
             esac
             shift
