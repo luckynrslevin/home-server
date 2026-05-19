@@ -73,6 +73,34 @@
 # include `mc`. We run `mc` from a one-shot minio/mc container joined to
 # the entephoto pod's network namespace so it can reach localhost:3200.
 # --------------------------------------------------------------------------
+# podman_quadlet stages museum.yaml into the entephoto-museum-config
+# volume on FIRST deploy only — subsequent ansible runs with changed
+# inventory (e.g. an updated entephoto_s3_endpoint) don't re-render it,
+# leaving museum.yaml out of sync with inventory. Re-render every run
+# directly into the volume's _data dir and bounce the museum container
+# on drift, so inventory remains the source of truth.
+- name: Re-render museum.yaml from inventory (drift correction)
+  become: true
+  become_user: entephoto
+  ansible.builtin.template:
+    src: volumes/entephoto-museum-config/museum.yaml.j2
+    dest: "/home/entephoto/.local/share/containers/storage/volumes/entephoto-museum-config/_data/museum.yaml"
+    mode: "0600"
+  register: _entephoto_museum_yaml
+  # Volume may not exist yet on first deploy (podman_quadlet creates it
+  # via files_to_stage above). In that case this is a no-op fallback.
+  failed_when: false
+
+- name: Restart entephoto-museum when config drifted # noqa: no-handler
+  become: true
+  ansible.builtin.command:
+    cmd: >
+      sudo -u entephoto XDG_RUNTIME_DIR=/run/user/{{ my_linux_users.entephoto.uid }}
+      DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/{{ my_linux_users.entephoto.uid }}/bus
+      systemctl --user restart entephoto-museum.service
+  changed_when: true
+  when: _entephoto_museum_yaml is changed
+
 - name: Wait for MinIO and create buckets # noqa: no-changed-when
   become: true
   ansible.builtin.shell:
