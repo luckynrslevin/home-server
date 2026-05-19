@@ -24,3 +24,9 @@ entephoto_export_schedule: "*-*-* 03:00:00"
 # Endpoint the CLI talks to. Defaults to the Caddy-fronted museum on
 # the same host using the project's standard subdomain.
 entephoto_export_api_endpoint: "https://photos-api.{{ caddy_domain }}"
+
+# Ente account credentials. Set in inventory (vault-encrypted) by
+# `setup.sh add entephoto-export`. Empty values disable the first-run
+# bootstrap (re-runs are still unattended once auth state is seeded).
+entephoto_export_account_email: ""
+entephoto_export_account_password: ""

@@ -90,3 +90,45 @@
       - entephoto-export.container.j2
       - entephoto-export.timer.j2
       - entephoto-export-state.volume
+
+# First-run bootstrap — drive `ente account add` non-interactively
+# using credentials from vault inventory. Skipped if state volume
+# already has auth seeded (idempotent re-runs) or if credentials
+# are absent (operator opted out of automated bootstrap).
+- name: Check whether CLI auth state is already seeded
+  become: true
+  become_user: entephoto
+  ansible.builtin.command:
+    cmd: >-
+      podman run --rm
+      -v entephoto-export-state:/data
+      -e ENTE_CLI_CONFIG_DIR=/data
+      {{ entephoto_export_image }}
+      account list
+  register: _ente_auth_check
+  failed_when: false
+  changed_when: false
+  when: entephoto_export_account_email | length > 0
+        and entephoto_export_account_password | length > 0
+
+- name: Bootstrap Ente CLI account (first-run only) # noqa: no-changed-when
+  become: true
+  become_user: entephoto
+  ansible.builtin.expect:
+    command: >-
+      podman run --rm -i
+      -v entephoto-export-state:/data
+      -e ENTE_CLI_CONFIG_DIR=/data
+      {{ entephoto_export_image }}
+      account add
+    responses:
+      "(?i)enter app.*": "photos"
+      "(?i)enter email.*": "{{ entephoto_export_account_email }}"
+      "(?i)(enter exportDir|export.*directory).*": "/export"
+      "(?i)(enter password|password.*).*": "{{ entephoto_export_account_password }}"
+    timeout: 60
+  no_log: true
+  when: entephoto_export_account_email | length > 0
+        and entephoto_export_account_password | length > 0
+        and (_ente_auth_check.rc != 0
+             or 'No accounts' in (_ente_auth_check.stdout | default('')))

@@ -23,11 +23,23 @@ master password — a portability concern that's been open since
 4. CLI state (auth tokens + per-account sync cursor) lives in the
    `entephoto-export-state` volume so subsequent runs are incremental.
 
-## One-time bootstrap
+## Bootstrap (automated)
 
-The first export needs `ente account add`, which is interactive
-(asks for email, password, OTP). Run it once as the `entephoto` user
-after the role has deployed:
+`setup.sh add entephoto-export` prompts once for your Ente account
+email + master password, vault-encrypts them into inventory, then
+the role drives `ente account add` non-interactively on first run.
+Subsequent re-runs detect that auth state is already seeded and skip
+the bootstrap. No human intervention on the target after the initial
+prompts.
+
+### Security trade-off
+
+The master password decrypts the photo blobs. Storing it in vault
+means a `vault.pw` compromise also exposes the photos — the same
+trust boundary as every other vault secret in this project. For the
+standard threat model (vault.pw on a USB / in a password manager
+off-host), this is acceptable; if your threat model is stricter,
+leave the credentials empty in inventory and bootstrap manually:
 
 ```bash
 sudo -iu entephoto podman run --rm -it \
@@ -37,8 +49,18 @@ sudo -iu entephoto podman run --rm -it \
     account add
 ```
 
-After the auth state is persisted in the volume, the timer drives
-all subsequent exports unattended.
+### Recovering the stored password
+
+```bash
+setup.sh secret entephoto_export_account_password
+```
+
+### 2FA
+
+Currently unsupported in the automated path. If your account has
+2FA enabled, expect the first run to fail; either disable 2FA on
+the account, or do the manual bootstrap above (the CLI's interactive
+prompt handles TOTP).
 
 ## NAS-side prep
 
