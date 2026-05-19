@@ -80,6 +80,8 @@
     - name: Restore caddy
       ansible.builtin.include_tasks:
         file: tasks/restore_generic.yml
+        apply:
+          tags: [caddy]
       vars:
         svc: "{{ _restore_manifests | selectattr('_role_name', 'equalto', 'caddy') | first }}"
       when: _restore_manifests | selectattr('_role_name', 'equalto', 'caddy') | list | length > 0
@@ -88,6 +90,8 @@
     - name: Restore pihole
       ansible.builtin.include_tasks:
         file: tasks/restore_generic.yml
+        apply:
+          tags: [pihole]
       vars:
         svc: "{{ _restore_manifests | selectattr('_role_name', 'equalto', 'pihole') | first }}"
       when: _restore_manifests | selectattr('_role_name', 'equalto', 'pihole') | list | length > 0
@@ -96,6 +100,8 @@
     - name: Restore syncthing
       ansible.builtin.include_tasks:
         file: tasks/restore_generic.yml
+        apply:
+          tags: [syncthing]
       vars:
         svc: "{{ _restore_manifests | selectattr('_role_name', 'equalto', 'syncthing') | first }}"
       when: _restore_manifests | selectattr('_role_name', 'equalto', 'syncthing') | list | length > 0
@@ -104,6 +110,8 @@
     - name: Restore entephoto
       ansible.builtin.include_tasks:
         file: tasks/restore_generic.yml
+        apply:
+          tags: [entephoto]
       vars:
         svc: "{{ _restore_manifests | selectattr('_role_name', 'equalto', 'entephoto') | first }}"
       when: _restore_manifests | selectattr('_role_name', 'equalto', 'entephoto') | list | length > 0
@@ -112,6 +120,8 @@
     - name: Restore paperless-ngx
       ansible.builtin.include_tasks:
         file: tasks/restore_generic.yml
+        apply:
+          tags: [paperless-ngx]
       vars:
         svc: "{{ _restore_manifests | selectattr('_role_name', 'equalto', 'paperless-ngx') | first }}"
       when: _restore_manifests | selectattr('_role_name', 'equalto', 'paperless-ngx') | list | length > 0
@@ -120,6 +130,8 @@
     - name: Restore jellyfin
       ansible.builtin.include_tasks:
         file: tasks/restore_generic.yml
+        apply:
+          tags: [jellyfin]
       vars:
         svc: "{{ _restore_manifests | selectattr('_role_name', 'equalto', 'jellyfin') | first }}"
       when: _restore_manifests | selectattr('_role_name', 'equalto', 'jellyfin') | list | length > 0
@@ -128,6 +140,8 @@
     - name: Restore nextcloud
       ansible.builtin.include_tasks:
         file: tasks/restore_generic.yml
+        apply:
+          tags: [nextcloud]
       vars:
         svc: "{{ _restore_manifests | selectattr('_role_name', 'equalto', 'nextcloud') | first }}"
       when: _restore_manifests | selectattr('_role_name', 'equalto', 'nextcloud') | list | length > 0
