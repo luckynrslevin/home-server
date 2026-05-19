@@ -6,7 +6,7 @@ description: "Daily decrypted export of Ente photos + Google-Takeout-style sidec
 # Operator-supplied Ente account credentials. Vault-encrypted into
 # inventory so the first-run `ente account add` can run unattended.
 #
-# Security trade-off: the master password protects the E2E encryption
+# Security trade-off: the account password protects the E2E encryption
 # key. Storing it in vault means a vault.pw compromise also exposes
 # the photos. Acceptable for the project's typical threat model (vault.pw
 # on a USB / in a password manager off-host); recoverable later via
@@ -18,7 +18,7 @@ inventory_vars:
     vault: true
   - name: entephoto_export_account_password
     type: secret_prompt
-    prompt: "Ente account password (master password)"
+    prompt: "Ente account password"
     vault: true
     confirm: true
 

@@ -8,7 +8,7 @@ every photo (album folders + Google-Takeout-style metadata sidecars)
 on the NAS, independent of Ente.
 
 Without this, the encrypted backup is unrestorable without the user's
-master password — a portability concern that's been open since
+account password — a portability concern that's been open since
 [issue #73](https://github.com/luckynrslevin/home-server/issues/73).
 
 ## How it works
@@ -26,7 +26,7 @@ master password — a portability concern that's been open since
 ## Bootstrap (automated)
 
 `setup.sh add entephoto-export` prompts once for your Ente account
-email + master password, vault-encrypts them into inventory, then
+email + account password, vault-encrypts them into inventory, then
 the role drives `ente account add` non-interactively on first run.
 Subsequent re-runs detect that auth state is already seeded and skip
 the bootstrap. No human intervention on the target after the initial
@@ -34,7 +34,7 @@ prompts.
 
 ### Security trade-off
 
-The master password decrypts the photo blobs. Storing it in vault
+The account password decrypts the photo blobs. Storing it in vault
 means a `vault.pw` compromise also exposes the photos — the same
 trust boundary as every other vault secret in this project. For the
 standard threat model (vault.pw on a USB / in a password manager
