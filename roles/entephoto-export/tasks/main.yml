@@ -244,9 +244,8 @@
       "(?i)(enter exportDir|export.*directory).*": "/data"
       "(?i)(enter password|password.*).*": "{{ entephoto_export_account_password }}"
     timeout: 60
-  # TEMPORARY: no_log disabled while iterating on expect patterns.
-  # Re-enable before merge.
-  no_log: false
+  # Hides the templated password from playbook stdout / -vvv logs.
+  no_log: true
   when: _ente_bootstrap_needed | bool
 
 # Bootstrap stored ExportDir=/data (the only path that existed inside
