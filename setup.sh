@@ -1335,6 +1335,16 @@ else
     MUSIC_ASSISTANT_MAC="02:$(openssl rand -hex 5 | sed 's/\(..\)/\1:/g;s/:$//')"
 fi
 
+# Snapshot any existing main.yml so we can preserve operator-added
+# unmanaged keys after the heredoc rewrites the file. Empty snapshot
+# (or missing file) means a fresh install — nothing to preserve.
+_unmanaged_snapshot=$(mktemp)
+if [[ -f "inventory/host_vars/$SERVER_HOSTNAME/main.yml" ]]; then
+    cp "inventory/host_vars/$SERVER_HOSTNAME/main.yml" "$_unmanaged_snapshot"
+else
+    : > "$_unmanaged_snapshot"
+fi
+
 # Build the host_vars file
 {
 cat << YAML
@@ -1551,6 +1561,18 @@ if is_selected backup; then
 fi
 echo "##################################################################################################"
 } > inventory/host_vars/$SERVER_HOSTNAME/main.yml
+
+# Re-attach any operator-added keys (jellyfin_nas_mounts, samba_*,
+# pihole_local_dns_records, etc.) that aren't part of setup.sh's
+# managed key set. Without this, a rebuild silently drops them.
+if [[ -s "$_unmanaged_snapshot" ]]; then
+    python3 scripts/preserve_unmanaged_inventory.py \
+        --old "$_unmanaged_snapshot" \
+        --new "inventory/host_vars/$SERVER_HOSTNAME/main.yml" \
+        2> >(while IFS= read -r line; do info "$line"; done >&2) \
+        || warn "preserve_unmanaged_inventory.py failed — check for lost operator-added keys"
+fi
+rm -f "$_unmanaged_snapshot"
 
 ok "Generated inventory/host_vars/$SERVER_HOSTNAME/main.yml (with vault-encrypted secrets)"
 
