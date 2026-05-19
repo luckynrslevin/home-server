@@ -1,4 +1,12 @@
 ---
+# `ansible.builtin.expect` (used for non-interactive `ente account add`)
+# needs python3-pexpect on the target.
+- name: Ensure python3-pexpect is present (for expect bootstrap)
+  become: true
+  ansible.builtin.package:
+    name: python3-pexpect
+    state: present
+
 - name: Ensure rootless user group exists
   ansible.builtin.group:
     name: entephoto
