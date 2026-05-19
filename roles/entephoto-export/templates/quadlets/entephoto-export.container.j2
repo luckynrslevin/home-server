@@ -23,6 +23,12 @@ Environment=ENTE_CLI_CONFIG_DIR=/data
 # the container. Headless deployments use a file instead — the CLI
 # auto-creates this file with a random 32-char key on first run.
 Environment=ENTE_CLI_SECRETS_PATH=/data/secrets.txt
+# Per-photo decrypt scratch dir. Default is the container's /tmp
+# (overlayfs = local disk), which transiently holds the encrypted
+# blob being decrypted. Pin it under the NAS mount so even large
+# media files never touch local disk — eliminates any risk of
+# filling the host's filesystem during a backfill of a big library.
+Environment=ENTE_CLI_TMP_PATH=/export/.cli-tmp
 
 # Upstream Containerfile sets CMD=./ente-cli with no ENTRYPOINT.
 # Override the entrypoint so Exec= arguments are the CLI subcommand,
