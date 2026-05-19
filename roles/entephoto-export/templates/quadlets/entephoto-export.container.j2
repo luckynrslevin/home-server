@@ -20,8 +20,13 @@ Volume={{ entephoto_export_nas_path }}:/export:Z
 
 Environment=ENTE_CLI_CONFIG_DIR=/data
 
+# Upstream Containerfile sets CMD=./ente-cli with no ENTRYPOINT.
+# Override the entrypoint so Exec= arguments are the CLI subcommand,
+# not an attempt to exec `export` as a binary.
+Entrypoint=./ente-cli
+
 # Run the export once and exit. The .timer reschedules.
-Exec=ente export --dir /export
+Exec=export --dir /export
 
 [Service]
 # One-shot: timer fires it, container runs to completion, exits 0.
