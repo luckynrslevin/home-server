@@ -248,3 +248,25 @@
   # Re-enable before merge.
   no_log: false
   when: _ente_bootstrap_needed | bool
+
+# Bootstrap stored ExportDir=/data (the only path that existed inside
+# the one-shot container). The timer-fired quadlet mounts the NAS at
+# /export and the CLI's `export` command has no --dir flag — it uses
+# the account's stored ExportDir. Update it once, with /srv/photos-export
+# bound so the CLI can validate the path exists.
+- name: Pin account export directory to /export # noqa: no-changed-when
+  become: true
+  become_user: entephoto
+  ansible.builtin.command:
+    cmd: >-
+      podman run --rm --network host
+      -v entephoto-export-state:/data
+      -v {{ entephoto_export_nas_path }}:/export:Z
+      -e ENTE_CLI_CONFIG_DIR=/data
+      -e ENTE_CLI_SECRETS_PATH=/data/secrets.txt
+      --entrypoint ./ente-cli
+      {{ entephoto_export_image }}
+      account update --email {{ entephoto_export_account_email | quote }}
+      --dir /export
+  when: entephoto_export_account_email | length > 0
+  changed_when: false

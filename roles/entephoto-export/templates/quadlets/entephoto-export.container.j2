@@ -30,7 +30,9 @@ Environment=ENTE_CLI_SECRETS_PATH=/data/secrets.txt
 Entrypoint=./ente-cli
 
 # Run the export once and exit. The .timer reschedules.
-Exec=export --dir /export
+# Export dir comes from the account's stored ExportDir (set by the
+# role's "Pin account export directory" task to /export).
+Exec=export
 
 [Service]
 # One-shot: timer fires it, container runs to completion, exits 0.
