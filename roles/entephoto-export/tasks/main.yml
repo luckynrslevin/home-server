@@ -1,0 +1,92 @@
+---
+- name: Ensure rootless user group exists
+  ansible.builtin.group:
+    name: entephoto
+    gid: "{{ my_linux_users.entephoto.gid }}"
+    state: present
+
+- name: Ensure rootless user exists
+  ansible.builtin.user:
+    name: entephoto
+    state: present
+    uid: "{{ my_linux_users.entephoto.uid }}"
+    group: entephoto
+    create_home: true
+
+- name: Enable linger for rootless user
+  become: true
+  ansible.builtin.command:
+    cmd: "loginctl enable-linger entephoto"
+  changed_when: false
+
+# NFS mount on the host. Persistent via fstab so the share is up
+# before the rootless user's systemd starts the timer/container.
+- name: Ensure NFS mountpoint exists on host
+  become: true
+  ansible.builtin.file:
+    path: "{{ entephoto_export_nas_path }}"
+    state: directory
+    mode: "0755"
+    setype: container_file_t
+  when: ansible_mounts | selectattr('mount', 'equalto', entephoto_export_nas_path)
+        | list | length == 0
+
+- name: Mount NFS export share
+  become: true
+  ansible.posix.mount:
+    src: "{{ entephoto_export_nas_host }}:/volume1/{{ entephoto_export_nas_share }}/{{ inventory_hostname_short }}"
+    path: "{{ entephoto_export_nas_path }}"
+    fstype: nfs
+    opts: "{{ entephoto_export_nas_opts }}"
+    state: mounted
+
+# Build the Ente CLI image from upstream. No pre-built image is
+# published. Re-builds are cheap (cache hit) so this is idempotent
+# in practice; explicitly check with `podman image exists` first to
+# avoid a rebuild on every run.
+- name: Check whether CLI image is already built
+  become: true
+  become_user: entephoto
+  ansible.builtin.command:
+    cmd: "podman image exists {{ entephoto_export_image }}"
+  register: _ente_cli_image_check
+  failed_when: false
+  changed_when: false
+
+- name: Clone Ente repo for CLI build (only when image missing)
+  become: true
+  become_user: entephoto
+  ansible.builtin.git:
+    repo: "{{ entephoto_export_source_repo }}"
+    dest: "/home/entephoto/ente-src"
+    version: "{{ entephoto_export_source_ref }}"
+    depth: 1
+    force: true
+  when: _ente_cli_image_check.rc != 0
+
+- name: Build Ente CLI image (only when missing) # noqa: no-changed-when
+  become: true
+  become_user: entephoto
+  ansible.builtin.command:
+    cmd: >-
+      podman build
+      -t {{ entephoto_export_image }}
+      -f /home/entephoto/ente-src/cli/Dockerfile
+      /home/entephoto/ente-src/cli
+  when: _ente_cli_image_check.rc != 0
+
+- name: Save current role path
+  ansible.builtin.set_fact:
+    entephoto_export_role_path: "{{ role_path }}"
+
+- name: Deploy entephoto-export quadlet (timer + container)
+  ansible.builtin.include_role:
+    name: luckynrslevin.podman_quadlet
+  vars:
+    podman_quadlet_app_name: "entephoto-export"
+    podman_quadlet_rootless_user_name: entephoto
+    podman_quadlet_files_templates_src_path: "{{ entephoto_export_role_path }}"
+    podman_quadlet_file_names:
+      - entephoto-export.container.j2
+      - entephoto-export.timer.j2
+      - entephoto-export-state.volume

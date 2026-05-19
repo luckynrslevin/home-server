@@ -1,0 +1,10 @@
+[Unit]
+Description=Daily Ente Photos decrypted export
+
+[Timer]
+OnCalendar={{ entephoto_export_schedule }}
+Persistent=true
+Unit=entephoto-export.service
+
+[Install]
+WantedBy=timers.target

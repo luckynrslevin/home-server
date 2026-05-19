@@ -1,0 +1,6 @@
+---
+- name: Deploy Ente Photos decrypted-export pipeline
+  hosts: all
+  become: true
+  roles:
+    - entephoto-export

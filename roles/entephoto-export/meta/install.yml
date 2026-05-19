@@ -1,0 +1,30 @@
+# See roles/pihole/meta/install.yml for schema reference.
+
+display_name: "Ente Photos export"
+description: "Daily decrypted export of Ente photos + Google-Takeout-style sidecars to a NAS NFS share"
+
+# All knobs have sensible defaults; no inventory secrets needed.
+# The one-time `ente account add` step is interactive and runs out of
+# band (see role README).
+inventory_vars: []
+
+# Side-effect: the rootless service user. Reuses the same UID/GID as
+# the entephoto stack so the two roles cohabit cleanly when both are
+# deployed (the export only needs read access to the museum API, not
+# direct DB or MinIO access — the same uid is just hygiene).
+side_effects:
+  my_linux_users:
+    entephoto:
+      uid: 1008
+      gid: 1008
+
+playbooks:
+  - playbooks/entephoto-export.yml
+
+on_remove:
+  inventory_vars_to_clear: []
+  # The state volume holds CLI auth + sync cursor. Keep it on remove
+  # so re-adding the role resumes incremental exports without a fresh
+  # full sync (and without re-doing the interactive `account add`).
+  volumes_to_preserve_unless_purge:
+    - entephoto-export-state
