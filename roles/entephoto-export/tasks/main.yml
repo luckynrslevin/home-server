@@ -154,6 +154,18 @@
       systemctl --user enable --now entephoto-export.timer
   changed_when: false
 
+# Materialize the named volume so its _data/ dir exists for the
+# config render below. Podman creates the dir lazily on first run
+# of a container that mounts the volume, but we need to write to
+# it before any container runs.
+- name: Ensure state volume materialized  # noqa: no-changed-when
+  become: true
+  become_user: entephoto
+  ansible.builtin.command:
+    cmd: podman volume create entephoto-export-state
+  failed_when: false
+  changed_when: false
+
 # CLI defaults to api.ente.com. Without this config it talks to the
 # public service and `account add` returns 401 (the user doesn't
 # exist there). Templating into the state volume's _data dir so
