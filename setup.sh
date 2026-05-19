@@ -519,16 +519,23 @@ PY
                 # `read pval` would silently consume the next line of
                 # PROMPTS_TXT (the password's own metadata) as the user's
                 # input. /dev/tty bypasses the redirect.
-                while IFS=$'\t' read -r pkey ptext pconfirm; do
+                while IFS=$'\t' read -r pkey ptext pconfirm pmask; do
                     [[ "$pkey" == "PROMPTS_NEEDED" || -z "$pkey" ]] && continue
+                    # Default mask=true if the older build_add_update.py
+                    # didn't emit the field (back-compat).
+                    pmask="${pmask:-true}"
+                    read_flags="-r"
+                    [[ "$pmask" == "true" ]] && read_flags="-rs"
                     echo
                     ask "$ptext:"
-                    read -rs pval </dev/tty
-                    echo
+                    # shellcheck disable=SC2086
+                    read $read_flags pval </dev/tty
+                    [[ "$pmask" == "true" ]] && echo
                     if [[ "$pconfirm" == "true" ]]; then
                         ask "$ptext (confirm):"
-                        read -rs pval2 </dev/tty
-                        echo
+                        # shellcheck disable=SC2086
+                        read $read_flags pval2 </dev/tty
+                        [[ "$pmask" == "true" ]] && echo
                         if [[ "$pval" != "$pval2" ]]; then
                             err "Values do not match. Aborting."
                             exit 1

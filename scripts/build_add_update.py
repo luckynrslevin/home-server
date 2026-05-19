@@ -228,8 +228,12 @@ def main():
         for var in prompt_needed:
             prompt_text = var.get("prompt", var["name"])
             confirm = "true" if var.get("confirm", False) else "false"
-            # name<TAB>prompt_text<TAB>confirm
-            print(f"{var['name']}\t{prompt_text}\t{confirm}")
+            # `mask` controls echo: true = hide input (passwords).
+            # Default true since `secret_prompt` is intended for secrets;
+            # roles set `mask: false` on visible fields like email.
+            mask = "true" if var.get("mask", True) else "false"
+            # name<TAB>prompt_text<TAB>confirm<TAB>mask
+            print(f"{var['name']}\t{prompt_text}\t{confirm}\t{mask}")
         sys.exit(3)
 
     # Side effects → lists + dicts

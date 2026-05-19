@@ -15,6 +15,7 @@ inventory_vars:
   - name: entephoto_export_account_email
     type: secret_prompt
     prompt: "Ente account email"
+    mask: false
     vault: true
   - name: entephoto_export_account_password
     type: secret_prompt
