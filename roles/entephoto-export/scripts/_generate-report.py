@@ -50,11 +50,33 @@ def detect_owner_id() -> int:
     return int(rows[0]["owner_id"])
 
 
-def fetch_collections(owner_id: int) -> dict:
-    rows = psql(f"SELECT collection_id, COALESCE(name, '(unnamed)') AS name, type "
-                f"FROM collections WHERE owner_id = {owner_id} "
-                f"AND is_deleted = false;")
-    return {int(r["collection_id"]): {"name": r["name"], "type": r["type"]} for r in rows}
+def fetch_collections(owner_id: int, export_dir: Path) -> dict:
+    """{collection_id: {name, type}} merged from DB type + sidecar names.
+
+    Ente stores collection names E2E-encrypted; the plaintext `name` column
+    is empty. The album folder's `.meta/album_meta.json` sidecar carries
+    the CLI-decrypted name keyed by the collection_id.
+    """
+    rows = psql(f"SELECT collection_id, type FROM collections "
+                f"WHERE owner_id = {owner_id} AND is_deleted = false;")
+    collections = {int(r["collection_id"]): {"name": "(unnamed)", "type": r["type"]}
+                   for r in rows}
+    for meta in export_dir.glob("*/.meta/album_meta.json"):
+        try:
+            data = json.loads(meta.read_text())
+        except (OSError, json.JSONDecodeError):
+            continue
+        cid = data.get("id")
+        name = data.get("albumName")
+        if cid is None or not name:
+            continue
+        if int(cid) in collections:
+            collections[int(cid)]["name"] = name
+    # Surface the special collections with friendly labels.
+    for c in collections.values():
+        if c["type"] == "uncategorized" and c["name"] == "(unnamed)":
+            c["name"] = "Uncategorized"
+    return collections
 
 
 def fetch_memberships(owner_id: int) -> dict:
@@ -234,9 +256,10 @@ def main() -> int:
     owner_id = args.owner_id or detect_owner_id()
     print(f"[info] owner_id={owner_id}", file=sys.stderr)
 
-    collections = fetch_collections(owner_id)
+    export_dir = Path(args.export_dir)
+    collections = fetch_collections(owner_id, export_dir)
     memberships = fetch_memberships(owner_id)
-    sidecars = walk_sidecars(Path(args.export_dir))
+    sidecars = walk_sidecars(export_dir)
 
     files = {}
     for fid, info in sidecars.items():
