@@ -90,6 +90,33 @@ lists all helpers if you omit the action):
   a config change. Returns when systemctl has accepted the start
   request; the export itself runs in the background.
 
+- `generate-report [HOST] [-- IMPL_ARGS]` — build a sortable HTML
+  report listing every photo + its album memberships, written to
+  `/var/www/dashboard/ente-photos-report.html` (served by Caddy at
+  `https://<host>/ente-photos-report.html`). Three sections:
+  *Unsorted* (in Uncategorized only), *Orphan* (in no collection),
+  *Multi-album*. Single-album photos are skipped — nothing to act
+  on. Names render as click-to-copy so you can paste into Ente's
+  search box.
+
+  Pass `-- --dry-run` to print stats without writing HTML;
+  `-- --owner-id <id>` to restrict to a specific user (auto-detected
+  by file-count if omitted).
+
+  Add a link to the report from the dashboard by editing the host's
+  `dashboard-config.yaml`:
+
+  ```yaml
+  - name: Ente Photos
+    urls:
+      - { label: Photos UI, url: "https://photos.<your-domain>" }
+      - { label: Photo report, url: "/ente-photos-report.html" }
+  ```
+
+  The report exposes filenames + album structure — only as private
+  as the dashboard itself (LAN-only via Caddy in the default
+  deployment).
+
 ## Out of scope
 
 - Restoring back into a fresh Ente instance from the export
