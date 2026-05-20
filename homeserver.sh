@@ -361,6 +361,10 @@ case "$VERB" in
             for f in "$scripts_dir"/*; do
                 [[ -f "$f" && -x "$f" ]] || continue
                 name=$(basename "$f")
+                # Hide leading-underscore helpers — convention for internal
+                # implementations (e.g. _foo.py shipped to the target by a
+                # public wrapper `foo`).
+                [[ "$name" == _* ]] && continue
                 # Strip a single trailing extension (.sh / .py / etc.)
                 # so dispatch matches what's printed.
                 display="${name%.*}"
