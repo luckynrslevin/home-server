@@ -77,8 +77,8 @@ configure the `NOPASSWD:ALL` sudoers drop-in first.
 > machine it runs on.
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/luckynrslevin/home-server/main/setup.sh \
-  -o /tmp/setup.sh && bash /tmp/setup.sh
+curl -fsSL https://raw.githubusercontent.com/luckynrslevin/home-server/main/homeserver.sh \
+  -o /tmp/homeserver.sh && bash /tmp/homeserver.sh
 ```
 
 The script is interactive — it walks you through:
@@ -104,38 +104,38 @@ CA install).
 
 ## Step 3 — Day-2 lifecycle commands
 
-`setup.sh` is also the entry point for everything after the initial
+`homeserver.sh` is also the entry point for everything after the initial
 install. Operators rarely need to invoke ansible directly.
 
 ```bash
-setup.sh add <service>          # add a service that wasn't picked at install
-setup.sh add                    # (no args) list available services + descriptions
-setup.sh remove <service>       # remove a service; data volumes preserved
-setup.sh remove <service> --purge   # remove + delete data volumes
-setup.sh upgrade                # bump within current major release, re-deploy
-setup.sh backup                 # trigger the backup systemd service now
-setup.sh restore                # restore from latest NAS backup
-setup.sh uninstall              # full wipe (= scripts/clean-host.sh)
-setup.sh --help                 # all verbs + flags
+homeserver.sh add <service>          # add a service that wasn't picked at install
+homeserver.sh add                    # (no args) list available services + descriptions
+homeserver.sh remove <service>       # remove a service; data volumes preserved
+homeserver.sh remove <service> --purge   # remove + delete data volumes
+homeserver.sh upgrade                # bump within current major release, re-deploy
+homeserver.sh backup                 # trigger the backup systemd service now
+homeserver.sh restore                # restore from latest NAS backup
+homeserver.sh uninstall              # full wipe (= scripts/clean-host.sh)
+homeserver.sh --help                 # all verbs + flags
 ```
 
 Examples:
 
 ```bash
 # I picked syncthing during install but actually want Paperless too:
-setup.sh add paperless-ngx
+homeserver.sh add paperless-ngx
 
 # Upgrade to the latest v2.x release after a few weeks:
-setup.sh upgrade
+homeserver.sh upgrade
 
 # Decommission Jellyfin but keep its media volume for now:
-setup.sh remove jellyfin
+homeserver.sh remove jellyfin
 ```
 
 Each verb is idempotent and prints the underlying ansible command on
 error so power users can drop down to `ansible-playbook` if they want
 to debug deeper. Adding a brand-new service to the project (writing a
-new role) is the only flow that doesn't go through `setup.sh`.
+new role) is the only flow that doesn't go through `homeserver.sh`.
 
 ## Hand off to Ansible from your laptop (optional)
 
@@ -146,7 +146,7 @@ on the server, the project also supports the classic
 
 ## Troubleshooting
 
-If `setup.sh install` aborts mid-deploy, the partial state is safe to
+If `homeserver.sh install` aborts mid-deploy, the partial state is safe to
 re-run from — every role is idempotent. Re-running picks up where it
 left off.
 
@@ -159,5 +159,5 @@ To wipe all home-server artifacts and start fresh (does **not**
 remove system packages or your primary user):
 
 ```bash
-setup.sh uninstall
+homeserver.sh uninstall
 ```

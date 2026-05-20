@@ -62,7 +62,7 @@ left untouched.
 |---------------------------|------------------------------------------|
 | `jellyfin_admin_password` | Admin password for the auto-created user.|
 
-`setup.sh` generates this as a vault-encrypted random string. Inspect
+`homeserver.sh` generates this as a vault-encrypted random string. Inspect
 the stored value with:
 
 ```bash

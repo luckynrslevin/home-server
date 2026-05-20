@@ -25,7 +25,7 @@ account password — a portability concern that's been open since
 
 ## Bootstrap (automated)
 
-`setup.sh add entephoto-export` prompts once for your Ente account
+`homeserver.sh add entephoto-export` prompts once for your Ente account
 email + account password, vault-encrypts them into inventory, then
 the role drives `ente account add` non-interactively on first run.
 Subsequent re-runs detect that auth state is already seeded and skip
@@ -52,7 +52,7 @@ sudo -iu entephoto podman run --rm -it \
 ### Recovering the stored password
 
 ```bash
-setup.sh secret entephoto_export_account_password
+homeserver.sh secret entephoto_export_account_password
 ```
 
 ### 2FA
@@ -75,11 +75,20 @@ Create the share on the NAS and seed the per-host subdirectory:
 
 ## Verifying
 
-After the first scheduled run (or a manual `systemctl --user start
-entephoto-export.service` as the `entephoto` user), browse the NAS
-share — every album should appear as a folder of plain JPG/HEIC/MOV
-files with `.json` metadata sidecars. Opening one in Preview / any
-image viewer confirms it's decrypted; no Ente client required.
+After the first scheduled run, browse the NAS share — every album
+should appear as a folder of plain JPG/HEIC/MOV files with `.json`
+metadata sidecars. Opening one in Preview / any image viewer confirms
+it's decrypted; no Ente client required.
+
+## Operational helpers
+
+Run via `homeserver.sh entephoto-export <action>` (the dispatcher
+lists all helpers if you omit the action):
+
+- `export-now [HOST]` — fire the export immediately instead of
+  waiting for the 03:00 timer. Useful after first deploy or after
+  a config change. Returns when systemctl has accepted the start
+  request; the export itself runs in the background.
 
 ## Out of scope
 

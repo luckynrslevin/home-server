@@ -25,7 +25,7 @@ service user and call `podman ps`.
 | `dashboard_config_file`   | `{{ inventory_dir }}/host_vars/{{ inventory_hostname }}/dashboard-config.yaml`| Per-host service definition consumed by the generator. |
 
 The config file is the source of truth for which services appear on
-the dashboard. `setup.sh` writes it from your service selection so
+the dashboard. `homeserver.sh` writes it from your service selection so
 unselected services don't show up as `Stopped`.
 
 Shape of `dashboard-config.yaml`:
@@ -70,7 +70,7 @@ The role triggers an immediate refresh (`systemctl start
 home-server-dashboard.service`) and enables the timer
 (`home-server-dashboard.timer`, every 15 min).
 
-`setup.sh` also runs a manual refresh ~30 s after the playbook
+`homeserver.sh` also runs a manual refresh ~30 s after the playbook
 finishes so the first page view shows real container state instead of
 "all stopped" (rootless containers are still pulling/starting when
 the playbook returns).

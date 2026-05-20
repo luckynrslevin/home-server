@@ -66,7 +66,7 @@ of Let's Encrypt SSL certificates.
 
 ## Keep these two values
 
-You'll paste them into `setup.sh` in Step 4:
+You'll paste them into `homeserver.sh` in Step 4:
 
 | | Example |
 |---|---|
@@ -80,7 +80,7 @@ You'll paste them into `setup.sh` in Step 4:
 | 1 — deSEC account | ✅ done | ~5 min |
 | 2 — Install OS | next | ~20–60 min |
 | 3 — SSH & sudo | | ~3 min |
-| 4 — Run setup.sh | | ~20 min |
+| 4 — Run homeserver.sh | | ~20 min |
 | 5 — Verify & explore | | ~2 min |
 
 ➡️ **[Step 2: Install the OS](02-install-os.md)**

@@ -10,7 +10,7 @@ description: "Daily decrypted export of Ente photos + Google-Takeout-style sidec
 # key. Storing it in vault means a vault.pw compromise also exposes
 # the photos. Acceptable for the project's typical threat model (vault.pw
 # on a USB / in a password manager off-host); recoverable later via
-# `setup.sh secret entephoto_export_account_password`.
+# `homeserver.sh secret entephoto_export_account_password`.
 inventory_vars:
   - name: entephoto_export_account_email
     type: secret_prompt

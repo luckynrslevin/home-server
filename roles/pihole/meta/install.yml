@@ -1,13 +1,13 @@
-# Install spec consumed by `setup.sh add` / `remove` (Phase 5+).
+# Install spec consumed by `homeserver.sh add` / `remove` (Phase 5+).
 # See docs/Setup-Guide/ — this file is the role's contract with the
 # lifecycle CLI. Adding/removing a role to/from a deployment uses
-# only this file (no per-service code in setup.sh).
+# only this file (no per-service code in homeserver.sh).
 
 display_name: "Pi-hole"
 description: "DNS-level ad-blocker for every device on the LAN"
 
 # Inventory vars this role needs to be deployable.
-# Each is resolved by setup.sh in priority order:
+# Each is resolved by homeserver.sh in priority order:
 #   1. existing inventory value (rebuild path)
 #   2. type-specific source:
 #        secret    → run `generator` (openssl rand …) and vault-encrypt
@@ -29,7 +29,7 @@ inventory_vars:
     vault: true
 
 # Side-effects on shared inventory keys when this role is added.
-# `setup.sh add` merges these in; `setup.sh remove` reverses them.
+# `homeserver.sh add` merges these in; `homeserver.sh remove` reverses them.
 side_effects:
   caddy_reverse_proxy_services:
     - { subdomain: pihole, port: 8443, proto: https }
@@ -38,13 +38,13 @@ side_effects:
       uid: 1005
       gid: 1005
 
-# Playbooks `setup.sh add` runs after inventory is updated, in order.
+# Playbooks `homeserver.sh add` runs after inventory is updated, in order.
 playbooks:
   - playbooks/pihole.yml
   - playbooks/caddy.yml      # rebuild Caddyfile with new subdomain
   - playbooks/dashboard.yml  # add tile
 
-# `setup.sh remove` cleanup. Volumes preserved by default; --purge
+# `homeserver.sh remove` cleanup. Volumes preserved by default; --purge
 # also deletes them.
 on_remove:
   inventory_vars_to_clear:

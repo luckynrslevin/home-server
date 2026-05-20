@@ -1,0 +1,31 @@
+#!/usr/bin/env bash
+# Trigger an immediate run of the entephoto-export timer service.
+set -euo pipefail
+
+usage() {
+    cat <<EOF
+Usage: homeserver.sh entephoto-export export-now [HOST]
+
+Fires the entephoto-export.service on HOST (defaults to "homeserver"),
+which the timer would otherwise run at 03:00. Useful after the role is
+deployed for the first time, or to verify a config change without
+waiting for the next scheduled run.
+
+The command returns immediately after starting the service — the export
+itself runs in the background. Check progress with:
+    ssh HOST 'sudo journalctl _SYSTEMD_USER_UNIT=entephoto-export.service -f'
+EOF
+}
+
+case "${1:-}" in
+    -h|--help) usage; exit 0 ;;
+esac
+
+TARGET="${1:-homeserver}"
+cd "${HOMESERVER_REPO_DIR:?HOMESERVER_REPO_DIR must be set — invoke via homeserver.sh}"
+
+ansible "$TARGET" -m shell -a '
+    XDG_RUNTIME_DIR=/run/user/$(id -u entephoto) \
+    DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/$(id -u entephoto)/bus \
+    sudo -E -u entephoto systemctl --user start entephoto-export.service
+'
