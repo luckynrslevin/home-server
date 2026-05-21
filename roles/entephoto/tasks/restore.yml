@@ -2,7 +2,7 @@
 # Ente Photos post-restore hook: three-phase Postgres restore.
 #
 # At this point the generic flow has already:
-#   - restored museum-config (tar) and minio-data (rsync)
+#   - restored museum-config (tar) and garage-data + garage-meta (rsync)
 #   - started entephoto-pod (all containers in the pod are up)
 #
 # We now need to:

@@ -9,21 +9,21 @@ s3:
     are_local_buckets: {{ entephoto_s3_local_buckets | to_json }}
     use_path_style_urls: true
     b2-eu-cen:
-        key: enteadmin
-        secret: {{ entephoto_minio_password }}
+        key: {{ entephoto_s3_access_key_id }}
+        secret: {{ entephoto_s3_secret_access_key }}
         endpoint: {{ entephoto_s3_endpoint }}
         region: eu-central-2
         bucket: b2-eu-cen
     wasabi-eu-central-2-v3:
-        key: enteadmin
-        secret: {{ entephoto_minio_password }}
+        key: {{ entephoto_s3_access_key_id }}
+        secret: {{ entephoto_s3_secret_access_key }}
         endpoint: {{ entephoto_s3_endpoint }}
         region: eu-central-2
         bucket: wasabi-eu-central-2-v3
         compliance: false
     scw-eu-fr-v3:
-        key: enteadmin
-        secret: {{ entephoto_minio_password }}
+        key: {{ entephoto_s3_access_key_id }}
+        secret: {{ entephoto_s3_secret_access_key }}
         endpoint: {{ entephoto_s3_endpoint }}
         region: eu-central-2
         bucket: scw-eu-fr-v3
