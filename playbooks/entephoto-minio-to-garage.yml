@@ -98,11 +98,19 @@
       become_user: "{{ _ente_user }}"
       changed_when: true
 
-    - name: Wait for Garage S3 API
-      ansible.builtin.wait_for:
-        host: 127.0.0.1
-        port: 3900
-        timeout: 60
+    # Pod-internal check — the pod doesn't yet publish 3900 to the host
+    # (it still publishes 3200 for MinIO). Use `garage status` inside
+    # the container as the readiness probe.
+    - name: Wait for Garage to be ready (pod-internal)
+      become: true
+      become_user: "{{ _ente_user }}"
+      ansible.builtin.command:
+        cmd: podman exec entephoto-garage /garage status
+      register: _garage_ready
+      retries: 30
+      delay: 2
+      until: _garage_ready.rc == 0
+      changed_when: false
 
     - name: Bootstrap Garage layout, buckets, key
       ansible.builtin.include_tasks: "{{ playbook_dir }}/../roles/entephoto/tasks/garage-bootstrap.yml"
@@ -138,9 +146,9 @@
       ansible.builtin.command:
         cmd: >
           podman run --rm
-          --network host
+          --pod entephoto
           -v /home/{{ _ente_user }}/.rclone-migration.conf:/config/rclone/rclone.conf:ro
-          rclone/rclone:latest
+          docker.io/rclone/rclone:latest
           --config /config/rclone/rclone.conf
           sync minio:{{ item }} garage:{{ item }}
           --transfers 8 --checkers 16 --checksum
@@ -168,9 +176,9 @@
       ansible.builtin.command:
         cmd: >
           podman run --rm
-          --network host
+          --pod entephoto
           -v /home/{{ _ente_user }}/.rclone-migration.conf:/config/rclone/rclone.conf:ro
-          rclone/rclone:latest
+          docker.io/rclone/rclone:latest
           --config /config/rclone/rclone.conf
           sync minio:{{ item }} garage:{{ item }}
           --transfers 8 --checkers 16 --checksum
