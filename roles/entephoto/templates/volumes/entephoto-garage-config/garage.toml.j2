@@ -7,7 +7,7 @@ replication_factor = 1
 
 rpc_bind_addr = "[::]:3901"
 rpc_public_addr = "127.0.0.1:3901"
-rpc_secret = "{{ entephoto_garage_rpc_secret }}"
+rpc_secret = "{{ entephoto_garage_rpc_secret | trim }}"
 
 [s3_api]
 api_bind_addr = "[::]:3900"
@@ -20,4 +20,4 @@ root_domain = ".s3.entephoto.local"
 
 [admin]
 api_bind_addr = "[::]:3903"
-admin_token = "{{ entephoto_garage_admin_token }}"
+admin_token = "{{ entephoto_garage_admin_token | trim }}"
