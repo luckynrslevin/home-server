@@ -127,3 +127,30 @@
     - wasabi-eu-central-2-v3
     - scw-eu-fr-v3
   changed_when: false
+
+# Browser uploads send a CORS preflight OPTIONS before the actual PUT.
+# Garage requires explicit per-bucket CORS rules (unlike MinIO which
+# allowed everything by default). The Garage CLI has no CORS subcommand,
+# so set rules via the S3 API using awscli in a one-shot container
+# joined to the pod.
+- name: Apply CORS rules to each bucket
+  become: true
+  become_user: entephoto
+  ansible.builtin.shell: |
+    set -euo pipefail
+    podman run --rm --pod entephoto \
+      -e AWS_ACCESS_KEY_ID={{ entephoto_s3_access_key_id }} \
+      -e AWS_SECRET_ACCESS_KEY={{ entephoto_s3_secret_access_key }} \
+      -e AWS_DEFAULT_REGION=eu-central-2 \
+      docker.io/amazon/aws-cli:latest \
+      --endpoint-url=http://127.0.0.1:3900 \
+      s3api put-bucket-cors --bucket {{ item }} \
+      --cors-configuration '{"CORSRules":[{"AllowedHeaders":["*"],"AllowedMethods":["GET","PUT","HEAD","POST","DELETE"],"AllowedOrigins":["*"],"ExposeHeaders":["ETag"]}]}'
+  args:
+    executable: /bin/bash
+  loop:
+    - b2-eu-cen
+    - wasabi-eu-central-2-v3
+    - scw-eu-fr-v3
+  changed_when: false
+  no_log: true
