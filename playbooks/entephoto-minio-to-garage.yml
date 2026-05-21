@@ -131,6 +131,7 @@
           access_key_id = enteadmin
           secret_access_key = {{ entephoto_minio_password }}
           endpoint = http://127.0.0.1:3200
+          region = eu-central-2
           force_path_style = true
 
           [garage]
@@ -139,6 +140,7 @@
           access_key_id = {{ entephoto_s3_access_key_id }}
           secret_access_key = {{ entephoto_s3_secret_access_key }}
           endpoint = http://127.0.0.1:3900
+          region = eu-central-2
           force_path_style = true
       no_log: true
 
