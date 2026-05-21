@@ -8,6 +8,7 @@ RequiresMountsFor={{ entephoto_export_nas_path }}
 [Container]
 ContainerName=%N
 Image={{ entephoto_export_image }}
+AutoUpdate=registry
 Network=host
 
 # State volume holds the CLI's auth tokens + per-account sync state

@@ -64,40 +64,11 @@
     state: directory
     mode: "0777"
 
-# Build the Ente CLI image from upstream. No pre-built image is
-# published. Re-builds are cheap (cache hit) so this is idempotent
-# in practice; explicitly check with `podman image exists` first to
-# avoid a rebuild on every run.
-- name: Check whether CLI image is already built
-  become: true
-  become_user: entephoto
-  ansible.builtin.command:
-    cmd: "podman image exists {{ entephoto_export_image }}"
-  register: _ente_cli_image_check
-  failed_when: false
-  changed_when: false
-
-- name: Clone Ente repo for CLI build (only when image missing)
-  become: true
-  become_user: entephoto
-  ansible.builtin.git:
-    repo: "{{ entephoto_export_source_repo }}"
-    dest: "/home/entephoto/ente-src"
-    version: "{{ entephoto_export_source_ref }}"
-    depth: 1
-    force: true
-  when: _ente_cli_image_check.rc != 0
-
-- name: Build Ente CLI image (only when missing) # noqa: no-changed-when
-  become: true
-  become_user: entephoto
-  ansible.builtin.command:
-    cmd: >-
-      podman build
-      -t {{ entephoto_export_image }}
-      -f /home/entephoto/ente-src/cli/Dockerfile
-      /home/entephoto/ente-src/cli
-  when: _ente_cli_image_check.rc != 0
+# Image is built upstream-of-deploy by .github/workflows/ente-cli-build.yml
+# and published to ghcr.io/luckynrslevin/ente-cli. We pull lazily on
+# the target via the quadlet's AutoUpdate=registry rather than
+# pre-pulling here — the timer's first fire will pull, and subsequent
+# podman-auto-update.timer runs keep it fresh.
 
 - name: Save current role path
   ansible.builtin.set_fact:

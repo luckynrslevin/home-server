@@ -1,0 +1,126 @@
+name: Build Ente CLI image
+
+# Builds and publishes ghcr.io/luckynrslevin/ente-cli — the Ente
+# command-line client used by the entephoto-export role. Upstream
+# (ente-io/ente) ships the Dockerfile at cli/Dockerfile but does
+# not publish a pre-built image, and CLI versions aren't separately
+# tagged in the upstream release scheme (the CLI's AppVersion is
+# baked into source). Tracking main + weekly rebuilds keeps the
+# image fresh while letting any regression surface immediately.
+#
+# Two parallel native-arch jobs (amd64 + arm64) → merge digests into
+# a single multi-platform manifest. Same pattern as caddy-build.yml.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/ente-cli-build.yml'
+  schedule:
+    # Weekly Monday 04:15 UTC — picks up upstream CLI changes a
+    # few minutes after the caddy weekly rebuild starts.
+    - cron: '15 4 * * 1'
+  workflow_dispatch:
+    inputs:
+      upstream_ref:
+        description: 'ente-io/ente ref to build (branch, tag, or SHA)'
+        required: false
+        default: 'main'
+
+env:
+  IMAGE_NAME: ghcr.io/${{ github.repository_owner }}/ente-cli
+  UPSTREAM_REPO: ente-io/ente
+  UPSTREAM_REF: ${{ github.event.inputs.upstream_ref || 'main' }}
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: linux/amd64
+            runner: ubuntu-latest
+          - platform: linux/arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Checkout upstream Ente repo
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ env.UPSTREAM_REPO }}
+          ref: ${{ env.UPSTREAM_REF }}
+
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push by digest
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: ./cli
+          file: ./cli/Dockerfile
+          platforms: ${{ matrix.platform }}
+          outputs: |
+            type=image,name=${{ env.IMAGE_NAME }},push-by-digest=true,name-canonical=true,push=true
+          cache-from: type=gha,scope=${{ matrix.platform }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.platform }}
+
+      - name: Export digest
+        run: |
+          mkdir -p /tmp/digests
+          digest="${{ steps.build.outputs.digest }}"
+          touch "/tmp/digests/${digest#sha256:}"
+
+      - name: Upload digest
+        uses: actions/upload-artifact@v4
+        with:
+          name: digest-${{ strategy.job-index }}
+          path: /tmp/digests/*
+          if-no-files-found: error
+          retention-days: 1
+
+  merge:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Download digests
+        uses: actions/download-artifact@v4
+        with:
+          path: /tmp/digests
+          pattern: digest-*
+          merge-multiple: true
+
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create manifest list and push
+        working-directory: /tmp/digests
+        run: |
+          docker buildx imagetools create \
+            --tag "${IMAGE_NAME}:latest" \
+            --tag "${IMAGE_NAME}:${{ github.run_number }}" \
+            $(printf "${IMAGE_NAME}@sha256:%s " *)
+
+      - name: Inspect resulting image
+        run: |
+          docker buildx imagetools inspect "${IMAGE_NAME}:latest"

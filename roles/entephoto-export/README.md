@@ -13,8 +13,9 @@ account password — a portability concern that's been open since
 
 ## How it works
 
-1. Builds the official Ente CLI from upstream (`ente-io/ente/cli/Dockerfile`)
-   into a local podman image. Upstream publishes no pre-built CLI image.
+1. Pulls the Ente CLI image (`ghcr.io/luckynrslevin/ente-cli:latest`),
+   which we pre-build weekly from upstream `ente-io/ente/cli/Dockerfile`
+   via `.github/workflows/ente-cli-build.yml`. Multi-arch (amd64 + arm64).
 2. Mounts `nas:/volume1/backup-photos-export/<hostname>/` at
    `/srv/photos-export` via NFS — same per-host backup-* layout used
    by `backup-jellyfin-media`.
