@@ -192,13 +192,13 @@
     # ------------------------------------------------------------------
     # Phase 4: cut museum over to Garage credentials
     # ------------------------------------------------------------------
+    # include_role pulls in role defaults so museum.yaml.j2 has access
+    # to entephoto_albums_url, entephoto_admin_user_ids, etc. — vars
+    # that don't exist in inventory.
     - name: Re-render museum.yaml against Garage key
-      ansible.builtin.template:
-        src: "{{ playbook_dir }}/../roles/entephoto/templates/volumes/entephoto-museum-config/museum.yaml.j2"
-        dest: "/home/{{ _ente_user }}/.local/share/containers/storage/volumes/entephoto-museum-config/_data/museum.yaml"
-        owner: "{{ _ente_user }}"
-        group: "{{ _ente_user }}"
-        mode: "0600"
+      ansible.builtin.include_role:
+        name: entephoto
+        tasks_from: render-museum-config.yml
 
     - name: Start museum + web pointing at Garage
       ansible.builtin.command:
