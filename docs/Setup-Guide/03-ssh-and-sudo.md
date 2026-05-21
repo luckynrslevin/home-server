@@ -1,7 +1,7 @@
 # Step 3 — SSH in & verify sudo
 
 > **Setup Guide** · Step 3 of 5 · ▰▰▰▱▱ 60% · ~25 min spent · ~25 min to go
-> [← Step 2: Install OS](02-install-os.md) · **Step 3: SSH & sudo** · [Step 4: Run setup.sh →](04-run-setup.md)
+> [← Step 2: Install OS](02-install-os.md) · **Step 3: SSH & sudo** · [Step 4: Run homeserver.sh →](04-run-setup.md)
 
 The shortest step. ~3 minutes — confirm you can SSH in and that
 your user can run `sudo` without a password.
@@ -45,7 +45,7 @@ this time.
 
 ### Why passwordless sudo?
 
-`setup.sh` in Step 4 runs a bunch of `sudo dnf install` /
+`homeserver.sh` in Step 4 runs a bunch of `sudo dnf install` /
 `sudo systemctl` / etc. calls non-interactively. If sudo prompts
 for a password mid-install, the script can't answer it from a
 piped heredoc. NOPASSWD is the standard pattern for an admin user
@@ -65,7 +65,7 @@ You should now be:
 | 1 — deSEC account | ✅ done | ~5 min |
 | 2 — Install OS | ✅ done | ~20–60 min |
 | 3 — SSH & sudo | ✅ done | ~3 min |
-| 4 — Run setup.sh | next | ~20 min |
+| 4 — Run homeserver.sh | next | ~20 min |
 | 5 — Verify & explore | | ~2 min |
 
-➡️ **[Step 4: Run setup.sh](04-run-setup.md)**
+➡️ **[Step 4: Run homeserver.sh](04-run-setup.md)**

@@ -25,7 +25,7 @@ account password — a portability concern that's been open since
 
 ## Bootstrap (automated)
 
-`setup.sh add entephoto-export` prompts once for your Ente account
+`homeserver.sh add entephoto-export` prompts once for your Ente account
 email + account password, vault-encrypts them into inventory, then
 the role drives `ente account add` non-interactively on first run.
 Subsequent re-runs detect that auth state is already seeded and skip
@@ -52,7 +52,7 @@ sudo -iu entephoto podman run --rm -it \
 ### Recovering the stored password
 
 ```bash
-setup.sh secret entephoto_export_account_password
+homeserver.sh secret entephoto_export_account_password
 ```
 
 ### 2FA
@@ -75,11 +75,47 @@ Create the share on the NAS and seed the per-host subdirectory:
 
 ## Verifying
 
-After the first scheduled run (or a manual `systemctl --user start
-entephoto-export.service` as the `entephoto` user), browse the NAS
-share — every album should appear as a folder of plain JPG/HEIC/MOV
-files with `.json` metadata sidecars. Opening one in Preview / any
-image viewer confirms it's decrypted; no Ente client required.
+After the first scheduled run, browse the NAS share — every album
+should appear as a folder of plain JPG/HEIC/MOV files with `.json`
+metadata sidecars. Opening one in Preview / any image viewer confirms
+it's decrypted; no Ente client required.
+
+## Operational helpers
+
+Run via `homeserver.sh entephoto-export <action>` (the dispatcher
+lists all helpers if you omit the action):
+
+- `export-now [HOST]` — fire the export immediately instead of
+  waiting for the 03:00 timer. Useful after first deploy or after
+  a config change. Returns when systemctl has accepted the start
+  request; the export itself runs in the background.
+
+- `generate-report [HOST] [-- IMPL_ARGS]` — build a sortable HTML
+  report listing every photo + its album memberships, written to
+  `/var/www/dashboard/ente-photos-report.html` (served by Caddy at
+  `https://<host>/ente-photos-report.html`). Three sections:
+  *Unsorted* (in Uncategorized only), *Orphan* (in no collection),
+  *Multi-album*. Single-album photos are skipped — nothing to act
+  on. Names render as click-to-copy so you can paste into Ente's
+  search box.
+
+  Pass `-- --dry-run` to print stats without writing HTML;
+  `-- --owner-id <id>` to restrict to a specific user (auto-detected
+  by file-count if omitted).
+
+  Add a link to the report from the dashboard by editing the host's
+  `dashboard-config.yaml`:
+
+  ```yaml
+  - name: Ente Photos
+    urls:
+      - { label: Photos UI, url: "https://photos.<your-domain>" }
+      - { label: Photo report, url: "/ente-photos-report.html" }
+  ```
+
+  The report exposes filenames + album structure — only as private
+  as the dashboard itself (LAN-only via Caddy in the default
+  deployment).
 
 ## Out of scope
 

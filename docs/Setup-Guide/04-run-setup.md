@@ -1,7 +1,7 @@
-# Step 4 — Run setup.sh
+# Step 4 — Run homeserver.sh
 
 > **Setup Guide** · Step 4 of 5 · ▰▰▰▰▱ 80% · ~28 min spent · ~22 min to go
-> [← Step 3: SSH & sudo](03-ssh-and-sudo.md) · **Step 4: Run setup.sh** · [Step 5: Verify →](05-verify-and-explore.md)
+> [← Step 3: SSH & sudo](03-ssh-and-sudo.md) · **Step 4: Run homeserver.sh** · [Step 5: Verify →](05-verify-and-explore.md)
 
 The longest step (~20 min), but most of it is unattended. ~3
 minutes of your attention up front, ~17 minutes of "container
@@ -9,7 +9,7 @@ images pull and services start" you can use to make coffee.
 
 ## Heads-up on the prompts
 
-`setup.sh` is interactive. It will ask you for:
+`homeserver.sh` is interactive. It will ask you for:
 
 | Prompt | What to paste | From Step |
 |---|---|---|
@@ -28,13 +28,13 @@ notes.
 > See [SMTP-Setup.md](../SMTP-Setup.md) for picking a provider
 > (Mailbox.org / Posteo / etc.) and generating an app password.
 
-## Run setup.sh
+## Run homeserver.sh
 
 In your SSH session on the server:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/luckynrslevin/home-server/main/setup.sh \
-  -o /tmp/setup.sh && bash /tmp/setup.sh
+curl -fsSL https://raw.githubusercontent.com/luckynrslevin/home-server/main/homeserver.sh \
+  -o /tmp/homeserver.sh && bash /tmp/homeserver.sh
 ```
 
 > [!IMPORTANT]
@@ -56,7 +56,7 @@ Roughly in order:
 5. **Deploy** — Ansible runs. **~15–20 min**. You can step away;
    the script doesn't need more input after the prompts.
 
-## What setup.sh does behind the scenes
+## What homeserver.sh does behind the scenes
 
 - Writes the wildcard A record (`*.<sub>.dedyn.io → <server LAN
   IP>`) to deSEC via API. (One less manual step in the deSEC
@@ -79,7 +79,7 @@ Roughly in order:
 | 1 — deSEC account | ✅ done | ~5 min |
 | 2 — Install OS | ✅ done | ~20–60 min |
 | 3 — SSH & sudo | ✅ done | ~3 min |
-| 4 — Run setup.sh | in progress | ~20 min |
+| 4 — Run homeserver.sh | in progress | ~20 min |
 | 5 — Verify & explore | next | ~2 min |
 
 ➡️ **[Step 5: Verify & explore](05-verify-and-explore.md)**

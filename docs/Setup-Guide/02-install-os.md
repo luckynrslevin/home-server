@@ -66,7 +66,7 @@ Whichever path you pick, you should end Step 2 with:
 | 1 — deSEC account | ✅ done | ~5 min |
 | 2 — Install OS | in progress | ~20–60 min |
 | 3 — SSH & sudo | next | ~3 min |
-| 4 — Run setup.sh | | ~20 min |
+| 4 — Run homeserver.sh | | ~20 min |
 | 5 — Verify & explore | | ~2 min |
 
 ➡️ **[Step 3: SSH in & verify sudo](03-ssh-and-sudo.md)**

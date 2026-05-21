@@ -13,7 +13,7 @@ jellyfin_time_zone: "Europe/Berlin"
 
 # First-run automation — admin account, locale, libraries.
 # Set jellyfin_admin_password from a vault-encrypted secret in your
-# private inventory (setup.sh generates this automatically). Leaving
+# private inventory (homeserver.sh generates this automatically). Leaving
 # it empty disables the postinstall step.
 jellyfin_admin_user: jellyfinadmin
 jellyfin_admin_password: ""

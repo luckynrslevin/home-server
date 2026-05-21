@@ -1,0 +1,51 @@
+#!/usr/bin/env bash
+# Build an HTML report of Ente photo organization for operator self-cleanup.
+set -euo pipefail
+
+usage() {
+    cat <<EOF
+Usage: homeserver.sh entephoto-export generate-report [HOST] [-- IMPL_ARGS...]
+
+Joins the museum DB with the on-disk export sidecars to produce a sortable
+HTML report listing every photo + its album memberships. Written to
+/var/www/dashboard/ente-photos-report.html on HOST and served by Caddy at
+https://HOST/ente-photos-report.html.
+
+HOST defaults to "homeserver". Anything after a literal "--" is forwarded
+to the on-target implementation. Useful flags there:
+    --dry-run       Print stats; don't write HTML.
+    --owner-id ID   Restrict to that user (default: user with most files).
+    --output PATH   Write somewhere other than the dashboard dir.
+    --export-dir P  Read sidecars from a non-default mount point.
+
+Examples:
+    homeserver.sh entephoto-export generate-report
+    homeserver.sh entephoto-export generate-report homeserver2 -- --dry-run
+EOF
+}
+
+case "${1:-}" in
+    -h|--help) usage; exit 0 ;;
+esac
+
+TARGET="${1:-homeserver}"
+shift || true
+
+IMPL_ARGS=""
+if [[ "${1:-}" == "--" ]]; then
+    shift
+    IMPL_ARGS="$*"
+elif [[ $# -gt 0 ]]; then
+    echo "ERROR: unexpected arg(s): $*" >&2
+    echo "Pass impl flags after a literal --" >&2
+    usage
+    exit 2
+fi
+
+cd "${HOMESERVER_REPO_DIR:?HOMESERVER_REPO_DIR must be set — invoke via homeserver.sh}"
+self_dir="$(dirname "$(readlink -f "$0")")"
+
+# ansible.script copies the local impl to the target, makes it executable,
+# and runs it. --become so it can write under /var/www/ and `su` to entephoto.
+exec ansible "$TARGET" --become \
+    -m script -a "$self_dir/_generate-report.py $IMPL_ARGS"
