@@ -33,6 +33,36 @@
   ansible.builtin.set_fact:
     entephoto_role_path: "{{ role_path }}"
 
+# Chicken-and-egg: podman_quadlet stages museum.yaml from a template
+# that references Garage's access key. On a re-deploy the key already
+# exists in the sidecar (created by garage-bootstrap.yml on a prior
+# run) — pre-load it here so the initial render uses real creds.
+# On a true greenfield deploy the sidecar is absent, the placeholder
+# defaults stand in, and garage-bootstrap + the post-stage re-render
+# correct museum.yaml before any real traffic.
+- name: Stat Garage access key sidecar
+  become: true
+  become_user: entephoto
+  ansible.builtin.stat:
+    path: /home/entephoto/.garage-museum-key.json
+  register: _entephoto_pre_sidecar
+
+- name: Load existing Garage access key from sidecar
+  become: true
+  become_user: entephoto
+  ansible.builtin.slurp:
+    src: /home/entephoto/.garage-museum-key.json
+  register: _entephoto_pre_sidecar_slurp
+  when: _entephoto_pre_sidecar.stat.exists
+  no_log: true
+
+- name: Expose pre-loaded Garage key as facts
+  ansible.builtin.set_fact:
+    entephoto_s3_access_key_id: "{{ (_entephoto_pre_sidecar_slurp.content | b64decode | from_json).key_id }}"
+    entephoto_s3_secret_access_key: "{{ (_entephoto_pre_sidecar_slurp.content | b64decode | from_json).secret_key }}"
+  when: _entephoto_pre_sidecar.stat.exists
+  no_log: true
+
 # Deploy Ente Photos stack as a rootless Podman pod.
 # The pod contains postgres, garage, museum (API) and web (frontend) sharing
 # one network namespace — so museum can reach garage and postgres via

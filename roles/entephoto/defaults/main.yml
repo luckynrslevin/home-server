@@ -29,6 +29,15 @@ entephoto_s3_host: ""
 # HTTP when museum talks directly to Garage, HTTPS when proxying via Caddy.
 entephoto_s3_local_buckets: true
 
+# Placeholders for the Garage-generated museum credentials.
+# garage-bootstrap.yml overwrites these via set_fact once the key
+# sidecar exists. Defaults let museum.yaml render on first deploy
+# before bootstrap has run — the role re-renders museum.yaml + bounces
+# the container right after bootstrap, so the placeholders are never
+# served to real traffic.
+entephoto_s3_access_key_id: "pending-bootstrap"
+entephoto_s3_secret_access_key: "pending-bootstrap"
+
 # Admin user IDs (set after first signup, found via:
 #   podman exec entephoto-postgres psql -U pguser ente_db -c "SELECT user_id FROM users;")
 # Admins can manage subscriptions and storage for all users.
