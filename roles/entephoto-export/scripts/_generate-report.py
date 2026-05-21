@@ -137,21 +137,10 @@ th::after { content: ' \\2195'; opacity: 0.4; font-size: 0.7em; }
 td { padding: 0.25rem 0.6rem; border-bottom: 1px solid #f0f0f0;
      vertical-align: top; }
 tr:hover { background: #fafafa; }
-.copy { cursor: pointer; color: #0366d6; text-decoration: none; }
-.copy:hover { text-decoration: underline; }
-.copy.copied { color: #28a745; }
-.copy.copied::after { content: ' \\2713'; }
 em { color: #999; font-style: normal; font-size: 0.85rem; }
 """
 
 JS = r"""
-function copy(el, text) {
-    if (!navigator.clipboard) return;
-    navigator.clipboard.writeText(text).then(function() {
-        el.classList.add('copied');
-        setTimeout(function() { el.classList.remove('copied'); }, 1200);
-    });
-}
 document.querySelectorAll('table.sortable').forEach(function(table) {
     table.querySelectorAll('th').forEach(function(th, i) {
         th.addEventListener('click', function() {
@@ -175,8 +164,8 @@ HELP_HTML = """
 <p class="help">
 Photos have no &ldquo;primary&rdquo; album in Ente &mdash; each album in
 the <em>albums</em> column is an equal reference to the same stored photo.
-Album names and filenames here are <strong>click-to-copy</strong>: click one
-to copy the text, then paste into Ente&rsquo;s search box to find it.
+Ente&rsquo;s web app does not support deep-links into albums or files yet,
+so names below are plain text. Find them by name in the Ente UI.
 </p>
 """
 
@@ -216,20 +205,14 @@ def emit_html(stats_line: str, sections: list, output: Path) -> None:
                   "<th>filename</th><th>created</th><th>albums</th>"
                   "</tr></thead><tbody>")
         for fname, created, albums in rows:
-            fname_js = json.dumps(fname)
             fname_html = html.escape(fname)
             created_html = html.escape(created or "")
             if albums:
-                album_cells = " &middot; ".join(
-                    f"<a class=\"copy\" onclick=\"copy(this, {json.dumps(a)})\">"
-                    f"{html.escape(a)}</a>"
-                    for a in albums
-                )
+                album_cells = " &middot; ".join(html.escape(a) for a in albums)
             else:
                 album_cells = "<em>(none)</em>"
             out.write(
-                f"<tr><td><a class=\"copy\" "
-                f"onclick=\"copy(this, {fname_js})\">{fname_html}</a></td>"
+                f"<tr><td>{fname_html}</td>"
                 f"<td>{created_html}</td><td>{album_cells}</td></tr>"
             )
         out.write("</tbody></table></details>")
