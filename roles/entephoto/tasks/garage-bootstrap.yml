@@ -2,18 +2,19 @@
 # Garage bootstrap. Runs against the entephoto-garage container after the
 # pod is up. All steps are idempotent — safe to re-run on every deploy.
 
-- name: Wait for Garage S3 API to accept connections
-  ansible.builtin.wait_for:
-    host: 127.0.0.1
-    port: 3900
-    timeout: 60
-
-- name: Get Garage node ID
+# `podman exec ... /garage status` doubles as the readiness probe — it
+# only returns 0 once the gossip layer is up. Using a host-level
+# wait_for on 3900 would fail until the pod re-publishes that port,
+# which doesn't happen until the cutover.
+- name: Wait for Garage to be ready
   become: true
   become_user: entephoto
   ansible.builtin.command:
     cmd: podman exec entephoto-garage /garage status
   register: _garage_status
+  retries: 30
+  delay: 2
+  until: _garage_status.rc == 0
   changed_when: false
 
 - name: Parse node ID and current layout state
