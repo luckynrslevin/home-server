@@ -145,7 +145,7 @@
     - name: Mirror each bucket (warm pass — museum still serving)
       ansible.builtin.command:
         cmd: >
-          podman run --rm
+          podman run --rm --user 0:0
           --pod entephoto
           -v /home/{{ _ente_user }}/.rclone-migration.conf:/config/rclone/rclone.conf:ro
           docker.io/rclone/rclone:latest
@@ -175,7 +175,7 @@
     - name: Final mirror pass with museum stopped
       ansible.builtin.command:
         cmd: >
-          podman run --rm
+          podman run --rm --user 0:0
           --pod entephoto
           -v /home/{{ _ente_user }}/.rclone-migration.conf:/config/rclone/rclone.conf:ro
           docker.io/rclone/rclone:latest
