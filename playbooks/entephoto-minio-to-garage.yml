@@ -40,14 +40,18 @@
       changed_when: false
       failed_when: "'entephoto-minio' not in _minio_running.stdout"
 
-    - name: Confirm museum is currently running
+    # Museum is paused during phase 3 of this playbook. A re-run after
+    # a partial failure (e.g. mirror timeout) finds museum stopped —
+    # which is fine, the playbook just continues from where it left off.
+    # Only fail if museum isn't even *defined* (i.e. wrong host).
+    - name: Confirm museum unit exists
       ansible.builtin.command:
-        cmd: podman ps --filter name=entephoto-museum --format '{% raw %}{{.Names}}{% endraw %}'
+        cmd: podman ps -a --filter name=entephoto-museum --format '{% raw %}{{.Names}}{% endraw %}'
       become: true
       become_user: "{{ _ente_user }}"
-      register: _museum_running
+      register: _museum_exists
       changed_when: false
-      failed_when: "'entephoto-museum' not in _museum_running.stdout"
+      failed_when: "'entephoto-museum' not in _museum_exists.stdout"
 
     - name: Confirm new Garage quadlet has been pulled (git)
       ansible.builtin.stat:
