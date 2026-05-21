@@ -267,6 +267,7 @@ application roles below can run.
 | **Ente Photos** | Self-hosted photo & video library with iOS/Android apps (end-to-end encrypted). | <ul><li>`ghcr.io/ente-io/server:latest`</li><li>`ghcr.io/ente-io/web:latest`</li><li>`public.ecr.aws/docker/library/postgres:15`</li><li>`quay.io/minio/minio:latest`</li></ul> | <ul><li>`entephoto-museum-config` — tar</li><li>`entephoto-minio-data` — rsync</li><li>`ente_db` (Postgres) — pgdump</li></ul> |
 | **Paperless-NGX** | Document management with OCR + full-text search. Optional SFTP sidecar for scanner auto-ingest (`paperless_sftp_ingest_enabled`). | <ul><li>`ghcr.io/paperless-ngx/paperless-ngx:latest`</li><li>`public.ecr.aws/docker/library/postgres:16`</li><li>`public.ecr.aws/docker/library/redis:7-alpine`</li><li>`docker.io/gotenberg/gotenberg:8`</li><li>`docker.io/atmoz/sftp:latest`</li></ul> | <ul><li>`paperless-data` — tar</li><li>`paperless-export` — tar</li><li>`paperless-redis-data` — tar</li><li>`paperless-media` — rsync</li><li>`paperless` (Postgres) — pgdump</li><li>`paperless-consume`, `paperless-sftp-*` — runtime, not backed up</li></ul> |
 | **Jellyfin** | Media server for movies, TV and music with native iOS/tvOS clients. NAS-backed video library mounted read-only via NFS. | `ghcr.io/jellyfin/jellyfin:latest` | <ul><li>`jellyfin-config` — tar</li><li>`jellyfin-media` — rsync (opt-in restore)</li></ul> |
+| **Ente Photos export** | Decrypted nightly export of the Ente library to NAS — plain JPG/HEIC + Google-Takeout-style `.json` sidecars per album. Independent of Ente itself, so the photos stay readable without your master password. Includes a self-cleanup report at `https://<host>/ente-photos-report.html`. | `localhost/ente-cli:latest` (built locally on first deploy from `ente-io/ente`) | <ul><li>`entephoto-export-state` — CLI auth + sync cursor (preserved on remove)</li><li>NAS export tree at `nas:/volume1/backup-photos-export/<hostname>/` — not backed up (it _is_ a backup)</li></ul> |
 | **Backup** | Host-side service. Snapshots each role's declared volumes to the NAS on a schedule (default 21:00) using the per-role `backup_manifest`. | — (no container — runs as a systemd timer) | — |
 
 The dashboard, generated on the host and served by Caddy, gives you a
@@ -276,10 +277,13 @@ every deployed service:
 ![Sample dashboard](docs/img/Dashboard.jpg)
 
 ### Planned applications / features
-- [Nextcloud (file storage and sharing)](https://github.com/luckynrslevin/home-server/issues/7)
-- [Single Sign-On (e.g. Keycloak) across all installed apps](https://github.com/luckynrslevin/home-server/issues/6)
-- [Cloud-init self-provisioning — one-paste deploy to any VPS provider](https://github.com/luckynrslevin/home-server/issues/106)
-- [Home Assistant](https://www.home-assistant.io/)
-- [Mealie](https://mealie.io/)
-- IoT stack (Mosquitto, InfluxDB, Grafana, Telegraf)
-- [Uptime Kuma](https://uptimekuma.org/)
+
+This list is generated from the [open `planned-app` issues](https://github.com/luckynrslevin/home-server/issues?q=is%3Aissue+is%3Aopen+label%3Aplanned-app) on GitHub and refreshed by a workflow whenever an issue is opened, closed, or (un)labeled. To propose something new, open an issue with the `planned-app` label.
+
+<!-- planned-app-start -->
+- [Cloud-init self-provisioning: one-paste deploy to any VPS provider](https://github.com/luckynrslevin/home-server/issues/106) (#106)
+- [Add Home Assistant role](https://github.com/luckynrslevin/home-server/issues/204) (#204)
+- [Add Mealie role](https://github.com/luckynrslevin/home-server/issues/205) (#205)
+- [Add IoT stack role (Mosquitto + InfluxDB + Grafana + Telegraf)](https://github.com/luckynrslevin/home-server/issues/206) (#206)
+- [Add Uptime Kuma role](https://github.com/luckynrslevin/home-server/issues/207) (#207)
+<!-- planned-app-end -->

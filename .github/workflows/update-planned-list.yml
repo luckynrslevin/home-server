@@ -1,0 +1,78 @@
+name: Update README planned-app list
+
+# Regenerates the bullet list between <!-- planned-app-start --> and
+# <!-- planned-app-end --> in README.md from the open `planned-app`
+# issues. Runs whenever an issue is opened, closed, reopened, or has
+# the planned-app label added/removed, and on manual dispatch.
+
+on:
+  issues:
+    types: [opened, closed, reopened, labeled, unlabeled]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: update-planned-list
+  cancel-in-progress: true
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Render planned-app list
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          # `gh issue list` JSON → markdown bullets, sorted by number asc.
+          gh issue list --label planned-app --state open \
+              --limit 100 --json number,title,url \
+            | python3 -c '
+          import json, sys
+          items = sorted(json.load(sys.stdin), key=lambda i: i["number"])
+          if not items:
+              print("_(No open planned-app issues. Open one with the_ `planned-app` _label to propose a feature.)_")
+          else:
+              for i in items:
+                  print(f"- [{i[\"title\"]}]({i[\"url\"]}) (#{i[\"number\"]})")
+          ' > /tmp/planned.md
+          cat /tmp/planned.md
+
+      - name: Splice into README
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          body = Path("/tmp/planned.md").read_text().rstrip() + "\n"
+          readme = Path("README.md")
+          src = readme.read_text()
+          pattern = re.compile(
+              r"(<!-- planned-app-start -->)(.*?)(<!-- planned-app-end -->)",
+              re.DOTALL,
+          )
+          if not pattern.search(src):
+              raise SystemExit("planned-app markers not found in README.md")
+          new = pattern.sub(rf"\1\n{body}\3", src)
+          if new != src:
+              readme.write_text(new)
+              print("README.md updated")
+          else:
+              print("README.md unchanged")
+          PY
+
+      - name: Commit if changed
+        run: |
+          if git diff --quiet README.md; then
+              echo "no change"
+              exit 0
+          fi
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add README.md
+          git commit -m "docs(README): refresh planned-app list from open issues"
+          git push
