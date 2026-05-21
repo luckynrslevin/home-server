@@ -106,9 +106,12 @@ backup_rsync_volume() {
     log_error "Cannot inspect volume $volume"
     return 1
   fi
-  local dest="$BACKUP_ROOT/$share/$HOSTNAME_DIR"
+  # Per-volume subdir so two volumes can share the same NFS share
+  # without --delete on the second clobbering the first (entephoto
+  # garage-data + garage-meta both live under `photos/<host>/`).
+  local dest="$BACKUP_ROOT/$share/$HOSTNAME_DIR/$volume"
   mkdir -p "$dest"
-  log "  Rsync backup: $volume → $share/$HOSTNAME_DIR"
+  log "  Rsync backup: $volume → $share/$HOSTNAME_DIR/$volume"
   # --no-owner --no-group --numeric-ids: NFS all_squash maps every UID to the
   #   share's anon user, so chowns from rsync would fail. We deliberately
   #   drop ownership preservation here. On restore, container-native UIDs
