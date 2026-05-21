@@ -117,7 +117,7 @@
           [minio]
           type = s3
           provider = Minio
-          access_key_id = {{ entephoto_minio_root_user }}
+          access_key_id = enteadmin
           secret_access_key = {{ entephoto_minio_password }}
           endpoint = http://127.0.0.1:3200
           force_path_style = true
