@@ -89,27 +89,9 @@
 # volume on FIRST deploy only — subsequent ansible runs with changed
 # inventory (e.g. an updated entephoto_s3_endpoint, or the access key
 # materialized by garage-bootstrap above) don't re-render it, leaving
-# museum.yaml out of sync. Re-render every run directly into the volume's
-# _data dir and bounce the museum container on drift.
-- name: Re-render museum.yaml from inventory (drift correction)
-  become: true
-  become_user: entephoto
-  ansible.builtin.template:
-    src: volumes/entephoto-museum-config/museum.yaml.j2
-    dest: "/home/entephoto/.local/share/containers/storage/volumes/entephoto-museum-config/_data/museum.yaml"
-    mode: "0600"
-  register: _entephoto_museum_yaml
-  failed_when: false
-
-- name: Restart entephoto-museum when config drifted # noqa: no-handler
-  become: true
-  ansible.builtin.command:
-    cmd: >
-      sudo -u entephoto XDG_RUNTIME_DIR=/run/user/{{ my_linux_users.entephoto.uid }}
-      DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/{{ my_linux_users.entephoto.uid }}/bus
-      systemctl --user restart entephoto-museum.service
-  changed_when: true
-  when: _entephoto_museum_yaml is changed
+# museum.yaml out of sync.
+- name: Re-render museum.yaml + bounce museum on drift
+  ansible.builtin.include_tasks: render-museum-config.yml
 
 - name: Register backup manifest
   ansible.builtin.set_fact:

@@ -1,0 +1,26 @@
+---
+# Re-render museum.yaml directly into the entephoto-museum-config volume
+# and restart the museum container on drift. Split out so the migration
+# playbook can re-use it (include_role pulls in role defaults that
+# museum.yaml.j2 needs: entephoto_albums_url, entephoto_admin_user_ids,
+# etc.).
+
+- name: Re-render museum.yaml from inventory (drift correction)
+  become: true
+  become_user: entephoto
+  ansible.builtin.template:
+    src: volumes/entephoto-museum-config/museum.yaml.j2
+    dest: "/home/entephoto/.local/share/containers/storage/volumes/entephoto-museum-config/_data/museum.yaml"
+    mode: "0600"
+  register: _entephoto_museum_yaml
+  failed_when: false
+
+- name: Restart entephoto-museum when config drifted # noqa: no-handler
+  become: true
+  ansible.builtin.command:
+    cmd: >
+      sudo -u entephoto XDG_RUNTIME_DIR=/run/user/{{ my_linux_users.entephoto.uid }}
+      DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/{{ my_linux_users.entephoto.uid }}/bus
+      systemctl --user restart entephoto-museum.service
+  changed_when: true
+  when: _entephoto_museum_yaml is changed
