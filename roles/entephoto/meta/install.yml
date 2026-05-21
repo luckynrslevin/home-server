@@ -8,9 +8,13 @@ inventory_vars:
     type: secret
     generator: "openssl rand -base64 24"
     vault: true
-  - name: entephoto_minio_password
+  - name: entephoto_garage_rpc_secret
     type: secret
-    generator: "openssl rand -base64 24"
+    generator: "openssl rand -hex 32"
+    vault: true
+  - name: entephoto_garage_admin_token
+    type: secret
+    generator: "openssl rand -base64 32"
     vault: true
   - name: entephoto_encryption_key
     type: secret
@@ -47,7 +51,7 @@ side_effects:
     - { subdomain: cast, port: 3002 }
     - { subdomain: auth, port: 3003 }
     - { subdomain: photos-api, port: 8080 }
-    - { subdomain: photos-s3, port: 3200 }
+    - { subdomain: photos-s3, port: 3900 }
   my_linux_users:
     entephoto:
       uid: 1008
@@ -61,7 +65,8 @@ playbooks:
 on_remove:
   inventory_vars_to_clear:
     - entephoto_db_password
-    - entephoto_minio_password
+    - entephoto_garage_rpc_secret
+    - entephoto_garage_admin_token
     - entephoto_encryption_key
     - entephoto_hash_key
     - entephoto_jwt_secret
@@ -72,5 +77,6 @@ on_remove:
     - entephoto_s3_local_buckets
   volumes_to_preserve_unless_purge:
     - entephoto-postgres-data
-    - entephoto-minio-data
+    - entephoto-garage-data
+    - entephoto-garage-meta
     - entephoto-museum-config

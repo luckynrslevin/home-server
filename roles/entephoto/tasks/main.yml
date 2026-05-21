@@ -34,8 +34,8 @@
     entephoto_role_path: "{{ role_path }}"
 
 # Deploy Ente Photos stack as a rootless Podman pod.
-# The pod contains postgres, minio, museum (API) and web (frontend) sharing
-# one network namespace — so museum can reach minio and postgres via
+# The pod contains postgres, garage, museum (API) and web (frontend) sharing
+# one network namespace — so museum can reach garage and postgres via
 # localhost without a socat bridge (which the upstream docker-compose needs).
 - name: Deploy entephoto pod using podman_quadlet
   ansible.builtin.include_role:
@@ -48,37 +48,49 @@
       - entephoto.pod.j2
       - entephoto.network
       - entephoto-postgres.container.j2
-      - entephoto-minio.container.j2
+      - entephoto-garage.container.j2
       - entephoto-museum.container.j2
       - entephoto-web.container.j2
       - entephoto-postgres-data.volume
-      - entephoto-minio-data.volume
+      - entephoto-garage-data.volume
+      - entephoto-garage-meta.volume
+      - entephoto-garage-config.volume
       - entephoto-museum-config.volume
     podman_quadlet_volumes_files_to_stage:
       - name: entephoto-museum-config
         files:
           - src: museum.yaml.j2
             mode: "0600"
+      - name: entephoto-garage-config
+        files:
+          - src: garage.toml.j2
+            mode: "0600"
     # All Ente surfaces are reverse-proxied by Caddy at
     # https://photos.<caddy_domain>, photos-api, photos-s3, accounts, cast,
-    # auth, etc. Direct LAN openings (8080, 3200, 3000-3008) intentionally
+    # auth, etc. Direct LAN openings (8080, 3900, 3000-3008) intentionally
     # not exposed.
 
 # --------------------------------------------------------------------------
-# MinIO bucket initialization
+# Garage bootstrap
 #
-# Ente expects three hardcoded buckets (b2-eu-cen, wasabi-eu-central-2-v3,
-# scw-eu-fr-v3). The upstream docker-compose uses a post_start hook running
-# `mc mb` inside the minio container, but the minio/minio image doesn't
-# include `mc`. We run `mc` from a one-shot minio/mc container joined to
-# the entephoto pod's network namespace so it can reach localhost:3200.
+# Assigns the single-node layout, creates the three buckets Ente expects
+# (b2-eu-cen, wasabi-eu-central-2-v3, scw-eu-fr-v3), generates an access
+# key (museum's S3 credentials), and grants it read/write on each bucket.
+# Idempotent — re-running picks up existing layout/buckets/keys.
+#
+# Must run BEFORE museum.yaml is rendered, because the access key created
+# here populates entephoto_s3_access_key_id / entephoto_s3_secret_access_key
+# inside that template.
 # --------------------------------------------------------------------------
+- name: Bootstrap Garage (layout, buckets, access key)
+  ansible.builtin.include_tasks: garage-bootstrap.yml
+
 # podman_quadlet stages museum.yaml into the entephoto-museum-config
 # volume on FIRST deploy only — subsequent ansible runs with changed
-# inventory (e.g. an updated entephoto_s3_endpoint) don't re-render it,
-# leaving museum.yaml out of sync with inventory. Re-render every run
-# directly into the volume's _data dir and bounce the museum container
-# on drift, so inventory remains the source of truth.
+# inventory (e.g. an updated entephoto_s3_endpoint, or the access key
+# materialized by garage-bootstrap above) don't re-render it, leaving
+# museum.yaml out of sync. Re-render every run directly into the volume's
+# _data dir and bounce the museum container on drift.
 - name: Re-render museum.yaml from inventory (drift correction)
   become: true
   become_user: entephoto
@@ -87,8 +99,6 @@
     dest: "/home/entephoto/.local/share/containers/storage/volumes/entephoto-museum-config/_data/museum.yaml"
     mode: "0600"
   register: _entephoto_museum_yaml
-  # Volume may not exist yet on first deploy (podman_quadlet creates it
-  # via files_to_stage above). In that case this is a no-op fallback.
   failed_when: false
 
 - name: Restart entephoto-museum when config drifted # noqa: no-handler
@@ -100,23 +110,6 @@
       systemctl --user restart entephoto-museum.service
   changed_when: true
   when: _entephoto_museum_yaml is changed
-
-- name: Wait for MinIO and create buckets # noqa: no-changed-when
-  become: true
-  ansible.builtin.shell:
-    cmd: |
-      su - entephoto -c 'podman run --rm --pod entephoto \
-        --entrypoint sh {{ entephoto_mc_image }} -c "
-          for i in \$(seq 1 30); do
-            mc alias set h0 http://localhost:3200 {{ entephoto_minio_root_user }} {{ entephoto_minio_password | quote }} && break
-            sleep 2
-          done
-          mc mb -p h0/b2-eu-cen
-          mc mb -p h0/wasabi-eu-central-2-v3
-          mc mb -p h0/scw-eu-fr-v3
-        "'
-  register: entephoto_bucket_create
-  changed_when: "'Bucket created successfully' in entephoto_bucket_create.stdout"
 
 - name: Register backup manifest
   ansible.builtin.set_fact:

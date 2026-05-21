@@ -1,8 +1,7 @@
 ---
 # Container images
 entephoto_postgres_image: "public.ecr.aws/docker/library/postgres:15"
-entephoto_minio_image: "quay.io/minio/minio:latest"
-entephoto_mc_image: "quay.io/minio/mc:latest"
+entephoto_garage_image: "dxflrs/garage:v1.0.1"
 entephoto_server_image: "ghcr.io/ente-io/server:latest"
 entephoto_web_image: "ghcr.io/ente-io/web:latest"
 
@@ -11,14 +10,14 @@ entephoto_api_url: "http://{{ ansible_facts['default_ipv4']['address'] }}:8080"
 entephoto_photos_url: "http://{{ ansible_facts['default_ipv4']['address'] }}:3000"
 entephoto_albums_url: "http://{{ ansible_facts['default_ipv4']['address'] }}:3002"
 
-# MinIO S3 endpoint used for presigned upload URLs sent to browsers.
-# Override when proxying MinIO through a reverse proxy.
-entephoto_s3_endpoint: "{{ ansible_facts['default_ipv4']['address'] }}:3200"
+# S3 endpoint used for presigned upload URLs sent to browsers. Default is
+# direct Garage on its S3 API port; install.yml overrides to the Caddy
+# subdomain so URLs sign over HTTPS.
+entephoto_s3_endpoint: "{{ ansible_facts['default_ipv4']['address'] }}:3900"
 
-# When museum must reach MinIO via an HTTPS reverse proxy on the same host
+# When museum must reach S3 via an HTTPS reverse proxy on the same host
 # (so presigned URLs work over HTTPS in the browser without mixed-content
-# errors), set these two variables. Leaving them empty keeps the direct-to-
-# MinIO behaviour.
+# errors), set this. Leaving it empty keeps the direct-to-Garage behaviour.
 #
 #   entephoto_s3_host: hostname portion of entephoto_s3_endpoint — mapped
 #                      to host-gateway inside the pod so museum can resolve
@@ -27,11 +26,8 @@ entephoto_s3_host: ""
 
 # Museum signs presigned URLs as http:// when are_local_buckets is true and
 # https:// when false. It must match the scheme of entephoto_s3_endpoint:
-# HTTP when museum talks directly to MinIO, HTTPS when proxying via Caddy.
+# HTTP when museum talks directly to Garage, HTTPS when proxying via Caddy.
 entephoto_s3_local_buckets: true
-
-# MinIO admin username (password comes from vault: entephoto_minio_password)
-entephoto_minio_root_user: enteadmin
 
 # Admin user IDs (set after first signup, found via:
 #   podman exec entephoto-postgres psql -U pguser ente_db -c "SELECT user_id FROM users;")
@@ -39,12 +35,16 @@ entephoto_minio_root_user: enteadmin
 entephoto_admin_user_ids: []
 
 # Backup manifest — consumed by the backup role and restore playbook.
+# Garage splits storage into two volumes: data (immutable blobs) and meta
+# (the bucket/object index, RocksDB/LMDB). Losing meta orphans the data,
+# so both must be backed up.
 backup_manifest:
   service_user: entephoto
   service_unit: entephoto-pod
   volumes:
     - { name: entephoto-museum-config, method: tar }
-    - { name: entephoto-minio-data, method: rsync, nas_share: photos }
+    - { name: entephoto-garage-data, method: rsync, nas_share: photos }
+    - { name: entephoto-garage-meta, method: rsync, nas_share: photos }
   databases:
     - { container: entephoto-postgres, db_user: pguser, db_name: ente_db, method: pgdump }
   post_restore_tasks: restore.yml

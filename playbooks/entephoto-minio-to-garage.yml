@@ -1,0 +1,216 @@
+---
+# One-shot migration: copy objects from the existing MinIO backend into a
+# new Garage backend, then cut the museum over to Garage.
+#
+# This playbook is meant to be run ONCE per host, on a host that already
+# has the pre-Garage entephoto stack deployed. After it completes
+# successfully, run `ansible-playbook playbooks/entephoto.yml` to bring
+# the role-managed state into alignment (which finally removes the MinIO
+# container + volume from the pod).
+#
+# See docs/Garage-Migration.md for the full cutover guide and rollback.
+
+- name: Migrate entephoto S3 backend from MinIO to Garage
+  hosts: all
+  gather_facts: true
+  become: true
+
+  vars:
+    _ente_user: entephoto
+    _ente_uid: "{{ my_linux_users.entephoto.uid }}"
+    _ente_buckets:
+      - b2-eu-cen
+      - wasabi-eu-central-2-v3
+      - scw-eu-fr-v3
+    # While both backends are up, Garage listens on alt ports so it
+    # doesn't collide with MinIO. The cutover step swaps Garage to the
+    # canonical 3900 by re-running the entephoto role.
+    _garage_temp_port: 3910
+
+  pre_tasks:
+    - name: Confirm MinIO is currently running
+      ansible.builtin.command:
+        cmd: podman ps --filter name=entephoto-minio --format '{% raw %}{{.Names}}{% endraw %}'
+      become: true
+      become_user: "{{ _ente_user }}"
+      register: _minio_running
+      changed_when: false
+      failed_when: "'entephoto-minio' not in _minio_running.stdout"
+
+    - name: Confirm museum is currently running
+      ansible.builtin.command:
+        cmd: podman ps --filter name=entephoto-museum --format '{% raw %}{{.Names}}{% endraw %}'
+      become: true
+      become_user: "{{ _ente_user }}"
+      register: _museum_running
+      changed_when: false
+      failed_when: "'entephoto-museum' not in _museum_running.stdout"
+
+    - name: Confirm new Garage quadlet has been pulled (git)
+      ansible.builtin.stat:
+        path: "{{ playbook_dir }}/../roles/entephoto/templates/quadlets/entephoto-garage.container.j2"
+      delegate_to: localhost
+      become: false
+      register: _garage_quadlet_present
+      failed_when: not _garage_quadlet_present.stat.exists
+
+  tasks:
+
+    # ------------------------------------------------------------------
+    # Phase 1: stand up Garage alongside MinIO
+    # ------------------------------------------------------------------
+    - name: Create Garage data + meta volumes
+      ansible.builtin.command:
+        cmd: "podman volume create {{ item }}"
+      become: true
+      become_user: "{{ _ente_user }}"
+      loop:
+        - entephoto-garage-data
+        - entephoto-garage-meta
+        - entephoto-garage-config
+      register: _vol_create
+      changed_when: _vol_create.rc == 0
+      failed_when: _vol_create.rc != 0 and 'already exists' not in (_vol_create.stderr | default(''))
+
+    - name: Render garage.toml into config volume
+      ansible.builtin.template:
+        src: "{{ playbook_dir }}/../roles/entephoto/templates/volumes/entephoto-garage-config/garage.toml.j2"
+        dest: "/home/{{ _ente_user }}/.local/share/containers/storage/volumes/entephoto-garage-config/_data/garage.toml"
+        owner: "{{ _ente_user }}"
+        group: "{{ _ente_user }}"
+        mode: "0600"
+
+    - name: Start temporary Garage container in the entephoto pod
+      ansible.builtin.command:
+        cmd: >
+          podman run -d --replace --name entephoto-garage
+          --pod entephoto
+          --restart=always
+          -v entephoto-garage-data:/data
+          -v entephoto-garage-meta:/meta
+          -v entephoto-garage-config:/etc/garage:ro
+          -e GARAGE_CONFIG_FILE=/etc/garage/garage.toml
+          {{ entephoto_garage_image }}
+      become: true
+      become_user: "{{ _ente_user }}"
+      changed_when: true
+
+    - name: Wait for Garage S3 API
+      ansible.builtin.wait_for:
+        host: 127.0.0.1
+        port: 3900
+        timeout: 60
+
+    - name: Bootstrap Garage layout, buckets, key
+      ansible.builtin.include_tasks: "{{ playbook_dir }}/../roles/entephoto/tasks/garage-bootstrap.yml"
+
+    # ------------------------------------------------------------------
+    # Phase 2: mirror objects MinIO -> Garage
+    # ------------------------------------------------------------------
+    - name: Render rclone config (MinIO source + Garage destination)
+      ansible.builtin.copy:
+        dest: "/home/{{ _ente_user }}/.rclone-migration.conf"
+        owner: "{{ _ente_user }}"
+        group: "{{ _ente_user }}"
+        mode: "0600"
+        content: |
+          [minio]
+          type = s3
+          provider = Minio
+          access_key_id = {{ entephoto_minio_root_user }}
+          secret_access_key = {{ entephoto_minio_password }}
+          endpoint = http://127.0.0.1:3200
+          force_path_style = true
+
+          [garage]
+          type = s3
+          provider = Other
+          access_key_id = {{ entephoto_s3_access_key_id }}
+          secret_access_key = {{ entephoto_s3_secret_access_key }}
+          endpoint = http://127.0.0.1:3900
+          force_path_style = true
+      no_log: true
+
+    - name: Mirror each bucket (warm pass — museum still serving)
+      ansible.builtin.command:
+        cmd: >
+          podman run --rm
+          --network host
+          -v /home/{{ _ente_user }}/.rclone-migration.conf:/config/rclone/rclone.conf:ro
+          rclone/rclone:latest
+          --config /config/rclone/rclone.conf
+          sync minio:{{ item }} garage:{{ item }}
+          --transfers 8 --checkers 16 --checksum
+      become: true
+      become_user: "{{ _ente_user }}"
+      loop: "{{ _ente_buckets }}"
+      changed_when: true
+
+    # ------------------------------------------------------------------
+    # Phase 3: pause museum, final sync pass
+    # ------------------------------------------------------------------
+    - name: Stop museum + web (release in-flight uploads)
+      ansible.builtin.command:
+        cmd: >
+          sudo -u {{ _ente_user }}
+          XDG_RUNTIME_DIR=/run/user/{{ _ente_uid }}
+          DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/{{ _ente_uid }}/bus
+          systemctl --user stop {{ item }}
+      loop:
+        - entephoto-museum
+        - entephoto-web
+      changed_when: true
+
+    - name: Final mirror pass with museum stopped
+      ansible.builtin.command:
+        cmd: >
+          podman run --rm
+          --network host
+          -v /home/{{ _ente_user }}/.rclone-migration.conf:/config/rclone/rclone.conf:ro
+          rclone/rclone:latest
+          --config /config/rclone/rclone.conf
+          sync minio:{{ item }} garage:{{ item }}
+          --transfers 8 --checkers 16 --checksum
+      become: true
+      become_user: "{{ _ente_user }}"
+      loop: "{{ _ente_buckets }}"
+      changed_when: true
+
+    # ------------------------------------------------------------------
+    # Phase 4: cut museum over to Garage credentials
+    # ------------------------------------------------------------------
+    - name: Re-render museum.yaml against Garage key
+      ansible.builtin.template:
+        src: "{{ playbook_dir }}/../roles/entephoto/templates/volumes/entephoto-museum-config/museum.yaml.j2"
+        dest: "/home/{{ _ente_user }}/.local/share/containers/storage/volumes/entephoto-museum-config/_data/museum.yaml"
+        owner: "{{ _ente_user }}"
+        group: "{{ _ente_user }}"
+        mode: "0600"
+
+    - name: Start museum + web pointing at Garage
+      ansible.builtin.command:
+        cmd: >
+          sudo -u {{ _ente_user }}
+          XDG_RUNTIME_DIR=/run/user/{{ _ente_uid }}
+          DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/{{ _ente_uid }}/bus
+          systemctl --user start {{ item }}
+      loop:
+        - entephoto-museum
+        - entephoto-web
+      changed_when: true
+
+  post_tasks:
+    - name: Post-cutover guidance
+      ansible.builtin.debug:
+        msg:
+          - "Mirror + cutover complete. Garage is now serving museum on port 3900."
+          - "MinIO is still running on port 3200 as rollback insurance."
+          - ""
+          - "NEXT STEPS:"
+          - "  1. Open the Ente UI; load a random old photo. Confirms presigned URLs sign + fetch against Garage."
+          - "  2. Run: ansible-playbook playbooks/entephoto.yml --limit {{ inventory_hostname }}"
+          - "     This reconciles role-managed state (removes the MinIO container + volume from the pod"
+          - "     because the new role no longer references them, and ensures Garage is part of the"
+          - "     pod-systemd dependency graph)."
+          - "  3. After 24h with no user reports: remove the MinIO data volume and the NAS backup share's"
+          - "     entephoto-minio-data tree. See docs/Garage-Migration.md."

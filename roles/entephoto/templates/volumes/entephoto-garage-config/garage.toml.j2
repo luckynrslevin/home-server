@@ -1,0 +1,23 @@
+metadata_dir = "/meta"
+data_dir = "/data"
+db_engine = "lmdb"
+
+# Single-node deployment — no replicas, no cluster.
+replication_factor = 1
+
+rpc_bind_addr = "[::]:3901"
+rpc_public_addr = "127.0.0.1:3901"
+rpc_secret = "{{ entephoto_garage_rpc_secret }}"
+
+[s3_api]
+api_bind_addr = "[::]:3900"
+# Region label embedded in presigned URL signatures. Must match the
+# `region:` value in museum.yaml's S3 stanzas (eu-central-2).
+s3_region = "eu-central-2"
+# Only used for vhost-style addressing; museum uses path-style so this
+# value is never resolved.
+root_domain = ".s3.entephoto.local"
+
+[admin]
+api_bind_addr = "[::]:3903"
+admin_token = "{{ entephoto_garage_admin_token }}"

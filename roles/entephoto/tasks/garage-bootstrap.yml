@@ -1,0 +1,131 @@
+---
+# Garage bootstrap. Runs against the entephoto-garage container after the
+# pod is up. All steps are idempotent — safe to re-run on every deploy.
+
+- name: Wait for Garage S3 API to accept connections
+  ansible.builtin.wait_for:
+    host: 127.0.0.1
+    port: 3900
+    timeout: 60
+
+- name: Get Garage node ID
+  become: true
+  become_user: entephoto
+  ansible.builtin.command:
+    cmd: podman exec entephoto-garage /garage status
+  register: _garage_status
+  changed_when: false
+
+- name: Parse node ID and current layout state
+  ansible.builtin.set_fact:
+    # `garage status` prints a table with the node ID as the first column
+    # of the first data row under "HEALTHY NODES".
+    _garage_node_id: >-
+      {{ _garage_status.stdout_lines
+         | select('match', '^[0-9a-f]{16,}')
+         | first
+         | regex_search('^[0-9a-f]+') }}
+    _garage_layout_assigned: "{{ 'NO ROLE ASSIGNED' not in _garage_status.stdout }}"
+
+- name: Assign single-node layout
+  become: true
+  become_user: entephoto
+  ansible.builtin.shell: |
+    set -e
+    podman exec entephoto-garage /garage layout assign \
+      -z home -c 1T {{ _garage_node_id }}
+    podman exec entephoto-garage /garage layout apply --version 1
+  changed_when: true
+  when: not _garage_layout_assigned
+
+# Bucket creation: `garage bucket create` errors on the second call.
+# Check + create rather than swallowing errors blindly.
+- name: List existing buckets
+  become: true
+  become_user: entephoto
+  ansible.builtin.command:
+    cmd: podman exec entephoto-garage /garage bucket list
+  register: _garage_bucket_list
+  changed_when: false
+
+- name: Create Ente buckets
+  become: true
+  become_user: entephoto
+  ansible.builtin.command:
+    cmd: "podman exec entephoto-garage /garage bucket create {{ item }}"
+  loop:
+    - b2-eu-cen
+    - wasabi-eu-central-2-v3
+    - scw-eu-fr-v3
+  when: item not in _garage_bucket_list.stdout
+  changed_when: true
+
+# Access key handling.
+#
+# `garage key create` prints the secret exactly once (at creation time).
+# Persist id+secret to a root-owned file in entephoto's home so re-runs
+# can read it back without regenerating. Garage itself stores the key
+# in its metadata DB; we just need a sidecar so ansible can template it
+# into museum.yaml.
+- name: Check for persisted Garage access key
+  become: true
+  become_user: entephoto
+  ansible.builtin.stat:
+    path: /home/entephoto/.garage-museum-key.json
+  register: _garage_key_file
+
+- name: Create museum access key in Garage
+  become: true
+  become_user: entephoto
+  ansible.builtin.command:
+    cmd: podman exec entephoto-garage /garage key create entephoto-museum
+  register: _garage_key_create
+  changed_when: true
+  when: not _garage_key_file.stat.exists
+
+- name: Persist Garage access key to sidecar file
+  become: true
+  become_user: entephoto
+  ansible.builtin.copy:
+    # Garage prints `Key ID: GK...` and `Secret key: ...` on separate lines.
+    content: |
+      {
+        "key_id": "{{ _garage_key_create.stdout
+                       | regex_search('Key ID:\s*(\S+)', '\\1')
+                       | first }}",
+        "secret_key": "{{ _garage_key_create.stdout
+                          | regex_search('Secret key:\s*(\S+)', '\\1')
+                          | first }}"
+      }
+    dest: /home/entephoto/.garage-museum-key.json
+    mode: "0600"
+  no_log: true
+  when: not _garage_key_file.stat.exists
+
+- name: Load persisted Garage access key
+  become: true
+  become_user: entephoto
+  ansible.builtin.slurp:
+    src: /home/entephoto/.garage-museum-key.json
+  register: _garage_key_slurp
+  no_log: true
+
+- name: Expose access key as facts for museum.yaml
+  ansible.builtin.set_fact:
+    entephoto_s3_access_key_id: "{{ (_garage_key_slurp.content | b64decode | from_json).key_id }}"
+    entephoto_s3_secret_access_key: "{{ (_garage_key_slurp.content | b64decode | from_json).secret_key }}"
+  no_log: true
+
+- name: Grant museum key read/write on each bucket
+  become: true
+  become_user: entephoto
+  ansible.builtin.command:
+    cmd: >
+      podman exec entephoto-garage /garage bucket allow
+      --read --write --owner
+      --key entephoto-museum {{ item }}
+  loop:
+    - b2-eu-cen
+    - wasabi-eu-central-2-v3
+    - scw-eu-fr-v3
+  changed_when: false

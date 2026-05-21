@@ -1,0 +1,18 @@
+[Unit]
+Description=entephoto garage object storage
+PartOf=entephoto-pod.service
+
+[Container]
+ContainerName=%N
+Image={{ entephoto_garage_image }}
+AutoUpdate=registry
+
+Pod=entephoto.pod
+
+# Garage separates blob storage (data) from the bucket/object index (meta);
+# losing the meta volume orphans the data. Both are rsync-backed.
+Volume=entephoto-garage-data.volume:/data
+Volume=entephoto-garage-meta.volume:/meta
+Volume=entephoto-garage-config.volume:/etc/garage:ro
+
+Environment=GARAGE_CONFIG_FILE=/etc/garage/garage.toml
