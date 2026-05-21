@@ -11,7 +11,7 @@
 
 There are plenty of homeserver projects already. Why another one?
 
-Because **the tools aren't the bottleneck — the transition is.**
+Because **the tools aren't the bottleneck — the transition is.** And none of the existing solutions did satisfy my needs / expectations.
 
 Anyone who's tried to move off a vendor ecosystem (iCloud, Google
 Photos, Apple Music, Dropbox, …) knows the pattern: dozens of viable
@@ -90,7 +90,7 @@ manual / requires extra setup · **−** absent or actively contrary
 |---|:---:|:---:|:---:|:---:|:---:|
 | Polished web UI for daily ops | o | + | + | + | + |
 | Curated application catalog (one-click install) | o | + | + | + | + |
-| Built-in SSO / LDAP across all installed apps | − <br>*(planned)* | − | − | − | + |
+| Built-in SSO / LDAP across all installed apps | o <br>*(Nextcloud as OIDC provider for apps that support it)* | − | − | − | + |
 | Ready-made VPS image at common hosters | − <br>*(cloud-init self-provision planned)* | + | o | o | o |
 | One-command install of the *whole* stack | + | o | + | + | + |
 | Mandatory HTTPS for every service via real Let's Encrypt certs | + | o | o | − | + |
@@ -268,6 +268,7 @@ application roles below can run.
 | **Paperless-NGX** | Document management with OCR + full-text search. Optional SFTP sidecar for scanner auto-ingest (`paperless_sftp_ingest_enabled`). | <ul><li>`ghcr.io/paperless-ngx/paperless-ngx:latest`</li><li>`public.ecr.aws/docker/library/postgres:16`</li><li>`public.ecr.aws/docker/library/redis:7-alpine`</li><li>`docker.io/gotenberg/gotenberg:8`</li><li>`docker.io/atmoz/sftp:latest`</li></ul> | <ul><li>`paperless-data` — tar</li><li>`paperless-export` — tar</li><li>`paperless-redis-data` — tar</li><li>`paperless-media` — rsync</li><li>`paperless` (Postgres) — pgdump</li><li>`paperless-consume`, `paperless-sftp-*` — runtime, not backed up</li></ul> |
 | **Jellyfin** | Media server for movies, TV and music with native iOS/tvOS clients. NAS-backed video library mounted read-only via NFS. | `ghcr.io/jellyfin/jellyfin:latest` | <ul><li>`jellyfin-config` — tar</li><li>`jellyfin-media` — rsync (opt-in restore)</li></ul> |
 | **Ente Photos export** | Decrypted nightly export of the Ente library to NAS — plain JPG/HEIC + Google-Takeout-style `.json` sidecars per album. Independent of Ente itself, so the photos stay readable without your master password. Includes a self-cleanup report at `https://<host>/ente-photos-report.html`. | `localhost/ente-cli:latest` (built locally on first deploy from `ente-io/ente`) | <ul><li>`entephoto-export-state` — CLI auth + sync cursor (preserved on remove)</li><li>NAS export tree at `nas:/volume1/backup-photos-export/<hostname>/` — not backed up (it _is_ a backup)</li></ul> |
+| **Nextcloud** | File storage, sharing, contacts, calendar. Also acts as an OIDC identity provider so other apps (where supported) can authenticate against the same Nextcloud user. | <ul><li>`docker.io/library/nextcloud:apache`</li><li>`public.ecr.aws/docker/library/postgres:16`</li><li>`public.ecr.aws/docker/library/redis:7-alpine`</li></ul> | <ul><li>`nextcloud-config` — tar</li><li>`nextcloud-data` — rsync</li><li>`nextcloud` (Postgres) — pgdump</li></ul> |
 | **Backup** | Host-side service. Snapshots each role's declared volumes to the NAS on a schedule (default 21:00) using the per-role `backup_manifest`. | — (no container — runs as a systemd timer) | — |
 
 The dashboard, generated on the host and served by Caddy, gives you a
