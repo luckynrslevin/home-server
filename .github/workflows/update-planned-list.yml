@@ -30,16 +30,16 @@ jobs:
           set -euo pipefail
           # `gh issue list` JSON → markdown bullets, sorted by number asc.
           gh issue list --label planned-app --state open \
-              --limit 100 --json number,title,url \
-            | python3 -c '
-          import json, sys
-          items = sorted(json.load(sys.stdin), key=lambda i: i["number"])
+              --limit 100 --json number,title,url > /tmp/planned.json
+          python3 - <<'PY' > /tmp/planned.md
+          import json
+          items = sorted(json.load(open("/tmp/planned.json")), key=lambda i: i["number"])
           if not items:
               print("_(No open planned-app issues. Open one with the_ `planned-app` _label to propose a feature.)_")
           else:
               for i in items:
-                  print(f"- [{i[\"title\"]}]({i[\"url\"]}) (#{i[\"number\"]})")
-          ' > /tmp/planned.md
+                  print(f"- [{i['title']}]({i['url']}) (#{i['number']})")
+          PY
           cat /tmp/planned.md
 
       - name: Splice into README
