@@ -75,31 +75,28 @@
     path: /home/entephoto/.garage-museum-key.json
   register: _garage_key_file
 
-- name: Create museum access key in Garage
+- name: Create museum access key and persist sidecar
+  # Garage prints `Key ID:` and `Secret key:` mixed in with netapp INFO
+  # logs across stdout+stderr; grep over the combined stream is sturdier
+  # than ansible regex_search on a single channel.
   become: true
   become_user: entephoto
-  ansible.builtin.command:
-    cmd: podman exec entephoto-garage /garage key create entephoto-museum
-  register: _garage_key_create
+  ansible.builtin.shell: |
+    set -euo pipefail
+    OUT=$(podman exec entephoto-garage /garage key create entephoto-museum 2>&1)
+    KEY_ID=$(printf '%s\n' "$OUT" | grep -oP 'Key ID:\s+\K\S+')
+    SECRET=$(printf '%s\n' "$OUT" | grep -oP 'Secret key:\s+\K\S+')
+    if [ -z "$KEY_ID" ] || [ -z "$SECRET" ]; then
+      echo "Failed to parse Key ID / Secret key from garage output:" >&2
+      echo "$OUT" >&2
+      exit 1
+    fi
+    umask 077
+    printf '{"key_id":"%s","secret_key":"%s"}\n' "$KEY_ID" "$SECRET" \
+      > /home/entephoto/.garage-museum-key.json
+  args:
+    executable: /bin/bash
   changed_when: true
-  when: not _garage_key_file.stat.exists
-
-- name: Persist Garage access key to sidecar file
-  become: true
-  become_user: entephoto
-  ansible.builtin.copy:
-    # Garage prints `Key ID: GK...` and `Secret key: ...` on separate lines.
-    content: |
-      {
-        "key_id": "{{ _garage_key_create.stdout
-                       | regex_search('Key ID:\s*(\S+)', '\\1')
-                       | first }}",
-        "secret_key": "{{ _garage_key_create.stdout
-                          | regex_search('Secret key:\s*(\S+)', '\\1')
-                          | first }}"
-      }
-    dest: /home/entephoto/.garage-museum-key.json
-    mode: "0600"
   no_log: true
   when: not _garage_key_file.stat.exists
 
