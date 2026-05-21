@@ -18,7 +18,7 @@
   vars:
     # Inlined from the role default so this playbook doesn't pull in the
     # entire entephoto defaults file (which would shadow inventory).
-    entephoto_garage_image: "dxflrs/garage:v1.0.1"
+    entephoto_garage_image: "docker.io/dxflrs/garage:v1.0.1"
     _ente_user: entephoto
     _ente_uid: "{{ my_linux_users.entephoto.uid }}"
     _ente_buckets:
