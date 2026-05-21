@@ -147,7 +147,7 @@
         cmd: >
           podman run --rm --user 0:0
           --pod entephoto
-          -v /home/{{ _ente_user }}/.rclone-migration.conf:/config/rclone/rclone.conf:ro
+          -v /home/{{ _ente_user }}/.rclone-migration.conf:/config/rclone/rclone.conf:ro,Z
           docker.io/rclone/rclone:latest
           --config /config/rclone/rclone.conf
           sync minio:{{ item }} garage:{{ item }}
@@ -177,7 +177,7 @@
         cmd: >
           podman run --rm --user 0:0
           --pod entephoto
-          -v /home/{{ _ente_user }}/.rclone-migration.conf:/config/rclone/rclone.conf:ro
+          -v /home/{{ _ente_user }}/.rclone-migration.conf:/config/rclone/rclone.conf:ro,Z
           docker.io/rclone/rclone:latest
           --config /config/rclone/rclone.conf
           sync minio:{{ item }} garage:{{ item }}
