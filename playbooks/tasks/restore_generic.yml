@@ -92,7 +92,7 @@
         --format='{% raw %}{{.Mountpoint}}{% endraw %}')
     sudo -u {{ svc.service_user }} podman unshare rsync -a --delete \
         --no-owner --no-group --numeric-ids \
-        "{{ restore_root }}/{{ item.nas_share }}/{{ inventory_hostname }}/" "$MP/"
+        "{{ restore_root }}/{{ item.nas_share }}/{{ inventory_hostname }}/{{ item.name }}/" "$MP/"
   loop: >-
     {{ svc.volumes
        | selectattr('method', 'equalto', 'rsync')
