@@ -1,12 +1,10 @@
 ---
-# Local image tag for the CLI image built from the upstream
-# ente-io/ente repo. Built locally because upstream publishes no
-# pre-built CLI image.
-entephoto_export_image: "localhost/ente-cli:latest"
-
-# Upstream source for the CLI build.
-entephoto_export_source_repo: "https://github.com/ente-io/ente.git"
-entephoto_export_source_ref: "main"
+# Container image for the Ente CLI. We pre-build this from upstream
+# (ente-io/ente cli/Dockerfile) via .github/workflows/ente-cli-build.yml
+# and publish to GHCR weekly + on workflow file changes. Override here
+# to pin a specific tag (run number from the build workflow) instead
+# of tracking :latest.
+entephoto_export_image: "ghcr.io/luckynrslevin/ente-cli:latest"
 
 # NFS share that receives the decrypted export. Convention is
 # `backup-photos-export/<hostname>/` so multiple hosts can share
