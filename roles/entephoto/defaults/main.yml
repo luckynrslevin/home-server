@@ -1,7 +1,7 @@
 ---
 # Container images
 entephoto_postgres_image: "public.ecr.aws/docker/library/postgres:15"
-entephoto_garage_image: "dxflrs/garage:v1.0.1"
+entephoto_garage_image: "docker.io/dxflrs/garage:v1.0.1"
 entephoto_server_image: "ghcr.io/ente-io/server:latest"
 entephoto_web_image: "ghcr.io/ente-io/web:latest"
 
