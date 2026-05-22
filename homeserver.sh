@@ -95,7 +95,9 @@ Verbs:
   backup          Trigger the backup systemd service now.
   restore         Restore from latest NAS backup.
   uninstall       Full wipe (= scripts/clean-host.sh).
-  secret <key>    Decrypt and print an inventory secret to stdout.
+  secret <key> [HOST]
+                  Decrypt and print an inventory secret to stdout.
+                  HOST defaults to this machine's hostname.
 
 Service helpers:
   Each role under roles/<svc>/scripts/ may ship operator helpers.
@@ -522,15 +524,21 @@ PY
         exec bash "$INSTALL_DIR/scripts/clean-host.sh"
         ;;
     secret)
-        # homeserver.sh secret <key>  →  decrypt and print an inventory secret.
+        # homeserver.sh secret <key> [HOST]  →  decrypt + print an inventory secret.
         # Useful for recovering an operator-supplied secret (e.g. an
         # account password) that's been vault-encrypted into inventory.
+        # HOST defaults to this machine's short hostname (typical case:
+        # the script runs on the target box itself).
         KEY="${1:-}"
         if [[ -z "$KEY" ]]; then
-            err "Usage: homeserver.sh secret <inventory-key>"
+            err "Usage: homeserver.sh secret <inventory-key> [HOST]"
             err "Example: homeserver.sh secret entephoto_export_account_password"
+            err "         homeserver.sh secret pihole_api_password homeserver2"
             exit 2
         fi
+        shift
+        # Optional positional HOST overrides resolve_target_host.
+        HOSTNAME_FLAG="${1:-${HOSTNAME_FLAG:-}}"
         ensure_install_dir
         ensure_ansible_on_path
         cd "$INSTALL_DIR"
