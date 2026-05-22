@@ -31,8 +31,12 @@
     nas_volume: "{{ backup_nas_volume }}"
     restore_root: /mnt/restore
     nfs_opts: "ro,noatime,vers=4"
-    # Services that have backup manifests. Must match role directory names.
-    _restorable_services:
+    # Roles that ship a backup_manifest. The set this play actually
+    # restores is the intersection with `deploy_services` so we don't
+    # try to restore (e.g.) syncthing on a host where its user doesn't
+    # even exist. Override _restorable_services on the CLI to force a
+    # specific list.
+    _all_restorable_services:
       - caddy
       - pihole
       - syncthing
@@ -40,6 +44,9 @@
       - paperless-ngx
       - jellyfin
       - nextcloud
+    _restorable_services: >-
+      {{ _all_restorable_services
+         | intersect(deploy_services | default(_all_restorable_services)) }}
 
   pre_tasks:
     # Load each role's defaults so backup_manifest vars are available.
