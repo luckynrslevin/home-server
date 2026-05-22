@@ -39,7 +39,7 @@ backup_manifest:
   service_unit: nextcloud-pod
   volumes:
     - { name: nextcloud-config, method: tar }
-    - { name: nextcloud-data, method: rsync, nas_share: nextcloud }
+    - { name: nextcloud-data, method: rsync }
   databases:
     - { container: nextcloud-postgres, db_user: ncuser, db_name: nextcloud, method: pgdump }
   post_restore_tasks: restore.yml

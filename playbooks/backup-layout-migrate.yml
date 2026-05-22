@@ -1,0 +1,136 @@
+---
+# One-off helper for hosts already running the old NAS backup layout
+# (per-data-class shares: backup-tar, backup-photos, backup-<share>…).
+#
+# Switches to the new per-host layout (`backup-<host>/<app>/{tar,rsync,pgdump}/…`).
+# No automatic NAS-side file moves — DSM has no SSH/API path that's
+# both reliable and safe for a generic mv. Instead this playbook
+# prints the exact rename commands the operator should run on the NAS,
+# pauses, then redeploys the backup role and triggers one fresh run.
+
+- name: Migrate NAS backup layout to per-host shares
+  hosts: all
+  gather_facts: false
+  become: true
+
+  vars_prompt:
+    - name: confirm
+      prompt: |
+        Migrate the target host(s) from the per-data-class NAS backup layout
+        (backup-tar, backup-photos, …) to the per-host layout
+        (backup-<host>/<app>/…).
+
+        Pre-flight (do BEFORE typing yes):
+        1. NAS-side shared folder `backup-<host>` exists for every target,
+           NFS-exported to that host with no_root_squash.
+        2. SSH key + sudoers entry per docs/NAS-Setup.md installed (if you
+           want the snapshot trigger).
+
+        Continue?
+      private: false
+      default: "no"
+
+  pre_tasks:
+    - name: Abort unless confirmed
+      ansible.builtin.fail:
+        msg: "Aborting — answer 'yes' to proceed."
+      when: confirm | lower not in ['yes', 'y']
+
+    - name: Announce per-host start
+      ansible.builtin.debug:
+        msg: "Migrating {{ inventory_hostname }} → backup-{{ inventory_hostname }}"
+
+  tasks:
+    # ----------------------------------------------------------------
+    # Phase 1 — stop the timer so no nightly run lands mid-migration
+    # ----------------------------------------------------------------
+    - name: Stop + disable the backup timer
+      ansible.builtin.systemd_service:
+        name: home-server-backup.timer
+        enabled: false
+        state: stopped
+      failed_when: false
+
+    # ----------------------------------------------------------------
+    # Phase 2 — point the operator at the NAS-side moves
+    # ----------------------------------------------------------------
+    - name: Print NAS-side migration commands
+      ansible.builtin.debug:
+        msg: |
+          ============================================================
+          MANUAL STEP — run on the NAS as an admin user:
+
+          NAS=/volume1
+          NEW=$NAS/backup-{{ inventory_hostname }}
+          mkdir -p "$NEW"
+
+          # Existing tar tree (covers tar volumes + pgdumps for this host):
+          # /volume1/backup-tar/{{ inventory_hostname }}/<volume_or_pgdump-…>/
+          # The new layout segments by app, but we don't know which app
+          # owned which volume from the NAS side alone — easiest path is to
+          # re-organise by listing volumes per app in your role manifests,
+          # OR (recommended) just leave the old tree as-is for ~7 days as
+          # rollback insurance and let the new backup populate the new tree
+          # from scratch.
+
+          # Rsync trees, per share that exists today:
+          for share in photos jellyfin-media nextcloud paperless-media syncthing; do
+              SRC="$NAS/backup-$share/{{ inventory_hostname }}"
+              [ -d "$SRC" ] || continue
+              for vol in "$SRC"/*; do
+                  vol_name=$(basename "$vol")
+                  # Look up which app this volume belongs to in your repo's
+                  # role manifests, then:
+                  #   mkdir -p $NEW/<app>/rsync
+                  #   mv "$vol" $NEW/<app>/rsync/
+                  echo "TODO: move $vol → \$NEW/<app>/rsync/$vol_name"
+              done
+          done
+
+          ALTERNATIVE: skip the moves entirely. After today's backup the
+          new layout is populated from scratch and the old shares are
+          orphan trees you can delete after one verified backup cycle.
+          ============================================================
+
+    - name: Pause for operator confirmation of NAS moves (or accept fresh-start)
+      ansible.builtin.pause:
+        prompt: "Press ENTER when you've decided (moved files OR chosen fresh-start). Ctrl-C to abort."
+
+    # ----------------------------------------------------------------
+    # Phase 3 — redeploy the backup role with the new template
+    # ----------------------------------------------------------------
+    - name: Re-render the backup script with the new layout
+      ansible.builtin.include_role:
+        name: backup
+
+    # ----------------------------------------------------------------
+    # Phase 4 — run one backup now to populate the new layout
+    # ----------------------------------------------------------------
+    - name: Trigger one backup
+      ansible.builtin.systemd_service:
+        name: home-server-backup.service
+        state: started
+
+    - name: Final guidance
+      ansible.builtin.debug:
+        msg: |
+          ============================================================
+          Verification (run from the workstation):
+
+          ssh {{ inventory_hostname }} sudo tail -50 /var/log/home-server-backup.log
+
+          Expected: "=== Backup finished (0 errors) ===" plus a
+          "NAS snapshot trigger: ok" line if the snapshot user is set.
+
+          Then on the NAS check the new layout exists:
+            ls -la /volume1/backup-{{ inventory_hostname }}/
+
+          After one verified backup cycle (~24h), delete the orphan
+          trees on the NAS:
+            /volume1/backup-tar/{{ inventory_hostname }}/
+            /volume1/backup-photos/{{ inventory_hostname }}/
+            /volume1/backup-jellyfin-media/{{ inventory_hostname }}/
+            /volume1/backup-nextcloud/{{ inventory_hostname }}/
+            /volume1/backup-paperless-media/{{ inventory_hostname }}/
+            /volume1/backup-syncthing/{{ inventory_hostname }}/
+          ============================================================

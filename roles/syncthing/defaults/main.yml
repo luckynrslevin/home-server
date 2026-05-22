@@ -11,4 +11,4 @@ backup_manifest:
   service_unit: syncthing
   volumes:
     - { name: systemd-syncthing-config, method: tar }
-    - { name: systemd-syncthing-data, method: rsync, nas_share: syncthing }
+    - { name: systemd-syncthing-data, method: rsync }

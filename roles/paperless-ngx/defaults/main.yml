@@ -100,7 +100,7 @@ backup_manifest:
     - { name: paperless-redis-data, method: tar }
     - { name: paperless-data, method: tar }
     - { name: paperless-export, method: tar }
-    - { name: paperless-media, method: rsync, nas_share: paperless-media }
+    - { name: paperless-media, method: rsync }
   databases:
     - { container: paperless-db, db_user: paperless, db_name: paperless, method: pgdump }
   post_restore_tasks: restore.yml
