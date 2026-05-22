@@ -11,45 +11,34 @@
 
 There are plenty of homeserver projects already. Why another one?
 
-Because **the tools aren't the bottleneck — the transition is.** And none of the existing solutions did satisfy my needs / expectations.
+My journey looked like this:
 
-Anyone who's tried to move off a vendor ecosystem (iCloud, Google
-Photos, Apple Music, Dropbox, …) knows the pattern: dozens of viable
-self-hosted alternatives in every category, each with its own setup,
-backup shape, sync quirks, and migration story. Evaluating them takes
-hours per app. Wiring half a dozen into a single coherent, daily-use
-system takes weeks. Most people give up partway through and stay
-locked in.
+Being interested in owning my data and increasing data privacy, I start reading and watching tutorials on individual topics solving certain issues. Like e.g. using pihole to reduce ADs. Combine pihole with unbound to avoid my internet or more precisely DNS provider can track all my digital activities.
 
-And to be fair: ecosystems like Apple's are genuinely good at "it
-just works." That's why the *cost of leaving* feels so high — and why
-the *cost of staying* (no real ownership of your own data, no leverage
-when terms change) stays mostly invisible until it bites.
+In parallel I install paperless, because I always wanted a solution to manage and find my digital documents, piling up in my mailbox or on multiple different file systems on my computer or elsewhere.
 
-This project is one opinionated, end-to-end answer: a small,
-well-chosen stack of self-hosted applications deployed together by a
-single fully-automated install, with backup, restore, TLS, and a
-unified dashboard already plumbed in. No "now wire these seven things
-together yourself" steps.
+Photos on my iPhone pile up on the local storage until I bought a new one. To get the migrations solved fast - because I want to use my new phone ;-) - I upload all photos to iCloud which works great thanks to apple ecosystem. However, besides the fact I am not owning my data any more, over the years my iCloud bill gets bigger and bigger and at the same time the vendor lock in. Changing to an "own my data" solution now in addition requires data migration.
 
-**Today's audience.** Two groups, served by the same opinionated
-stack:
-- Technically inclined people who want real privacy and real control
-  over their data, willing to spend a weekend (rather than a quarter)
-  on the transition.
-- Users who want to make the move, don't have the skills themselves,
-  but are willing to pay a reasonable fee to an IT-services provider
-  to deliver the same outcome.
+In parallel I started using paperless and it's working great in my home network, but I would like to use the paperless app on my iPhone from anywhere to upload new pdfs or search pdfs on the go. I watch a youtube tutorial recommending me to forwart port 80 on my router to paperless. But is it a good idea? Simply opening ports and particular port 80 in your router and forwarding unencrypted communication to some service is not at all a good solution! And yes my paperless server obviously is still running on unencrypted communication using http, since I used the default installation and spared the effort to investigate how to switch to encrypted https.
 
-**Where it's going.**
-- Long-term, the IT-services role should be
-  absorbable by an AI agent — guiding non-technical users through
-  the move end-to-end and handing back a working setup. Today the
-  human is in the loop; tomorrow the agent is.
-- And obviously besides home users it could also serve the transition for
-  small businesses, e.g. having the need to move away due to GDPR / US 
-  cloud act or simply not satisfied with ecosystems like Office 365 and 
-  looking for alternatives.
+But obviously now it's time to start digging to find a solution. And yes again there is a solution, you just need a reverse proxy and then configure everything properly, great! At the same time you find out, there are plenty of open source reverse proxy solutions. Further digging to figure out, what's best for you. But hold on, if I use self-signed certificates I need to get the certificate authority installed on each of my devices, also to family members using the ecosystem - puh ... again further digging ... and what the hack again there is a soultion to use Let's Encrypt certificates with the reverse proxy for your server in your home network, great! Officially signed certificates, no need to install anything on every device any more.
+
+At the time I solved everything to my needs some time has passed and some major bugs in Linux have been identified and obviously my default Linux installation was not configure to automatically install security updates, but yes you simply need to configure it ;-).
+
+And puh, there is still the backup topic on my todo list with high priority, I need to find some time .... I hope I do not lose any data until then.
+
+Oh wow paperless team is active and meanwhile released several new versions ... I hope it's just new features I do not need but no security fixes :-).
+
+
+**If you did not stop reading by now you most likely got it. This is what I am working on to solve with this project for myself. Therefore I define the software stack to MY needs according to MY opinionated choice.**
+
+**Reducing time and effort related to**
+- **Building my own production grade ecosystem based on open source software solutions**
+- **Enabling secure access to my ecosystem to use it from anywhere**
+- **Having proper backup in place I can rely on**
+- **Continuously deploy functional and security relevant updates for the whole system**
+
+**However, you will still require IT expertise to use the project**
 
 ### Design principles
 
