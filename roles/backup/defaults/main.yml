@@ -8,9 +8,30 @@
 #   backup doesn't depend on external DNS being up
 # - backup_nas_volume: absolute path prefix on the NAS where the shared
 #   folders live (e.g. Synology uses "/volume1" for the first storage volume)
+#
+# The NFS share itself is derived: backup-<inventory_hostname>. Operator
+# creates that shared folder on the NAS per host (see docs/NAS-Setup.md).
 # Time of day for the nightly backup (systemd OnCalendar format, HH:MM:SS).
 backup_time: "02:00:00"
 
 backup_nas_hostname: nas
 backup_nas_ip: 192.168.x.x
 backup_nas_volume: /volume1
+
+# --- Failure alert email -----------------------------------------------
+# Reuses the project-level smtp_* vars (smtp_host, smtp_port, smtp_username,
+# smtp_password, smtp_from). Backup script sends a mail with the log tail
+# when ERRORS > 0. If smtp_host isn't defined on this host, the alert step
+# is omitted at render time and backup just exits non-zero on failure.
+# Override to send to a different inbox (default: smtp_from).
+backup_alert_recipient: "{{ smtp_from | default('') }}"
+
+# --- NAS snapshot trigger ----------------------------------------------
+# After a successful backup, the script SSHs to the NAS as this user and
+# the command locked into authorized_keys runs
+#   `sudo synosharesnapshot create backup-<host>`.
+# Leave backup_nas_snapshot_user empty to skip the trigger entirely
+# (e.g. on hosts where the NAS-side SSH key isn't provisioned yet).
+# See docs/NAS-Setup.md for the one-time setup.
+backup_nas_snapshot_user: ""
+backup_nas_snapshot_key_path: /root/.ssh/nas-snapshot

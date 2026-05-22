@@ -4,47 +4,31 @@
 # Expected svc keys:
 #   service_user   — Linux username (key into my_linux_users for UID)
 #   service_unit   — systemd --user unit to stop/start
-#   volumes[]      — list of {name, method, nas_share?, restore_opt_in?}
+#   volumes[]      — list of {name, method, restore_opt_in?}
 #   databases[]    — optional list of {container, db_user, db_name, method}
 #   post_restore_tasks — optional role-relative path for post-restore hook
 #   _role_name     — injected by the aggregation set_fact
+#
+# Reads from per-host NAS layout:
+#   nas:/<vol>/backup-<host>/<app>/{tar,rsync,pgdump}/<volume_or_container>/
 
-# --- Mount NAS shares ---
-- name: "{{ svc._role_name | upper }}: mount NAS tar share"
+# --- Mount the host's NAS share ---
+- name: "{{ svc._role_name | upper }}: mount NAS host share"
   block:
     - ansible.builtin.file:
-        path: "{{ restore_root }}/tar"
+        path: "{{ restore_root }}"
         state: directory
     - ansible.posix.mount:
-        path: "{{ restore_root }}/tar"
-        src: "{{ nas_host }}:{{ nas_volume }}/backup-tar"
+        path: "{{ restore_root }}"
+        src: "{{ nas_host }}:{{ nas_volume }}/backup-{{ inventory_hostname }}"
         fstype: nfs
         opts: "{{ nfs_opts }}"
         state: ephemeral
-
-- name: "{{ svc._role_name | upper }}: mount NAS rsync shares"
-  block:
-    - ansible.builtin.file:
-        path: "{{ restore_root }}/{{ item.nas_share }}"
-        state: directory
-      loop: "{{ svc.volumes | selectattr('method', 'equalto', 'rsync') | list }}"
-      loop_control:
-        label: "{{ item.nas_share }}"
-    - ansible.posix.mount:
-        path: "{{ restore_root }}/{{ item.nas_share }}"
-        src: "{{ nas_host }}:{{ nas_volume }}/backup-{{ item.nas_share }}"
-        fstype: nfs
-        opts: "{{ nfs_opts }}"
-        state: ephemeral
-      loop: "{{ svc.volumes | selectattr('method', 'equalto', 'rsync') | list }}"
-      loop_control:
-        label: "{{ item.nas_share }}"
-  when: svc.volumes | selectattr('method', 'equalto', 'rsync') | list | length > 0
 
 # --- Find latest tar backups ---
 - name: "{{ svc._role_name | upper }}: find latest tar backups"
   ansible.builtin.shell: >
-    ls -t {{ restore_root }}/tar/{{ inventory_hostname }}/{{ item.name }}/*.tar.gz | head -1
+    ls -t {{ restore_root }}/{{ svc._role_name }}/tar/{{ item.name }}/*.tar.gz | head -1
   register: _tar_latest
   loop: "{{ svc.volumes | selectattr('method', 'equalto', 'tar') | list }}"
   loop_control:
@@ -54,7 +38,7 @@
 # --- Find latest pgdump backups ---
 - name: "{{ svc._role_name | upper }}: find latest pgdump backups"
   ansible.builtin.shell: >
-    ls -t {{ restore_root }}/tar/{{ inventory_hostname }}/pgdump-{{ item.container }}/*.sql.gz | head -1
+    ls -t {{ restore_root }}/{{ svc._role_name }}/pgdump/{{ item.container }}/*.sql.gz | head -1
   register: _pgdump_latest
   loop: "{{ svc.databases | default([]) }}"
   loop_control:
@@ -92,7 +76,7 @@
         --format='{% raw %}{{.Mountpoint}}{% endraw %}')
     sudo -u {{ svc.service_user }} podman unshare rsync -a --delete \
         --no-owner --no-group --numeric-ids \
-        "{{ restore_root }}/{{ item.nas_share }}/{{ inventory_hostname }}/{{ item.name }}/" "$MP/"
+        "{{ restore_root }}/{{ svc._role_name }}/rsync/{{ item.name }}/" "$MP/"
   loop: >-
     {{ svc.volumes
        | selectattr('method', 'equalto', 'rsync')
@@ -117,17 +101,8 @@
     file: "{{ playbook_dir }}/../roles/{{ svc._role_name }}/tasks/{{ svc.post_restore_tasks }}"
   when: svc.post_restore_tasks is defined
 
-# --- Unmount NAS shares ---
-- name: "{{ svc._role_name | upper }}: unmount NAS rsync shares"
+# --- Unmount the host's NAS share ---
+- name: "{{ svc._role_name | upper }}: unmount NAS host share"
   ansible.posix.mount:
-    path: "{{ restore_root }}/{{ item.nas_share }}"
-    state: unmounted
-  loop: "{{ svc.volumes | selectattr('method', 'equalto', 'rsync') | list }}"
-  loop_control:
-    label: "{{ item.nas_share }}"
-  when: svc.volumes | selectattr('method', 'equalto', 'rsync') | list | length > 0
-
-- name: "{{ svc._role_name | upper }}: unmount NAS tar share"
-  ansible.posix.mount:
-    path: "{{ restore_root }}/tar"
+    path: "{{ restore_root }}"
     state: unmounted

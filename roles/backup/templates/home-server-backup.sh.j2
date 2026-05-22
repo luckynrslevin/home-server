@@ -11,32 +11,43 @@ set -euo pipefail
 #   - rsync:  rsync volume mount path (current mirror, no history)
 #   - pgdump: pg_dump logical database backup (with daily retention)
 #
-# Backup target: NFS shares on Synology NAS.
-#   One shared folder for all tar/pgdump archives, plus a dedicated shared
-#   folder per rsync dataset (e.g. photos, syncthing, music, paperless-media).
-#   All shares are mounted at startup and unmounted on exit (even on failure).
+# Backup target: ONE NFS share per host on the NAS
+#   (e.g. /volume1/backup-<host>/).
+#   Layout inside:
+#       <app>/tar/<volume>/<volume>-<ts>.tar.gz
+#       <app>/rsync/<volume>/…
+#       <app>/pgdump/<container>/<container>-<ts>.sql.gz
+#   One share = one Btrfs subvolume = one snapshot scope, so a Synology
+#   snapshot of this share captures ALL of this host's backups at once.
+#
+# After a successful run, the script SSH's to the NAS and triggers a
+# Btrfs snapshot of the host share — so the snapshot timestamp aligns
+# with the moment the on-disk state is mutually consistent across all
+# of a service's volumes (pgdump matches rsync matches tar).
+#
+# On any error, an email is sent via the project SMTP config.
+#
+# NOTE: this script is rendered with vault secrets (smtp_password)
+# inline. File mode is 0700 root:root so the secrets are not world-
+# readable; same trust boundary as the rendered museum.yaml.
 # ===========================================================================
 
 # --- Configuration ---
-# NOTE: NAS_HOST / NAS_VOLUME / HOSTNAME_DIR are rendered by Ansible from
-# host_vars. HOSTNAME_DIR segments every backup path so multiple homeservers
-# (e.g. prod + test) can share the same NAS without colliding.
+# NAS_HOST / NAS_VOLUME / HOSTNAME_DIR are rendered by Ansible from
+# host_vars. The single NFS share for this host is backup-<HOSTNAME_DIR>.
 BACKUP_ROOT="/mnt/backup"
 NAS_HOST="{{ backup_nas_hostname }}"
 NAS_VOLUME="{{ backup_nas_volume }}"
 HOSTNAME_DIR="{{ inventory_hostname }}"
-# Local mount name → Synology shared folder name.
-# Derived from backup_manifest declarations in each role's defaults.
-declare -A NFS_SHARES=(
-  [tar]=backup-tar
-{% for share in _backup_manifests | map(attribute='volumes') | flatten | selectattr('method', 'equalto', 'rsync') | map(attribute='nas_share') | unique | sort %}
-  [{{ share }}]=backup-{{ share }}
-{% endfor %}
-)
+HOST_SHARE="backup-${HOSTNAME_DIR}"
 MOUNT_OPTS="noatime,hard,_netdev,vers=4"
 RETENTION_DAYS=7
 TIMESTAMP=$(date +%Y%m%d-%H%M%S)
 ERRORS=0
+
+# Snapshot trigger config (optional — empty user = skip).
+NAS_SNAPSHOT_USER="{{ backup_nas_snapshot_user | default('') }}"
+NAS_SNAPSHOT_KEY="{{ backup_nas_snapshot_key_path | default('/root/.ssh/nas-snapshot') }}"
 
 # --- Logging (off the NFS mount, so logs survive mount failures) ---
 LOG_FILE="/var/log/home-server-backup.log"
@@ -44,21 +55,16 @@ mkdir -p "$(dirname "$LOG_FILE")"
 log()       { echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*" | tee -a "$LOG_FILE"; }
 log_error() { echo "[$(date '+%Y-%m-%d %H:%M:%S')] ERROR: $*" | tee -a "$LOG_FILE" >&2; ERRORS=$((ERRORS+1)); }
 
-# --- Mount all NFS shares ---
-for local_name in "${!NFS_SHARES[@]}"; do
-  remote=${NFS_SHARES[$local_name]}
-  mkdir -p "$BACKUP_ROOT/$local_name"
-  log "Mounting $NAS_HOST:$NAS_VOLUME/$remote → $BACKUP_ROOT/$local_name"
-  mount -t nfs -o "$MOUNT_OPTS" \
-    "$NAS_HOST:$NAS_VOLUME/$remote" "$BACKUP_ROOT/$local_name" \
-    || { log_error "Mount failed for $remote, aborting"; exit 1; }
-done
+# --- Mount the host's NFS share ---
+mkdir -p "$BACKUP_ROOT"
+log "Mounting $NAS_HOST:$NAS_VOLUME/$HOST_SHARE → $BACKUP_ROOT"
+mount -t nfs -o "$MOUNT_OPTS" \
+    "$NAS_HOST:$NAS_VOLUME/$HOST_SHARE" "$BACKUP_ROOT" \
+    || { log_error "Mount failed for $HOST_SHARE, aborting"; exit 1; }
 
 trap '
-  for local_name in "${!NFS_SHARES[@]}"; do
-    log "Unmounting $BACKUP_ROOT/$local_name"
-    umount "$BACKUP_ROOT/$local_name" || true
-  done
+  log "Unmounting $BACKUP_ROOT"
+  umount "$BACKUP_ROOT" || true
 ' EXIT
 
 log "=== Backup started ==="
@@ -81,9 +87,13 @@ start_service() {
 }
 
 # --- Backup functions ---
+# Path layout under $BACKUP_ROOT (== the NAS host share):
+#     <app>/tar/<volume>/<volume>-<ts>.tar.gz
+#     <app>/rsync/<volume>/…
+#     <app>/pgdump/<container>/<container>-<ts>.sql.gz
 backup_tar_volume() {
-  local user=$1 uid=$2 volume=$3
-  local dest="$BACKUP_ROOT/tar/$HOSTNAME_DIR/$volume"
+  local user=$1 uid=$2 volume=$3 app=$4
+  local dest="$BACKUP_ROOT/$app/tar/$volume"
   mkdir -p "$dest"
   log "  Tar backup: $volume"
   if su - "$user" -c "podman volume export $volume" \
@@ -95,28 +105,23 @@ backup_tar_volume() {
     rm -f "$dest/${volume}-${TIMESTAMP}.tar.gz"
     return 1
   fi
-  # Retention: remove old backups
   find "$dest" -name "*.tar.gz" -mtime +"$RETENTION_DAYS" -delete
 }
 
 backup_rsync_volume() {
-  local user=$1 uid=$2 volume=$3 share=$4
+  local user=$1 uid=$2 volume=$3 app=$4
   local mount_path
   if ! mount_path=$(su - "$user" -c "podman volume inspect $volume --format={% raw %}{{.Mountpoint}}{% endraw %}"); then
     log_error "Cannot inspect volume $volume"
     return 1
   fi
-  # Per-volume subdir so two volumes can share the same NFS share
-  # without --delete on the second clobbering the first (entephoto
-  # garage-data + garage-meta both live under `photos/<host>/`).
-  local dest="$BACKUP_ROOT/$share/$HOSTNAME_DIR/$volume"
+  local dest="$BACKUP_ROOT/$app/rsync/$volume"
   mkdir -p "$dest"
-  log "  Rsync backup: $volume → $share/$HOSTNAME_DIR/$volume"
+  log "  Rsync backup: $volume → $app/rsync/$volume"
   # --no-owner --no-group --numeric-ids: NFS all_squash maps every UID to the
-  #   share's anon user, so chowns from rsync would fail. We deliberately
-  #   drop ownership preservation here. On restore, container-native UIDs
-  #   are re-applied with `podman unshare chown` inside the rootless user's
-  #   namespace (UIDs differ per host anyway).
+  #   share's anon user, so chowns from rsync would fail. Drop ownership
+  #   preservation here. On restore, container-native UIDs are re-applied
+  #   with `podman unshare chown` inside the rootless user's namespace.
   if rsync -rltD --delete --no-owner --no-group --numeric-ids \
       "$mount_path/" "$dest/" 2>>"$LOG_FILE"; then
     log "  Rsync backup: $volume done ($(du -sh "$dest" | cut -f1))"
@@ -127,8 +132,8 @@ backup_rsync_volume() {
 }
 
 backup_pgdump() {
-  local user=$1 container=$2 db_user=$3 db_name=$4
-  local dest="$BACKUP_ROOT/tar/$HOSTNAME_DIR/pgdump-$container"
+  local user=$1 container=$2 db_user=$3 db_name=$4 app=$5
+  local dest="$BACKUP_ROOT/$app/pgdump/$container"
   mkdir -p "$dest"
   log "  pg_dump: $container ($db_name)"
   if su - "$user" -c "podman exec $container pg_dump -U $db_user $db_name" \
@@ -140,13 +145,13 @@ backup_pgdump() {
     rm -f "$dest/${container}-${TIMESTAMP}.sql.gz"
     return 1
   fi
-  # Retention: remove old backups
   find "$dest" -name "*.sql.gz" -mtime +"$RETENTION_DAYS" -delete
 }
 
 # =======================================================================
 # Backup definitions per service
 # Generated from backup_manifest declarations in each role's defaults.
+# Each service's $app subdir is the role name (svc._role_name).
 # =======================================================================
 {% for svc in _backup_manifests %}
 
@@ -155,15 +160,15 @@ log "--- {{ svc._role_name | capitalize }} ---"
 {% if svc.databases is defined %}
 {% for db in svc.databases %}
 # pg_dump runs while service is up (consistent logical snapshot)
-backup_pgdump {{ svc.service_user }} {{ db.container }} {{ db.db_user }} {{ db.db_name }}
+backup_pgdump {{ svc.service_user }} {{ db.container }} {{ db.db_user }} {{ db.db_name }} {{ svc._role_name }}
 {% endfor %}
 {% endif %}
 stop_service {{ svc.service_user }} {{ my_linux_users[svc.service_user].uid }} {{ svc.service_unit }}
 {% for vol in svc.volumes %}
 {% if vol.method == 'tar' %}
-backup_tar_volume {{ svc.service_user }} {{ my_linux_users[svc.service_user].uid }} {{ vol.name }}
+backup_tar_volume {{ svc.service_user }} {{ my_linux_users[svc.service_user].uid }} {{ vol.name }} {{ svc._role_name }}
 {% elif vol.method == 'rsync' %}
-backup_rsync_volume {{ svc.service_user }} {{ my_linux_users[svc.service_user].uid }} {{ vol.name }} {{ vol.nas_share }}
+backup_rsync_volume {{ svc.service_user }} {{ my_linux_users[svc.service_user].uid }} {{ vol.name }} {{ svc._role_name }}
 {% endif %}
 {% endfor %}
 start_service {{ svc.service_user }} {{ my_linux_users[svc.service_user].uid }} {{ svc.service_unit }}
@@ -171,4 +176,52 @@ start_service {{ svc.service_user }} {{ my_linux_users[svc.service_user].uid }} 
 
 # =======================================================================
 log "=== Backup finished ($ERRORS errors) ==="
+
+# --- Trigger a NAS-side snapshot (only when error-free) ---
+# Captures a Btrfs snapshot of $HOST_SHARE NOW, so every snapshot's
+# timestamp aligns with a point-in-time-consistent backup state.
+# Snapshot failure is logged but NOT fatal — the data is on NAS, only
+# the snapshot marker is missing. Tomorrow's DSM-scheduled fallback
+# snapshot (or the next nightly run) catches up.
+if [ "$ERRORS" -eq 0 ] && [ -n "$NAS_SNAPSHOT_USER" ]; then
+  log "Triggering NAS snapshot of $HOST_SHARE"
+  if ssh -o StrictHostKeyChecking=accept-new \
+         -o BatchMode=yes \
+         -i "$NAS_SNAPSHOT_KEY" \
+         "$NAS_SNAPSHOT_USER@$NAS_HOST" \
+         >>"$LOG_FILE" 2>&1; then
+    log "NAS snapshot trigger: ok"
+  else
+    log_error "NAS snapshot trigger failed (data is safely on NAS; only the consistency marker is missing)"
+  fi
+fi
+
+# --- Email alert on failure ---
+{% if smtp_host is defined and smtp_host | length > 0 %}
+if [ "$ERRORS" -gt 0 ]; then
+  log "Sending failure alert to {{ backup_alert_recipient | default(smtp_from) }}"
+  python3 <<PYEOF || log_error "Failed to send alert email (logged-only — not retried)"
+import smtplib, ssl, socket
+from email.message import EmailMessage
+host = socket.gethostname()
+try:
+    with open("/var/log/home-server-backup.log") as f:
+        body = f.read()[-8000:]
+except FileNotFoundError:
+    body = "(log file missing)"
+msg = EmailMessage()
+msg["Subject"] = f"[home-server backup] FAILED on {host}"
+msg["From"]    = "{{ smtp_from }}"
+msg["To"]      = "{{ backup_alert_recipient | default(smtp_from) }}"
+msg.set_content(body)
+ctx = ssl.create_default_context()
+with smtplib.SMTP("{{ smtp_host }}", {{ smtp_port | default(587) }}) as s:
+    s.ehlo()
+    s.starttls(context=ctx)
+    s.login("{{ smtp_username }}", "{{ smtp_password }}")
+    s.send_message(msg)
+PYEOF
+fi
+{% endif %}
+
 [ "$ERRORS" -eq 0 ] || exit 1

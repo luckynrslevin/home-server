@@ -52,8 +52,8 @@ backup_manifest:
   service_unit: entephoto-pod
   volumes:
     - { name: entephoto-museum-config, method: tar }
-    - { name: entephoto-garage-data, method: rsync, nas_share: photos }
-    - { name: entephoto-garage-meta, method: rsync, nas_share: photos }
+    - { name: entephoto-garage-data, method: rsync }
+    - { name: entephoto-garage-meta, method: rsync }
   databases:
     - { container: entephoto-postgres, db_user: pguser, db_name: ente_db, method: pgdump }
   post_restore_tasks: restore.yml
