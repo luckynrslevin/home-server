@@ -91,18 +91,19 @@ sudo -u webproxy XDG_RUNTIME_DIR="/run/user/$WEBPROXY_UID" \
     DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/$WEBPROXY_UID/bus" \
     systemctl --user stop caddy.service || true
 
+# Hand the scratch dir to webproxy so it's visible inside the user
+# namespace, then run rsync from inside that namespace. Files end up
+# owned by container-root (= host webproxy), matching what Caddy
+# wrote originally — no separate chown pass needed, and we avoid
+# the host-root-owned files → namespace-nobody trap that a plain
+# `rsync` followed by `podman unshare chown` falls into.
+info "Rsyncing certificates/ into live volume (via podman unshare)"
+chown -R webproxy:webproxy "$SCRATCH"
 mkdir -p "$LIVE/caddy"
-info "Rsyncing certificates/ into live volume"
-# --delete scoped to the certificates subdir — leaves locks/, ocsp/ etc.
-# untouched so Caddy regenerates them naturally on restart.
-rsync -a --delete \
-    "$SCRATCH/caddy/certificates/" "$LIVE/caddy/certificates/"
-
-# Inside the container, files must be owned by root (uid 0) which maps
-# to the rootless webproxy uid on the host. Use podman unshare to chown
-# across the user namespace — same pattern as playbooks/tasks/restore_generic.yml.
-info "Re-owning restored tree inside webproxy's user namespace"
-su - webproxy -c "podman unshare chown -R 0:0 '$LIVE/caddy/certificates'"
+# --delete scoped to the certificates subdir — leaves locks/, ocsp/
+# etc. untouched so Caddy regenerates them naturally on restart.
+su - webproxy -c "podman unshare rsync -a --delete \
+    '$SCRATCH/caddy/certificates/' '$LIVE/caddy/certificates/'"
 
 info "Starting caddy.service"
 sudo -u webproxy XDG_RUNTIME_DIR="/run/user/$WEBPROXY_UID" \
