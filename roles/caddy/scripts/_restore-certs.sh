@@ -133,16 +133,16 @@ info "caddy.service state: ${state:-unknown}"
 # the configured CA for a fresh issuance instead. Warn loudly here
 # so the operator knows the cert restore alone won't make Firefox
 # happy without an inventory flip + redeploy.
-restored_ca_dirs=$(find "$LIVE/caddy/certificates" -maxdepth 1 -mindepth 1 -type d -printf '%f\n' 2>/dev/null | sort -u)
-caddyfile=$(find "$LIVE/../" -maxdepth 4 -name Caddyfile 2>/dev/null | head -n1)
-if [[ -z $caddyfile ]]; then
-    # caddy-etc lives in a sibling volume; look it up by name.
-    caddyfile=$(su - webproxy -c "podman volume inspect caddy-etc --format '{{.Mountpoint}}'" 2>/dev/null)/Caddyfile
-fi
+# set -e + grep returning 1 (no match — common case when no acme_ca
+# override is set) would abort the script before we get a chance to
+# print the warning. Wrap the parts that may "fail" in || true.
+restored_ca_dirs=$(find "$LIVE/caddy/certificates" -maxdepth 1 -mindepth 1 -type d -printf '%f\n' 2>/dev/null | sort -u || true)
+caddy_etc=$(su - webproxy -c "podman volume inspect caddy-etc --format '{{.Mountpoint}}'" 2>/dev/null || true)
+caddyfile="$caddy_etc/Caddyfile"
 
 configured_ca=""
 if [[ -r $caddyfile ]]; then
-    ca_url=$(grep -E '^\s*acme_ca\s+' "$caddyfile" | awk '{print $2}' | head -n1)
+    ca_url=$(grep -E '^\s*acme_ca\s+' "$caddyfile" 2>/dev/null | awk '{print $2}' | head -n1 || true)
     case "$ca_url" in
         *acme-staging-v02*) configured_ca="acme-staging-v02.api.letsencrypt.org-directory" ;;
         ""|*acme-v02*)      configured_ca="acme-v02.api.letsencrypt.org-directory" ;;
