@@ -57,17 +57,55 @@ mkdir -p "$(dirname "$LOG_FILE")"
 log()       { echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*" | tee -a "$LOG_FILE"; }
 log_error() { echo "[$(date '+%Y-%m-%d %H:%M:%S')] ERROR: $*" | tee -a "$LOG_FILE" >&2; ERRORS=$((ERRORS+1)); }
 
+# Email alert defined up-front (and registered as part of the EXIT
+# trap below) so a failure at *any* point — including an unreachable
+# NAS at mount time — still fires the alert.
+send_failure_alert() {
+  [ "$ERRORS" -gt 0 ] || return 0
+{% if smtp_host is defined and smtp_host | length > 0 %}
+  log "Sending failure alert to {{ backup_alert_recipient | default(smtp_from) }}"
+  python3 <<PYEOF || echo "WARN: failed to send alert email" >>"$LOG_FILE"
+import smtplib, ssl, socket
+from email.message import EmailMessage
+host = socket.gethostname()
+try:
+    with open("/var/log/home-server-backup.log") as f:
+        body = f.read()[-8000:]
+except FileNotFoundError:
+    body = "(log file missing)"
+msg = EmailMessage()
+msg["Subject"] = f"[home-server backup] FAILED on {host}"
+msg["From"]    = "{{ smtp_from }}"
+msg["To"]      = "{{ backup_alert_recipient | default(smtp_from) }}"
+msg.set_content(body)
+ctx = ssl.create_default_context()
+with smtplib.SMTP("{{ smtp_host }}", {{ smtp_port | default(587) }}) as s:
+    s.ehlo()
+    s.starttls(context=ctx)
+    s.login("{{ smtp_username }}", "{{ smtp_password }}")
+    s.send_message(msg)
+PYEOF
+{% else %}
+  : # smtp_host not configured — alert step omitted at render time
+{% endif %}
+}
+
+# Single EXIT trap handles cleanup + alert regardless of exit path
+# (clean finish, early `exit 1` on mount failure, set -e abort, …).
+trap '
+  send_failure_alert
+  if mountpoint -q "$BACKUP_ROOT" 2>/dev/null; then
+    log "Unmounting $BACKUP_ROOT"
+    umount "$BACKUP_ROOT" || true
+  fi
+' EXIT
+
 # --- Mount the host's NFS share ---
 mkdir -p "$BACKUP_ROOT"
 log "Mounting $NAS_HOST:$NAS_VOLUME/$HOST_SHARE → $BACKUP_ROOT"
 mount -t nfs -o "$MOUNT_OPTS" \
     "$NAS_HOST:$NAS_VOLUME/$HOST_SHARE" "$BACKUP_ROOT" \
     || { log_error "Mount failed for $HOST_SHARE, aborting"; exit 1; }
-
-trap '
-  log "Unmounting $BACKUP_ROOT"
-  umount "$BACKUP_ROOT" || true
-' EXIT
 
 log "=== Backup started ==="
 
@@ -199,32 +237,5 @@ if [ "$ERRORS" -eq 0 ] && [ -n "$NAS_SNAPSHOT_USER" ]; then
   fi
 fi
 
-# --- Email alert on failure ---
-{% if smtp_host is defined and smtp_host | length > 0 %}
-if [ "$ERRORS" -gt 0 ]; then
-  log "Sending failure alert to {{ backup_alert_recipient | default(smtp_from) }}"
-  python3 <<PYEOF || log_error "Failed to send alert email (logged-only — not retried)"
-import smtplib, ssl, socket
-from email.message import EmailMessage
-host = socket.gethostname()
-try:
-    with open("/var/log/home-server-backup.log") as f:
-        body = f.read()[-8000:]
-except FileNotFoundError:
-    body = "(log file missing)"
-msg = EmailMessage()
-msg["Subject"] = f"[home-server backup] FAILED on {host}"
-msg["From"]    = "{{ smtp_from }}"
-msg["To"]      = "{{ backup_alert_recipient | default(smtp_from) }}"
-msg.set_content(body)
-ctx = ssl.create_default_context()
-with smtplib.SMTP("{{ smtp_host }}", {{ smtp_port | default(587) }}) as s:
-    s.ehlo()
-    s.starttls(context=ctx)
-    s.login("{{ smtp_username }}", "{{ smtp_password }}")
-    s.send_message(msg)
-PYEOF
-fi
-{% endif %}
-
+# Email alert fires from the EXIT trap (see send_failure_alert above).
 [ "$ERRORS" -eq 0 ] || exit 1
