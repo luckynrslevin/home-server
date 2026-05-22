@@ -35,3 +35,7 @@ backup_alert_recipient: "{{ smtp_from | default('') }}"
 # See docs/NAS-Setup.md for the one-time setup.
 backup_nas_snapshot_user: ""
 backup_nas_snapshot_key_path: /root/.ssh/nas-snapshot
+# SSH port on the NAS — Synology DSM commonly runs sshd on 1022 (default
+# 22 reserved for other use). Override per-host if your NAS uses a
+# different port.
+backup_nas_snapshot_port: 22
