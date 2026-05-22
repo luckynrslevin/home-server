@@ -125,4 +125,50 @@ for _ in 1 2 3 4 5; do
     [[ $state == active ]] && break
 done
 info "caddy.service state: ${state:-unknown}"
+
+# Detect CA mismatch: Caddy stores certs under a CA-named subdir
+# (e.g. certificates/acme-v02.api.letsencrypt.org-directory/ for LE
+# prod). If the running Caddyfile points at a different CA, the
+# restored cert sits in storage but is never served — Caddy goes to
+# the configured CA for a fresh issuance instead. Warn loudly here
+# so the operator knows the cert restore alone won't make Firefox
+# happy without an inventory flip + redeploy.
+restored_ca_dirs=$(find "$LIVE/caddy/certificates" -maxdepth 1 -mindepth 1 -type d -printf '%f\n' 2>/dev/null | sort -u)
+caddyfile=$(find "$LIVE/../" -maxdepth 4 -name Caddyfile 2>/dev/null | head -n1)
+if [[ -z $caddyfile ]]; then
+    # caddy-etc lives in a sibling volume; look it up by name.
+    caddyfile=$(su - webproxy -c "podman volume inspect caddy-etc --format '{{.Mountpoint}}'" 2>/dev/null)/Caddyfile
+fi
+
+configured_ca=""
+if [[ -r $caddyfile ]]; then
+    ca_url=$(grep -E '^\s*acme_ca\s+' "$caddyfile" | awk '{print $2}' | head -n1)
+    case "$ca_url" in
+        *acme-staging-v02*) configured_ca="acme-staging-v02.api.letsencrypt.org-directory" ;;
+        ""|*acme-v02*)      configured_ca="acme-v02.api.letsencrypt.org-directory" ;;
+        *)                  configured_ca="(custom: $ca_url)" ;;
+    esac
+fi
+
+if [[ -n $configured_ca && -n $restored_ca_dirs ]] \
+   && ! grep -qx "$configured_ca" <<<"$restored_ca_dirs"; then
+    printf '\n'
+    printf '!! CA MISMATCH — restored cert will NOT be served by Caddy as-is.\n'
+    printf '   Restored cert(s) live under: %s\n' "$restored_ca_dirs" | tr '\n' ' '; printf '\n'
+    printf '   Caddy is currently configured for: %s\n' "$configured_ca"
+    printf '\n'
+    printf '   To use the restored cert, point Caddy at the matching CA in inventory:\n'
+    if [[ "$configured_ca" == *staging* ]]; then
+        printf '     - edit  ~/<home-server-private>/inventory/host_vars/%s/main.yml\n' "$HOSTNAME_DIR"
+        printf '     - comment out the caddy_acme_ca line (defaults to LE production)\n'
+    else
+        printf '     - edit  ~/<home-server-private>/inventory/host_vars/%s/main.yml\n' "$HOSTNAME_DIR"
+        printf '     - set     caddy_acme_ca: "https://%s/directory"\n' "${restored_ca_dirs%-directory}" | sed 's/acme-/acme-/'
+    fi
+    printf '     - then    ansible-playbook playbooks/caddy.yml --limit %s\n' "$HOSTNAME_DIR"
+    printf '\n'
+    printf '   Without that step, Caddy will request a new cert from its currently-\n'
+    printf '   configured CA on next startup and the restored cert stays idle.\n'
+fi
+
 info "Done."
