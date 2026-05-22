@@ -44,5 +44,25 @@ fi
 cd "${HOMESERVER_REPO_DIR:?HOMESERVER_REPO_DIR must be set — invoke via homeserver.sh}"
 self_dir="$(dirname "$(readlink -f "$0")")"
 
-exec ansible "$TARGET" --become \
-    -m script -a "$self_dir/_restore-certs.sh $IMPL_ARGS"
+# Capture ansible's JSON envelope and re-emit only the impl's stdout /
+# stderr / exit code, so the operator sees the script's actual output
+# (banners, the CA-mismatch warning, etc.) without the surrounding
+# "host | CHANGED => { ... \n ... }" noise that hides newlines.
+ansible "$TARGET" --become \
+    -m script -a "$self_dir/_restore-certs.sh $IMPL_ARGS" 2>&1 \
+| python3 -c '
+import json, re, sys
+raw = sys.stdin.read()
+m = re.search(r"=>\s*(\{.*\})\s*\Z", raw, re.DOTALL)
+if not m:
+    # No JSON to unwrap — ansible itself failed before reaching the
+    # module. Pass the raw text through and exit non-zero.
+    sys.stderr.write(raw)
+    sys.exit(2)
+d = json.loads(m.group(1))
+sys.stdout.write(d.get("stdout", ""))
+err = d.get("stderr", "") or d.get("module_stderr", "")
+if err:
+    sys.stderr.write(err)
+sys.exit(int(d.get("rc", 1)))
+'
