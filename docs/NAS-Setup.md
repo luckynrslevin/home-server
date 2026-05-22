@@ -72,8 +72,10 @@ Station, etc.). Only SSH is needed.
 
 ## 5. Enable SSH on the NAS
 
-Control Panel → Terminal & SNMP → **Enable SSH service**. Default port
-22 is fine unless you've moved it.
+Control Panel → Terminal & SNMP → **Enable SSH service**. Take note
+of the configured port — many Synology setups use **1022** (default
+when DSM auto-configures around an existing service on 22). If yours
+isn't 22, set `backup_nas_snapshot_port` in inventory accordingly.
 
 ## 6. Sudoers entry for the snapshot CLI
 
@@ -128,8 +130,10 @@ User & Group → Advanced → User Home.)
 ## 8. Smoke test from the host
 
 ```bash
-ssh -i /root/.ssh/nas-snapshot homeserver-backup@nas
+ssh -p <nas-ssh-port> -i /root/.ssh/nas-snapshot homeserver-backup@nas
 ```
+
+(`<nas-ssh-port>` defaults to 22; many Synology setups use 1022 — match what step 5 showed.)
 
 Should print a `Snapshot created` line and exit 0. Snapshot Replication
 in DSM should immediately show one new snapshot in the share's history.
@@ -145,6 +149,8 @@ In `inventory/host_vars/<host>/main.yml`:
 
 ```yaml
 backup_nas_snapshot_user: homeserver-backup
+# Override if NAS sshd isn't on the default port 22:
+backup_nas_snapshot_port: 1022
 # backup_nas_snapshot_key_path: defaults to /root/.ssh/nas-snapshot
 ```
 

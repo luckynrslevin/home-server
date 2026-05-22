@@ -30,6 +30,7 @@ rootless container volumes via `podman unshare`.
 | `backup_alert_recipient`       | `{{ smtp_from }}`      | Email address that receives failure alerts.                        |
 | `backup_nas_snapshot_user`     | *empty (off)*          | SSH username on the NAS for the post-backup snapshot trigger. Empty = no snapshot. |
 | `backup_nas_snapshot_key_path` | `/root/.ssh/nas-snapshot` | Path to the private key authenticating as `backup_nas_snapshot_user`. |
+| `backup_nas_snapshot_port`     | `22`                   | SSH port on the NAS. Many Synology setups use `1022`.              |
 
 Override all NAS variables per-host in inventory.
 

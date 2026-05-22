@@ -48,6 +48,7 @@ ERRORS=0
 # Snapshot trigger config (optional — empty user = skip).
 NAS_SNAPSHOT_USER="{{ backup_nas_snapshot_user | default('') }}"
 NAS_SNAPSHOT_KEY="{{ backup_nas_snapshot_key_path | default('/root/.ssh/nas-snapshot') }}"
+NAS_SNAPSHOT_PORT="{{ backup_nas_snapshot_port | default(22) }}"
 
 # --- Logging (off the NFS mount, so logs survive mount failures) ---
 LOG_FILE="/var/log/home-server-backup.log"
@@ -187,6 +188,7 @@ if [ "$ERRORS" -eq 0 ] && [ -n "$NAS_SNAPSHOT_USER" ]; then
   log "Triggering NAS snapshot of $HOST_SHARE"
   if ssh -o StrictHostKeyChecking=accept-new \
          -o BatchMode=yes \
+         -p "$NAS_SNAPSHOT_PORT" \
          -i "$NAS_SNAPSHOT_KEY" \
          "$NAS_SNAPSHOT_USER@$NAS_HOST" \
          >>"$LOG_FILE" 2>&1; then
