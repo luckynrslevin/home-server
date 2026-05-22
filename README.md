@@ -125,7 +125,7 @@ Backup flavours (driven by each role's `backup_manifest`):
 
 The same system from an **automation perspective** — who does what,
 and in which order, to bring a fresh box up to a fully-deployed
-homeserver. The laptop as ansible host is optional, you could also use the homeserver itself:
+homeserver:
 
 ![Automation architecture](docs/diagrams/automation.svg)
 
