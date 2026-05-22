@@ -166,3 +166,29 @@ When reverse proxy is enabled, pairs with
 [pihole](../pihole/README.md) for the LAN-side wildcard DNS record
 (so `*.<caddy_domain>` resolves to the homeserver's LAN IP without
 going to public DNS).
+
+## Operational helpers
+
+Run via `homeserver.sh caddy <action>` (the dispatcher lists all
+helpers if you omit the action):
+
+- `restore-certs [HOST] [-- IMPL_ARGS]` — splice the LE-issued cert
+  tree out of the most recent `caddy-data` tarball on NAS and into
+  the freshly-deployed `caddy-data` volume. Useful after a
+  `clean-host.sh` + reinstall cycle: it lets you skip a fresh ACME
+  issuance (and dodges LE's 5-certs-per-week rate limit) by reusing
+  the certs that were valid before the wipe.
+
+  Only `/data/caddy/certificates/` is restored — the Caddyfile and
+  the rest of the volume's runtime state are left as the new install
+  rendered them, so no risk of reverting config drift.
+
+  Impl flags (after `--`):
+  - `--from PATH` — restore from a specific tarball instead of the
+    newest one. Mostly useful when the newest tar was taken under
+    staging CA and you want the prior prod tar.
+  - `--dry-run` — print which tarball would be used and which certs
+    it contains (CN, issuer, expiry) without touching the volume.
+
+  Reports the restored cert's subject + issuer + expiry on completion
+  so you can confirm you got a real cert and not a staging one.
