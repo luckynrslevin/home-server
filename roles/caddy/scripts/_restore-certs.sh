@@ -100,6 +100,12 @@ sudo -u webproxy XDG_RUNTIME_DIR="/run/user/$WEBPROXY_UID" \
 info "Rsyncing certificates/ into live volume (via podman unshare)"
 chown -R webproxy:webproxy "$SCRATCH"
 mkdir -p "$LIVE/caddy"
+# Self-heal: if a prior failed run left certificates/ owned by host
+# root, webproxy can't even read into it from inside its namespace.
+# Reclaim ownership so the rsync receiver can do its work.
+if [[ -d "$LIVE/caddy/certificates" ]]; then
+    chown -R webproxy:webproxy "$LIVE/caddy/certificates"
+fi
 # --delete scoped to the certificates subdir — leaves locks/, ocsp/
 # etc. untouched so Caddy regenerates them naturally on restart.
 su - webproxy -c "podman unshare rsync -a --delete \
