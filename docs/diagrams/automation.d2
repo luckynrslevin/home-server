@@ -3,9 +3,9 @@
 #
 # Render: d2 docs/diagrams/automation.d2 docs/diagrams/automation.svg
 
-# Top-level 3-column grid forces repos | laptop | target left-to-right
-# regardless of edge directions (which would otherwise pull target below
-# laptop because of the back-edges from laptop to target.*).
+# Top-level 2-column grid: repos | target. homeserver.sh runs on the
+# target (curl one-liner bootstraps it) and drives the whole install
+# locally, so there's no separate Ansible-host column anymore.
 vars: {
   d2-config: {
     theme-id: 3 # terrastruct
@@ -21,7 +21,7 @@ vars: {
   }
 }
 
-grid-columns: 4
+grid-columns: 3
 horizontal-gap: 30
 
 repos: "" {
@@ -38,10 +38,6 @@ repos: "" {
   }
 }
 
-laptop: "Ansible host\n(your laptop)\n\nclones both repos;\nprivate overlay\nsymlinked into public" {
-  style.fill: ${colors.c4}
-}
-
 spacer: "" {
   style.opacity: 0
   style.fill: "#ffffff"
@@ -54,59 +50,33 @@ target: "homeserver" {
   style.fill: ${colors.c4}
 
   fresh: "fresh OS install\n(AlmaLinux 9.x)"
-  hardened: "hardened sshd\n\n(disable root,\nssh key auth. mandatory,\nchange to non-default port,\ncreate and enable ansible user,\nenable sudo for ansible user)"
+  homeserver_sh: "homeserver.sh\n\n(curl-installed one-liner;\nclones both repos,\ninstalls ansible + podman,\nruns site.yml locally,\nschedules backup.yml)"
   deployed: "fully deployed\n(all services running)"
 }
 
-repos.pubrepo -> laptop {
+repos.pubrepo -> target.homeserver_sh {
   style: {
     stroke-dash: 3
     animated: true
   }
 }
-repos.privrepo -> laptop {
-  style: {
-    stroke-dash: 3
-    animated: true
-  }
-}
-
-laptop -> target.fresh: "1. bootstrap-host.sh\n(one-time, on target)" {
-    style: {
-    stroke-dash: 3
-    font-color: black
-    animated: true
-    font-size: 15
-  }
-}
-
-target.fresh -> target.hardened {
-  style: {
-    stroke-dash: 3
-    animated: true
-  }
-}
-laptop -> target.hardened: "2. ansible-playbook\nsite.yml" {
-  style: {
-    stroke-dash: 3
-    font-color: black
-    animated: true
-    font-size: 15
-  }
-}
-
-target.hardened -> target.deployed {
+repos.privrepo -> target.homeserver_sh {
   style: {
     stroke-dash: 3
     animated: true
   }
 }
 
-laptop -> target.deployed: "3. ansible-playbook\nbackup.yml / restore.yml\n(scheduled / on demand)" {
+target.fresh -> target.homeserver_sh {
   style: {
     stroke-dash: 3
-    font-color: black
     animated: true
-    font-size: 15
+  }
+}
+
+target.homeserver_sh -> target.deployed {
+  style: {
+    stroke-dash: 3
+    animated: true
   }
 }
