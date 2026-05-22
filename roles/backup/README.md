@@ -58,13 +58,15 @@ host has backed up. Layout inside the share:
 ```
 backup-<host>/
   <app>/
-    tar/
-      <volume>/<volume>-YYYYMMDD-HHMMSS.tar.gz
-    rsync/
-      <volume>/...
-    pgdump/
-      <container>/<container>-YYYYMMDD-HHMMSS.sql.gz
+    <volume>/<volume>-YYYYMMDD-HHMMSS.tar.gz      ← tar method
+    <volume>/                                     ← rsync method (mirror tree)
+    <container>/<container>-YYYYMMDD-HHMMSS.sql.gz  ← pgdump method
 ```
+
+Method is derivable from the file extension (`.tar.gz` / `.sql.gz` /
+neither). One flat tier under `<app>` keeps paths intuitive — `ls
+backup-<host>/entephoto/` shows every backed-up artifact for that
+service at a glance.
 
 `<app>` is the role name (entephoto, paperless-ngx, …). One share per
 host eliminates the prior cross-share consistency problem (DB dump on
@@ -90,7 +92,7 @@ history is cheap and useful.
 - The container is stopped first (consistent on-disk state).
 - `podman volume export <vol>` streams the volume contents as tar,
   piped through `gzip`, saved as
-  `backup-<host>/<app>/tar/<vol>/<vol>-YYYYMMDD-HHMMSS.tar.gz`.
+  `backup-<host>/<app>/<vol>/<vol>-YYYYMMDD-HHMMSS.tar.gz`.
 - **Retention:** last 7 daily snapshots are kept on the share.
   Older NAS-side snapshots (Snapshot Replication) extend history
   further.
@@ -104,7 +106,7 @@ wasteful and history isn't needed (the data is the data).
 - The container is stopped first.
 - `podman volume inspect` gives the mount path on the host.
 - `rsync -rltD --delete --no-owner --no-group --numeric-ids` mirrors
-  the volume's contents into `backup-<host>/<app>/rsync/<vol>/`.
+  the volume's contents into `backup-<host>/<app>/<vol>/`.
 - Ownership is **not** preserved (NFS `all_squash` rejects chowns;
   rootless container UIDs differ per host). On restore, ownership is
   re-applied with `podman unshare chown`.
@@ -118,7 +120,7 @@ Used for **PostgreSQL databases**.
 - Runs **with the container up** (`pg_dump` is a consistent logical
   snapshot, no need to stop the database).
 - `podman exec <container> pg_dump …` is piped through gzip and saved
-  as `backup-<host>/<app>/pgdump/<container>/<container>-YYYYMMDD-HHMMSS.sql.gz`.
+  as `backup-<host>/<app>/<container>/<container>-YYYYMMDD-HHMMSS.sql.gz`.
 - **Retention:** last 7 daily snapshots on the share.
 
 ## Cross-volume consistency (and why)

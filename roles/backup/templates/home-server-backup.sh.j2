@@ -13,10 +13,11 @@ set -euo pipefail
 #
 # Backup target: ONE NFS share per host on the NAS
 #   (e.g. /volume1/backup-<host>/).
-#   Layout inside:
-#       <app>/tar/<volume>/<volume>-<ts>.tar.gz
-#       <app>/rsync/<volume>/…
-#       <app>/pgdump/<container>/<container>-<ts>.sql.gz
+#   Layout inside (method derivable from file extension —
+#   .tar.gz = tar, .sql.gz = pgdump, no extension = rsync tree):
+#       <app>/<volume>/<volume>-<ts>.tar.gz
+#       <app>/<volume>/…
+#       <app>/<container>/<container>-<ts>.sql.gz
 #   One share = one Btrfs subvolume = one snapshot scope, so a Synology
 #   snapshot of this share captures ALL of this host's backups at once.
 #
@@ -89,12 +90,12 @@ start_service() {
 
 # --- Backup functions ---
 # Path layout under $BACKUP_ROOT (== the NAS host share):
-#     <app>/tar/<volume>/<volume>-<ts>.tar.gz
-#     <app>/rsync/<volume>/…
-#     <app>/pgdump/<container>/<container>-<ts>.sql.gz
+#     <app>/<volume>/<volume>-<ts>.tar.gz
+#     <app>/<volume>/…
+#     <app>/<container>/<container>-<ts>.sql.gz
 backup_tar_volume() {
   local user=$1 uid=$2 volume=$3 app=$4
-  local dest="$BACKUP_ROOT/$app/tar/$volume"
+  local dest="$BACKUP_ROOT/$app/$volume"
   mkdir -p "$dest"
   log "  Tar backup: $volume"
   if su - "$user" -c "podman volume export $volume" \
@@ -116,9 +117,9 @@ backup_rsync_volume() {
     log_error "Cannot inspect volume $volume"
     return 1
   fi
-  local dest="$BACKUP_ROOT/$app/rsync/$volume"
+  local dest="$BACKUP_ROOT/$app/$volume"
   mkdir -p "$dest"
-  log "  Rsync backup: $volume → $app/rsync/$volume"
+  log "  Rsync backup: $volume → $app/$volume"
   # --no-owner --no-group --numeric-ids: NFS all_squash maps every UID to the
   #   share's anon user, so chowns from rsync would fail. Drop ownership
   #   preservation here. On restore, container-native UIDs are re-applied
@@ -134,7 +135,7 @@ backup_rsync_volume() {
 
 backup_pgdump() {
   local user=$1 container=$2 db_user=$3 db_name=$4 app=$5
-  local dest="$BACKUP_ROOT/$app/pgdump/$container"
+  local dest="$BACKUP_ROOT/$app/$container"
   mkdir -p "$dest"
   log "  pg_dump: $container ($db_name)"
   if su - "$user" -c "podman exec $container pg_dump -U $db_user $db_name" \
