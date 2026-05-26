@@ -28,20 +28,23 @@ deploy_services:
   - backup           # platform — nightly NAS backup (optional)
   - os-tailscale     # platform — mesh VPN (optional)
   # ── apps ──
-  # - syncthing
-  # - shairportsync
+  # - nextcloud
+  # - paperless-ngx
   # - entephoto
   # - entephoto-export
-  # - paperless-ngx
   # - jellyfin
   # - music-assistant
-  # - nextcloud
+  # - shairportsync
+  # - syncthing
 ##################################################################################################
 
 
 ##################################################################################################
 ### Linux users — pin UID/GID per service for rootless container isolation.
 ### Add an entry for every service you enable in deploy_services.
+### Usually no need to change: the defaults below are the values used in
+### the reference deployment. Only adjust if a UID/GID already collides
+### with existing accounts on your host.
 my_linux_users:
   youruser:       {uid: 1000, gid: 1000}
   webproxy:       {uid: 1001, gid: 1001}   # caddy
@@ -58,6 +61,7 @@ my_linux_users:
 ##################################################################################################
 ### Caddy reverse proxy — TLS for *.<caddy_domain> via DNS-01 (deSEC example).
 ### Every web UI is exposed only via Caddy; per-service ports stay unpublished.
+### For deSEC account + token setup see docs/Setup-Guide/01-deSEC-account.md.
 caddy_domain: "example.dedyn.io"               # your public domain
 caddy_acme_provider: "desec"                   # see Caddy DNS provider docs
 caddy_acme_subdomain: "example"                # for deSEC: dynDNS subname
@@ -70,6 +74,9 @@ os_base_hostname: "homeserver"
 # One entry per app you want fronted by Caddy. <subdomain>.<caddy_domain>.
 # Default proto is http (container-internal); set https for self-signed
 # upstreams (pihole, syncthing).
+# Usually no need to change: the defaults below match the apps shipped
+# in this project. Remove rows for apps you do not deploy; add a row
+# only if you front a custom service through Caddy.
 caddy_reverse_proxy_services:
   - {subdomain: pihole,      port: 8443, proto: https}
   - {subdomain: syncthing,   port: 8384, proto: https}
@@ -83,6 +90,19 @@ caddy_reverse_proxy_services:
   - {subdomain: jellyfin,    port: 8096}
   - {subdomain: music,       port: 8095}
   - {subdomain: nextcloud,   port: 8081}
+##################################################################################################
+
+
+##################################################################################################
+### SMTP relay (project-level — consumed by Nextcloud, Ente, Paperless, backup alerts).
+### See docs/SMTP-Setup.md for provider setup. Leave undefined to disable.
+smtp_host: "smtp.example.org"
+smtp_port: 587
+smtp_encryption: "starttls"
+smtp_username: "you@example.org"
+smtp_from: "you@example.org"
+smtp_password: !vault |
+  <ansible-vault-encrypted SMTP password>
 ##################################################################################################
 
 
@@ -121,19 +141,6 @@ backup_nas_snapshot_port: 1022                  # NAS sshd port if non-default
 
 
 ##################################################################################################
-### SMTP relay (project-level — consumed by Nextcloud, Ente, Paperless, backup alerts).
-### See docs/SMTP-Setup.md for provider setup. Leave undefined to disable.
-smtp_host: "smtp.example.org"
-smtp_port: 587
-smtp_encryption: "starttls"
-smtp_username: "you@example.org"
-smtp_from: "you@example.org"
-smtp_password: !vault |
-  <ansible-vault-encrypted SMTP password>
-##################################################################################################
-
-
-##################################################################################################
 ### Tailscale (optional) — leave os_tailscale_auth_key empty to skip.
 # os_tailscale_auth_key: !vault |
 #   <ansible-vault-encrypted Tailscale auth key>
@@ -141,16 +148,44 @@ smtp_password: !vault |
 
 
 ##################################################################################################
-### Shairport-sync (AirPlay receiver, optional).
-shairportsync_airplay_name: "living-room"
+##################################################################################################
+###                                       APPS                                                 ###
+##################################################################################################
 ##################################################################################################
 
 
 ##################################################################################################
-### Syncthing
-### No role-level secrets. Identity (device ID, cert, API key) lives in the
-### config volume and survives redeploys via the NAS backup/restore flow.
-### See roles/apps/syncthing/README.md for restoring an existing identity.
+### Nextcloud
+nextcloud_admin_password: !vault |
+  <ansible-vault-encrypted admin password>
+nextcloud_db_password: !vault |
+  <ansible-vault-encrypted postgres password>
+##################################################################################################
+
+
+##################################################################################################
+### Paperless-NGX
+paperless_url: "https://paperless.example.dedyn.io"
+paperless_secret_key: !vault |
+  <ansible-vault-encrypted — openssl rand -hex 32>
+paperless_db_password: !vault |
+  <ansible-vault-encrypted postgres password>
+paperless_admin_password: !vault |
+  <ansible-vault-encrypted admin password>
+
+paperless_consumer_recursive: true
+paperless_consumer_subdirs_as_tags: true
+paperless_consumer_delete_duplicates: true
+# Subdirs created inside the SFTP scan-drop volume — one per person/scanner.
+paperless_sftp_scan_subdirs:
+  - alice
+  - bob
+
+# Optional SFTP sidecar so a network scanner can drop PDFs directly.
+# See roles/apps/paperless-ngx/README.md.
+paperless_sftp_ingest_enabled: false
+paperless_sftp_ingest_authorized_keys: []
+#   - "ssh-ed25519 AAAA... scanner@brother"
 ##################################################################################################
 
 
@@ -197,32 +232,6 @@ entephoto_export_account_password: !vault |
 
 
 ##################################################################################################
-### Paperless-NGX
-paperless_url: "https://paperless.example.dedyn.io"
-paperless_secret_key: !vault |
-  <ansible-vault-encrypted — openssl rand -hex 32>
-paperless_db_password: !vault |
-  <ansible-vault-encrypted postgres password>
-paperless_admin_password: !vault |
-  <ansible-vault-encrypted admin password>
-
-paperless_consumer_recursive: true
-paperless_consumer_subdirs_as_tags: true
-paperless_consumer_delete_duplicates: true
-# Subdirs created inside the SFTP scan-drop volume — one per person/scanner.
-paperless_sftp_scan_subdirs:
-  - alice
-  - bob
-
-# Optional SFTP sidecar so a network scanner can drop PDFs directly.
-# See roles/apps/paperless-ngx/README.md.
-paperless_sftp_ingest_enabled: false
-paperless_sftp_ingest_authorized_keys: []
-#   - "ssh-ed25519 AAAA... scanner@brother"
-##################################################################################################
-
-
-##################################################################################################
 ### Jellyfin
 # NFS-mount video shares from the NAS (or omit and use a local path).
 jellyfin_nas_mounts:
@@ -251,9 +260,14 @@ music_assistant_internal_hosts:
 
 
 ##################################################################################################
-### Nextcloud
-nextcloud_admin_password: !vault |
-  <ansible-vault-encrypted admin password>
-nextcloud_db_password: !vault |
-  <ansible-vault-encrypted postgres password>
+### Shairport-sync (AirPlay receiver, optional).
+shairportsync_airplay_name: "living-room"
+##################################################################################################
+
+
+##################################################################################################
+### Syncthing
+### No role-level secrets. Identity (device ID, cert, API key) lives in the
+### config volume and survives redeploys via the NAS backup/restore flow.
+### See roles/apps/syncthing/README.md for restoring an existing identity.
 ##################################################################################################

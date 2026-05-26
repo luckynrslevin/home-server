@@ -1,7 +1,7 @@
-# Step 3 — SSH in & verify sudo
+# Step 4 — SSH in & verify sudo
 
-> **Setup Guide** · Step 3 of 5 · ▰▰▰▱▱ 60% · ~25 min spent · ~25 min to go
-> [← Step 2: Install OS](02-install-os.md) · **Step 3: SSH & sudo** · [Step 4: Run homeserver.sh →](04-run-setup.md)
+> **Setup Guide** · Step 4 of 6 · ▰▰▰▰▱▱ 67% · ~30 min spent · ~25 min to go
+> [← Step 3: Install OS](03-install-os.md) · **Step 4: SSH & sudo** · [Step 5: Run homeserver.sh →](05-run-setup.md)
 
 The shortest step. ~3 minutes — confirm you can SSH in and that
 your user can run `sudo` without a password.
@@ -63,9 +63,10 @@ You should now be:
 | Step | Status | Time |
 |---|---|---|
 | 1 — deSEC account | ✅ done | ~5 min |
-| 2 — Install OS | ✅ done | ~20–60 min |
-| 3 — SSH & sudo | ✅ done | ~3 min |
-| 4 — Run homeserver.sh | next | ~20 min |
-| 5 — Verify & explore | | ~2 min |
+| 2 — SMTP account | ✅ done | ~5 min |
+| 3 — Install OS | ✅ done | ~20–60 min |
+| 4 — SSH & sudo | ✅ done | ~3 min |
+| 5 — Run homeserver.sh | next | ~20 min |
+| 6 — Verify & explore | | ~2 min |
 
-➡️ **[Step 4: Run homeserver.sh](04-run-setup.md)**
+➡️ **[Step 5: Run homeserver.sh](05-run-setup.md)**

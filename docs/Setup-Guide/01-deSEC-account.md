@@ -1,7 +1,7 @@
 # Step 1 — Set up your deSEC account
 
-> **Setup Guide** · Step 1 of 5 · ▰▱▱▱▱ 20% · ~0 min spent · ~50 min to go
-> **Step 1: deSEC account** · [Step 2: Install OS →](02-install-os.md)
+> **Setup Guide** · Step 1 of 6 · ▰▱▱▱▱▱ 17% · ~0 min spent · ~55 min to go
+> **Step 1: deSEC account** · [Step 2: SMTP account →](02-smtp-account.md)
 
 This is the only manual sign-up in the whole guide. ~5 minutes.
 
@@ -66,7 +66,7 @@ of Let's Encrypt SSL certificates.
 
 ## Keep these two values
 
-You'll paste them into `homeserver.sh` in Step 4:
+You'll paste them into `homeserver.sh` in Step 5:
 
 | | Example |
 |---|---|
@@ -78,9 +78,10 @@ You'll paste them into `homeserver.sh` in Step 4:
 | Step | Status | Time |
 |---|---|---|
 | 1 — deSEC account | ✅ done | ~5 min |
-| 2 — Install OS | next | ~20–60 min |
-| 3 — SSH & sudo | | ~3 min |
-| 4 — Run homeserver.sh | | ~20 min |
-| 5 — Verify & explore | | ~2 min |
+| 2 — SMTP account | next | ~5 min |
+| 3 — Install OS | | ~20–60 min |
+| 4 — SSH & sudo | | ~3 min |
+| 5 — Run homeserver.sh | | ~20 min |
+| 6 — Verify & explore | | ~2 min |
 
-➡️ **[Step 2: Install the OS](02-install-os.md)**
+➡️ **[Step 2: Set up an SMTP relay account](02-smtp-account.md)**

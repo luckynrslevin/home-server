@@ -1,7 +1,7 @@
-# Step 5 — Verify & explore
+# Step 6 — Verify & explore
 
-> **Setup Guide** · Step 5 of 5 · ▰▰▰▰▰ 100% · ~48 min spent · ~2 min to go
-> [← Step 4: Run homeserver.sh](04-run-setup.md) · **Step 5: Verify & explore**
+> **Setup Guide** · Step 6 of 6 · ▰▰▰▰▰▰ 100% · ~53 min spent · ~2 min to go
+> [← Step 5: Run homeserver.sh](05-run-setup.md) · **Step 6: Verify & explore**
 
 You're ~2 minutes from a working homeserver. ☕
 
@@ -55,7 +55,7 @@ good first stops:
   in with the admin credentials from your vault, drop a PDF into
   the consume folder, watch OCR + tagging happen.
 - **Jellyfin** (`https://jellyfin.<sub>.dedyn.io/`) — point it at
-  your media library (if you set up NFS in Step 2 / inventory),
+  your media library (if you set up NFS in Step 3 / inventory),
   install the iOS / tvOS / Android client.
 - **Music Assistant** (`https://music.<sub>.dedyn.io/`) — point
   it at your music collection in Jellyfin (built-in provider) and
@@ -77,12 +77,13 @@ admin-console click-through)
 | Step | Status | Time |
 |---|---|---|
 | 1 — deSEC account | ✅ done | ~5 min |
-| 2 — Install OS | ✅ done | ~20–60 min |
-| 3 — SSH & sudo | ✅ done | ~3 min |
-| 4 — Run homeserver.sh | ✅ done | ~20 min |
-| 5 — Verify & explore | ✅ done | ~2 min |
+| 2 — SMTP account | ✅ done | ~5 min |
+| 3 — Install OS | ✅ done | ~20–60 min |
+| 4 — SSH & sudo | ✅ done | ~3 min |
+| 5 — Run homeserver.sh | ✅ done | ~20 min |
+| 6 — Verify & explore | ✅ done | ~2 min |
 
-Total: **~50–90 min** to your own homeserver. Welcome to owning
+Total: **~55–95 min** to your own homeserver. Welcome to owning
 your data.
 
 ## Where to next

@@ -1,6 +1,6 @@
 # Setup Guide
 
-> **Setup Guide** · Index · ▱▱▱▱▱ 0% · ~50–90 min total
+> **Setup Guide** · Index · ▱▱▱▱▱▱ 0% · ~55–95 min total
 
 Welcome. By the end of this guide you'll have a fully-deployed
 homeserver reachable from your laptop at
@@ -18,13 +18,14 @@ Paperless, Ente Photos, Jellyfin, Music Assistant.
 | # | Step | Time | What you'll have at the end |
 |---|---|---|---|
 | 1 | [deSEC account](01-deSEC-account.md) | ~5 min | A free `*.dedyn.io` subdomain + an API token in your clipboard. |
-| 2 | [Install the OS](02-install-os.md) | ~20–60 min | AlmaLinux 9 booted on your hardware or VPS, SSH-reachable. |
-| 3 | [SSH & sudo](03-ssh-and-sudo.md) | ~3 min | A working SSH session as a non-root user with passwordless sudo. |
-| 4 | [Run homeserver.sh](04-run-setup.md) | ~20 min | The full stack deployed, certs issued, services running. |
-| 5 | [Verify & explore](05-verify-and-explore.md) | ~2 min | You're logged into the dashboard. Done. |
+| 2 | [SMTP account](02-smtp-account.md) | ~5 min | A mail provider + app-specific password for the homeserver to send notifications. |
+| 3 | [Install the OS](03-install-os.md) | ~20–60 min | AlmaLinux 9 booted on your hardware or VPS, SSH-reachable. |
+| 4 | [SSH & sudo](04-ssh-and-sudo.md) | ~3 min | A working SSH session as a non-root user with passwordless sudo. |
+| 5 | [Run homeserver.sh](05-run-setup.md) | ~20 min | The full stack deployed, certs issued, services running. |
+| 6 | [Verify & explore](06-verify-and-explore.md) | ~2 min | You're logged into the dashboard. Done. |
 
-**Total budget:** ~50–90 min depending on which OS install method you
-pick in Step 2.
+**Total budget:** ~55–95 min depending on which OS install method you
+pick in Step 3.
 
 ## Prerequisites
 
