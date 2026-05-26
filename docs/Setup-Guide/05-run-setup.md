@@ -1,7 +1,7 @@
-# Step 4 — Run homeserver.sh
+# Step 5 — Run homeserver.sh
 
-> **Setup Guide** · Step 4 of 5 · ▰▰▰▰▱ 80% · ~28 min spent · ~22 min to go
-> [← Step 3: SSH & sudo](03-ssh-and-sudo.md) · **Step 4: Run homeserver.sh** · [Step 5: Verify →](05-verify-and-explore.md)
+> **Setup Guide** · Step 5 of 6 · ▰▰▰▰▰▱ 83% · ~33 min spent · ~22 min to go
+> [← Step 4: SSH & sudo](04-ssh-and-sudo.md) · **Step 5: Run homeserver.sh** · [Step 6: Verify →](06-verify-and-explore.md)
 
 The longest step (~20 min), but most of it is unattended. ~3
 minutes of your attention up front, ~17 minutes of "container
@@ -39,7 +39,7 @@ curl -fsSL https://raw.githubusercontent.com/luckynrslevin/home-server/main/home
 
 > [!IMPORTANT]
 > Run this **on the server** (i.e. inside the SSH session from
-> Step 3) — not on your laptop. **The script provisions the
+> Step 4) — not on your laptop. **The script provisions the
 > machine it runs on.**
 
 ### What you'll see
@@ -77,9 +77,10 @@ Roughly in order:
 | Step | Status | Time |
 |---|---|---|
 | 1 — deSEC account | ✅ done | ~5 min |
-| 2 — Install OS | ✅ done | ~20–60 min |
-| 3 — SSH & sudo | ✅ done | ~3 min |
-| 4 — Run homeserver.sh | in progress | ~20 min |
-| 5 — Verify & explore | next | ~2 min |
+| 2 — SMTP account | ✅ done | ~5 min |
+| 3 — Install OS | ✅ done | ~20–60 min |
+| 4 — SSH & sudo | ✅ done | ~3 min |
+| 5 — Run homeserver.sh | in progress | ~20 min |
+| 6 — Verify & explore | next | ~2 min |
 
-➡️ **[Step 5: Verify & explore](05-verify-and-explore.md)**
+➡️ **[Step 6: Verify & explore](06-verify-and-explore.md)**

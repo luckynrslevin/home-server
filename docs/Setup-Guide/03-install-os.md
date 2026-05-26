@@ -1,7 +1,7 @@
-# Step 2 — Install the OS
+# Step 3 — Install the OS
 
-> **Setup Guide** · Step 2 of 5 · ▰▰▱▱▱ 40% · ~5 min spent · ~45 min to go
-> [← Step 1: deSEC account](01-deSEC-account.md) · **Step 2: Install OS** · [Step 3: SSH & sudo →](03-ssh-and-sudo.md)
+> **Setup Guide** · Step 3 of 6 · ▰▰▰▱▱▱ 50% · ~10 min spent · ~45 min to go
+> [← Step 2: SMTP account](02-smtp-account.md) · **Step 3: Install OS** · [Step 4: SSH & sudo →](04-ssh-and-sudo.md)
 
 You'll install **AlmaLinux 9** on your hardware (or VPS). Pick the
 sub-method that fits your situation — each is a separate detailed
@@ -52,7 +52,7 @@ yet implemented — tracked in
 
 ## What you'll have when you come back
 
-Whichever path you pick, you should end Step 2 with:
+Whichever path you pick, you should end Step 3 with:
 
 - AlmaLinux 9 booted on the machine.
 - An **IP address** for the server (note it down).
@@ -64,9 +64,10 @@ Whichever path you pick, you should end Step 2 with:
 | Step | Status | Time |
 |---|---|---|
 | 1 — deSEC account | ✅ done | ~5 min |
-| 2 — Install OS | in progress | ~20–60 min |
-| 3 — SSH & sudo | next | ~3 min |
-| 4 — Run homeserver.sh | | ~20 min |
-| 5 — Verify & explore | | ~2 min |
+| 2 — SMTP account | ✅ done | ~5 min |
+| 3 — Install OS | in progress | ~20–60 min |
+| 4 — SSH & sudo | next | ~3 min |
+| 5 — Run homeserver.sh | | ~20 min |
+| 6 — Verify & explore | | ~2 min |
 
-➡️ **[Step 3: SSH in & verify sudo](03-ssh-and-sudo.md)**
+➡️ **[Step 4: SSH in & verify sudo](04-ssh-and-sudo.md)**
