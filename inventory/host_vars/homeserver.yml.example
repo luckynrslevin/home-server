@@ -40,7 +40,7 @@ deploy_services:
   - dashboard        # platform — service-launcher landing page
   - pihole           # platform — LAN DNS, resolves *.<caddy_domain>
   - backup           # platform — nightly NAS backup (optional)
-  - os-tailscale     # platform — mesh VPN (optional)
+  # - os-tailscale   # platform — mesh VPN (still under construction, leave commented for now)
   # ── apps — uncomment each one you want to deploy on this host ──
   # - nextcloud
   # - paperless-ngx
