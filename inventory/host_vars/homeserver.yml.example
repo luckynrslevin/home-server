@@ -28,14 +28,14 @@ deploy_services:
   - backup           # platform — nightly NAS backup (optional)
   - os-tailscale     # platform — mesh VPN (optional)
   # ── apps ──
-  # - syncthing
-  # - shairportsync
+  # - nextcloud
+  # - paperless-ngx
   # - entephoto
   # - entephoto-export
-  # - paperless-ngx
   # - jellyfin
   # - music-assistant
-  # - nextcloud
+  # - shairportsync
+  # - syncthing
 ##################################################################################################
 
 
@@ -94,6 +94,19 @@ caddy_reverse_proxy_services:
 
 
 ##################################################################################################
+### SMTP relay (project-level — consumed by Nextcloud, Ente, Paperless, backup alerts).
+### See docs/SMTP-Setup.md for provider setup. Leave undefined to disable.
+smtp_host: "smtp.example.org"
+smtp_port: 587
+smtp_encryption: "starttls"
+smtp_username: "you@example.org"
+smtp_from: "you@example.org"
+smtp_password: !vault |
+  <ansible-vault-encrypted SMTP password>
+##################################################################################################
+
+
+##################################################################################################
 ### Pi-hole — LAN DNS that resolves *.<caddy_domain> to this host.
 pihole_container_dns: "9.9.9.9"                 # upstream fallback inside the container
 pihole_domain_name: "lan"
@@ -128,19 +141,6 @@ backup_nas_snapshot_port: 1022                  # NAS sshd port if non-default
 
 
 ##################################################################################################
-### SMTP relay (project-level — consumed by Nextcloud, Ente, Paperless, backup alerts).
-### See docs/SMTP-Setup.md for provider setup. Leave undefined to disable.
-smtp_host: "smtp.example.org"
-smtp_port: 587
-smtp_encryption: "starttls"
-smtp_username: "you@example.org"
-smtp_from: "you@example.org"
-smtp_password: !vault |
-  <ansible-vault-encrypted SMTP password>
-##################################################################################################
-
-
-##################################################################################################
 ### Tailscale (optional) — leave os_tailscale_auth_key empty to skip.
 # os_tailscale_auth_key: !vault |
 #   <ansible-vault-encrypted Tailscale auth key>
@@ -148,16 +148,44 @@ smtp_password: !vault |
 
 
 ##################################################################################################
-### Shairport-sync (AirPlay receiver, optional).
-shairportsync_airplay_name: "living-room"
+##################################################################################################
+###                                       APPS                                                 ###
+##################################################################################################
 ##################################################################################################
 
 
 ##################################################################################################
-### Syncthing
-### No role-level secrets. Identity (device ID, cert, API key) lives in the
-### config volume and survives redeploys via the NAS backup/restore flow.
-### See roles/apps/syncthing/README.md for restoring an existing identity.
+### Nextcloud
+nextcloud_admin_password: !vault |
+  <ansible-vault-encrypted admin password>
+nextcloud_db_password: !vault |
+  <ansible-vault-encrypted postgres password>
+##################################################################################################
+
+
+##################################################################################################
+### Paperless-NGX
+paperless_url: "https://paperless.example.dedyn.io"
+paperless_secret_key: !vault |
+  <ansible-vault-encrypted — openssl rand -hex 32>
+paperless_db_password: !vault |
+  <ansible-vault-encrypted postgres password>
+paperless_admin_password: !vault |
+  <ansible-vault-encrypted admin password>
+
+paperless_consumer_recursive: true
+paperless_consumer_subdirs_as_tags: true
+paperless_consumer_delete_duplicates: true
+# Subdirs created inside the SFTP scan-drop volume — one per person/scanner.
+paperless_sftp_scan_subdirs:
+  - alice
+  - bob
+
+# Optional SFTP sidecar so a network scanner can drop PDFs directly.
+# See roles/apps/paperless-ngx/README.md.
+paperless_sftp_ingest_enabled: false
+paperless_sftp_ingest_authorized_keys: []
+#   - "ssh-ed25519 AAAA... scanner@brother"
 ##################################################################################################
 
 
@@ -204,32 +232,6 @@ entephoto_export_account_password: !vault |
 
 
 ##################################################################################################
-### Paperless-NGX
-paperless_url: "https://paperless.example.dedyn.io"
-paperless_secret_key: !vault |
-  <ansible-vault-encrypted — openssl rand -hex 32>
-paperless_db_password: !vault |
-  <ansible-vault-encrypted postgres password>
-paperless_admin_password: !vault |
-  <ansible-vault-encrypted admin password>
-
-paperless_consumer_recursive: true
-paperless_consumer_subdirs_as_tags: true
-paperless_consumer_delete_duplicates: true
-# Subdirs created inside the SFTP scan-drop volume — one per person/scanner.
-paperless_sftp_scan_subdirs:
-  - alice
-  - bob
-
-# Optional SFTP sidecar so a network scanner can drop PDFs directly.
-# See roles/apps/paperless-ngx/README.md.
-paperless_sftp_ingest_enabled: false
-paperless_sftp_ingest_authorized_keys: []
-#   - "ssh-ed25519 AAAA... scanner@brother"
-##################################################################################################
-
-
-##################################################################################################
 ### Jellyfin
 # NFS-mount video shares from the NAS (or omit and use a local path).
 jellyfin_nas_mounts:
@@ -258,9 +260,14 @@ music_assistant_internal_hosts:
 
 
 ##################################################################################################
-### Nextcloud
-nextcloud_admin_password: !vault |
-  <ansible-vault-encrypted admin password>
-nextcloud_db_password: !vault |
-  <ansible-vault-encrypted postgres password>
+### Shairport-sync (AirPlay receiver, optional).
+shairportsync_airplay_name: "living-room"
+##################################################################################################
+
+
+##################################################################################################
+### Syncthing
+### No role-level secrets. Identity (device ID, cert, API key) lives in the
+### config volume and survives redeploys via the NAS backup/restore flow.
+### See roles/apps/syncthing/README.md for restoring an existing identity.
 ##################################################################################################
