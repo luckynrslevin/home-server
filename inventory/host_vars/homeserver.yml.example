@@ -44,10 +44,10 @@ deploy_services:
 ### Add an entry for every service you enable in deploy_services.
 my_linux_users:
   youruser:       {uid: 1000, gid: 1000}
-  webproxy:       {uid: 1011, gid: 1011}   # caddy
+  webproxy:       {uid: 1001, gid: 1001}   # caddy
   pihole:         {uid: 1005, gid: 1005}
   syncthg:        {uid: 1003, gid: 1003}
-  shairport:      {uid: 1001, gid: 1001}
+  shairport:      {uid: 1011, gid: 1011}
   entephoto:      {uid: 1008, gid: 1008}
   paperless:      {uid: 1007, gid: 1007}
   jellyfin:       {uid: 1012, gid: 1012}
