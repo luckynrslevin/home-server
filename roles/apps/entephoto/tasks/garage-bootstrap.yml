@@ -129,10 +129,9 @@
   changed_when: false
 
 # Browser uploads send a CORS preflight OPTIONS before the actual PUT.
-# Garage requires explicit per-bucket CORS rules (unlike MinIO which
-# allowed everything by default). The Garage CLI has no CORS subcommand,
-# so set rules via the S3 API using awscli in a one-shot container
-# joined to the pod.
+# Garage requires explicit per-bucket CORS rules. The Garage CLI has no
+# CORS subcommand, so set rules via the S3 API using awscli in a
+# one-shot container joined to the pod.
 - name: Apply CORS rules to each bucket
   become: true
   become_user: entephoto

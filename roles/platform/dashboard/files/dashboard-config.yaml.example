@@ -63,5 +63,7 @@ services:
         url: http://192.168.x.x:8080/ping
     volumes:
       - entephoto-postgres-data
-      - entephoto-minio-data
+      - entephoto-garage-data
+      - entephoto-garage-meta
+      - entephoto-garage-config
       - entephoto-museum-config

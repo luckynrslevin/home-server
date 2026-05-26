@@ -82,7 +82,7 @@
 # port-forward 80->9080 / 443->9443, which only fires for traffic
 # entering on the public LAN interface — pod-to-host traffic from
 # other rootless containers (e.g. paperless reaching Nextcloud's
-# OIDC discovery, ente-museum reaching MinIO via the proxied S3
+# OIDC discovery, ente-museum reaching Garage via the proxied S3
 # endpoint) bypasses the NAT and lands on a closed port. Lowering
 # the unprivileged port boundary to 80 lets pasta publish Caddy on
 # :80/:443 directly and the whole pod-to-host story Just Works.

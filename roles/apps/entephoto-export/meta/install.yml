@@ -26,7 +26,7 @@ inventory_vars:
 # Side-effect: the rootless service user. Reuses the same UID/GID as
 # the entephoto stack so the two roles cohabit cleanly when both are
 # deployed (the export only needs read access to the museum API, not
-# direct DB or MinIO access — the same uid is just hygiene).
+# direct DB or Garage access — the same uid is just hygiene).
 side_effects:
   my_linux_users:
     entephoto:
