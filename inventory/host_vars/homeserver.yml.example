@@ -4,23 +4,37 @@
 # host_vars in a sibling PRIVATE repo and symlink it in. See README.md
 # "Public/private repo split".
 #
-# Encrypt every secret with ansible-vault:
-#   ansible-vault encrypt_string '<value>' --name '<var_name>'
+# ─────────────────────────────────────────────────────────────────────
+#  How to read this file
+# ─────────────────────────────────────────────────────────────────────
+#  Each section is split into two parts:
 #
-# Generate password / key material:
-#   openssl rand -base64 24       # passwords / db
-#   openssl rand -base64 32       # entephoto_encryption_key
-#   openssl rand -base64 64       # entephoto_hash_key
-#   openssl rand -hex   32        # JWT / Django secret keys
+#    >>> YOU MUST SET   — values you have to provide for the
+#                          deployment to work (your domain, secrets,
+#                          your LAN IPs, …).
+#    Defaults            — sensible values shipped with the project.
+#                          Leave them alone unless you have a specific
+#                          reason to change.
 #
-# Only define vars for the services you actually deploy (see deploy_services
-# below). The whole template is included to show the surface area; remove or
-# comment out sections you don't need.
+#  Skip whole sections for services you don't deploy (see
+#  deploy_services below).
+# ─────────────────────────────────────────────────────────────────────
+#
+#  Encrypt every secret with ansible-vault:
+#    ansible-vault encrypt_string '<value>' --name '<var_name>'
+#
+#  Generate password / key material:
+#    openssl rand -base64 24       # passwords / db
+#    openssl rand -base64 32       # entephoto_encryption_key
+#    openssl rand -base64 64       # entephoto_hash_key
+#    openssl rand -hex   32        # JWT / Django secret keys
 
 
 ##################################################################################################
 ### Services to deploy on this host (consumed by playbooks/site.yml).
 ### Caddy is mandatory and asserted by site.yml — leave it in.
+###
+### >>> YOU MUST SET — pick the services you want on this host:
 deploy_services:
   - caddy            # platform — mandatory reverse proxy
   - dashboard        # platform — service-launcher landing page
@@ -42,9 +56,9 @@ deploy_services:
 ##################################################################################################
 ### Linux users — pin UID/GID per service for rootless container isolation.
 ### Add an entry for every service you enable in deploy_services.
-### Usually no need to change: the defaults below are the values used in
-### the reference deployment. Only adjust if a UID/GID already collides
-### with existing accounts on your host.
+###
+### Defaults — usually no need to change. Only adjust if a UID/GID
+### already collides with existing accounts on your host.
 my_linux_users:
   ansible:        {uid: 1000, gid: 1000}   # the SSH user ansible connects as
   webproxy:       {uid: 1001, gid: 1001}   # caddy
@@ -62,21 +76,20 @@ my_linux_users:
 ### Caddy reverse proxy — TLS for *.<caddy_domain> via DNS-01 (deSEC example).
 ### Every web UI is exposed only via Caddy; per-service ports stay unpublished.
 ### For deSEC account + token setup see docs/Setup-Guide/01-deSEC-account.md.
+###
+### >>> YOU MUST SET:
 caddy_domain: "example.dedyn.io"               # your public domain
-caddy_acme_provider: "desec"                   # see Caddy DNS provider docs
 caddy_acme_subdomain: "example"                # for deSEC: dynDNS subname
 caddy_acme_token: !vault |
   <ansible-vault-encrypted deSEC token>
-
-# Pin the system hostname so os-base never renames the box.
-os_base_hostname: "homeserver"
-
+###
+### Defaults — usually no need to change:
+caddy_acme_provider: "desec"                   # change only if you use a different DNS provider
+os_base_hostname: "homeserver"                 # pins the system hostname; match what you installed with
 # One entry per app you want fronted by Caddy. <subdomain>.<caddy_domain>.
 # Default proto is http (container-internal); set https for self-signed
-# upstreams (pihole, syncthing).
-# Usually no need to change: the defaults below match the apps shipped
-# in this project. Remove rows for apps you do not deploy; add a row
-# only if you front a custom service through Caddy.
+# upstreams (pihole, syncthing). Add a row only if you front a custom
+# service through Caddy.
 caddy_reverse_proxy_services:
   - {subdomain: pihole,      port: 8443, proto: https}
   - {subdomain: syncthing,   port: 8384, proto: https}
@@ -95,31 +108,37 @@ caddy_reverse_proxy_services:
 
 ##################################################################################################
 ### SMTP relay (project-level — consumed by Nextcloud, Ente, Paperless, backup alerts).
-### See docs/SMTP-Setup.md for provider setup. Leave undefined to disable.
+### See docs/SMTP-Setup.md for provider setup. Leave the whole block undefined to disable email.
+###
+### >>> YOU MUST SET:
 smtp_host: "smtp.example.org"
-smtp_port: 587
-smtp_encryption: "starttls"
 smtp_username: "you@example.org"
 smtp_from: "you@example.org"
 smtp_password: !vault |
   <ansible-vault-encrypted SMTP password>
+###
+### Defaults — usually no need to change:
+smtp_port: 587
+smtp_encryption: "starttls"
 ##################################################################################################
 
 
 ##################################################################################################
 ### Pi-hole — LAN DNS that resolves *.<caddy_domain> to this host.
-pihole_container_dns: "9.9.9.9"                 # upstream fallback inside the container
-pihole_domain_name: "lan"
-pihole_hostname: "pih.lan"
-pihole_local_network: "192.168.1.0/24"
-pihole_local_router: "192.168.1.1"
+###
+### >>> YOU MUST SET:
+pihole_local_network: "192.168.1.0/24"          # your LAN subnet
+pihole_local_router: "192.168.1.1"              # your router's LAN IP
 # Static records for LAN hosts that aren't covered by the wildcard.
 pihole_local_dns_records:
   - {ip: "192.168.1.184", hostname: "nas"}
-
-# Admin password for the Pi-hole web UI.
 pihole_api_password: !vault |
   <ansible-vault-encrypted password — openssl rand -base64 24>
+###
+### Defaults — usually no need to change:
+pihole_container_dns: "9.9.9.9"                 # upstream fallback inside the container
+pihole_domain_name: "lan"
+pihole_hostname: "pih.lan"
 ##################################################################################################
 
 
@@ -127,13 +146,16 @@ pihole_api_password: !vault |
 ### Backup — nightly NAS backup of every role that declares a backup_manifest.
 ### See docs/NAS-Setup.md for one-time NAS-side setup (per-host share,
 ### NFS exports, snapshot trigger SSH key).
-backup_time: "21:00:00"                         # local time of the systemd timer
-backup_nas_hostname: "nas"
-backup_nas_ip: "192.168.1.184"                  # DHCP reservation on your router
+###
+### >>> YOU MUST SET:
+backup_nas_hostname: "nas"                      # NAS hostname / SSH alias
+backup_nas_ip: "192.168.1.184"                  # NAS LAN IP (DHCP reservation on your router)
 backup_nas_volume: "/volume1"                   # Synology Btrfs volume root
-
-# Optional: after each successful backup, SSH to the NAS and trigger a
-# Btrfs snapshot of backup-<host>. Leave snapshot_user empty to skip.
+###
+### Defaults — usually no need to change:
+backup_time: "21:00:00"                         # local time of the systemd timer
+# After each successful backup, SSH to the NAS and trigger a Btrfs
+# snapshot of backup-<host>. Empty user => skip the trigger.
 backup_nas_snapshot_user: "homeserver-backup"
 backup_nas_snapshot_port: 1022                  # NAS sshd port if non-default
 # backup_nas_snapshot_key_path: /root/.ssh/nas-snapshot     # default shown
@@ -141,7 +163,9 @@ backup_nas_snapshot_port: 1022                  # NAS sshd port if non-default
 
 
 ##################################################################################################
-### Tailscale (optional) — leave os_tailscale_auth_key empty to skip.
+### Tailscale (optional) — leave the whole section undefined to skip.
+###
+### >>> YOU MUST SET (only if you enable os-tailscale):
 # os_tailscale_auth_key: !vault |
 #   <ansible-vault-encrypted Tailscale auth key>
 ##################################################################################################
@@ -156,6 +180,8 @@ backup_nas_snapshot_port: 1022                  # NAS sshd port if non-default
 
 ##################################################################################################
 ### Nextcloud
+###
+### >>> YOU MUST SET:
 nextcloud_admin_password: !vault |
   <ansible-vault-encrypted admin password>
 nextcloud_db_password: !vault |
@@ -165,6 +191,8 @@ nextcloud_db_password: !vault |
 
 ##################################################################################################
 ### Paperless-NGX
+###
+### >>> YOU MUST SET:
 paperless_url: "https://paperless.example.dedyn.io"
 paperless_secret_key: !vault |
   <ansible-vault-encrypted — openssl rand -hex 32>
@@ -172,15 +200,15 @@ paperless_db_password: !vault |
   <ansible-vault-encrypted postgres password>
 paperless_admin_password: !vault |
   <ansible-vault-encrypted admin password>
-
-paperless_consumer_recursive: true
-paperless_consumer_subdirs_as_tags: true
-paperless_consumer_delete_duplicates: true
 # Subdirs created inside the SFTP scan-drop volume — one per person/scanner.
 paperless_sftp_scan_subdirs:
   - alice
   - bob
-
+###
+### Defaults — usually no need to change:
+paperless_consumer_recursive: true
+paperless_consumer_subdirs_as_tags: true
+paperless_consumer_delete_duplicates: true
 # Optional SFTP sidecar so a network scanner can drop PDFs directly.
 # See roles/apps/paperless-ngx/README.md.
 paperless_sftp_ingest_enabled: false
@@ -191,18 +219,13 @@ paperless_sftp_ingest_authorized_keys: []
 
 ##################################################################################################
 ### Ente Photos (self-hosted museum + Garage S3 backend).
+###
+### >>> YOU MUST SET:
 entephoto_api_url:    "https://photos-api.example.dedyn.io"
 entephoto_photos_url: "https://photos.example.dedyn.io"
 entephoto_albums_url: "https://photos.example.dedyn.io"
-
-# Presigned S3 URLs are served to the browser, so the endpoint must be
-# HTTPS-reachable from outside. We route through Caddy on the direct
-# port (see caddy_listen_port_https) rather than 443 so museum inside
-# the pod can also reach it via host-gateway.
-entephoto_s3_endpoint:      "photos-s3.example.dedyn.io"
-entephoto_s3_host:          "photos-s3.example.dedyn.io"
-entephoto_s3_local_buckets: false              # false => https:// in presigned URLs
-
+entephoto_s3_endpoint: "photos-s3.example.dedyn.io"
+entephoto_s3_host:     "photos-s3.example.dedyn.io"
 entephoto_db_password: !vault |
   <ansible-vault-encrypted postgres password>
 entephoto_encryption_key: !vault |
@@ -211,47 +234,59 @@ entephoto_hash_key: !vault |
   <ansible-vault-encrypted — openssl rand -base64 64>
 entephoto_jwt_secret: !vault |
   <ansible-vault-encrypted — openssl rand -hex 32>
-
-# Garage S3 backend secrets.
 entephoto_garage_rpc_secret: !vault |
   <ansible-vault-encrypted — openssl rand -hex 32>
 entephoto_garage_admin_token: !vault |
   <ansible-vault-encrypted — openssl rand -base64 24>
-
 # Internal Ente user IDs that get admin role. Find via the web UI after
-# you create the first account.
+# you create the first account, then re-deploy with the values filled in.
 entephoto_admin_user_ids:
   - 0000000000000000
-
-# Optional: entephoto-export — nightly photo export to an external volume.
-entephoto_export_account_email: !vault |
-  <ansible-vault-encrypted Ente account email>
-entephoto_export_account_password: !vault |
-  <ansible-vault-encrypted Ente account password>
+###
+### Defaults — usually no need to change:
+# Presigned S3 URLs are served to the browser, so the endpoint must be
+# HTTPS-reachable from outside. We route through Caddy on the direct
+# port (see caddy_listen_port_https) rather than 443 so museum inside
+# the pod can also reach it via host-gateway.
+entephoto_s3_local_buckets: false              # false => https:// in presigned URLs
+###
+### entephoto-export — nightly photo export to the NAS.
+### Required ONLY if you enable entephoto-export in deploy_services:
+# entephoto_export_account_email: !vault |
+#   <ansible-vault-encrypted Ente account email>
+# entephoto_export_account_password: !vault |
+#   <ansible-vault-encrypted Ente account password>
 ##################################################################################################
 
 
 ##################################################################################################
 ### Jellyfin
+###
+### >>> YOU MUST SET:
 # NFS-mount video shares from the NAS (or omit and use a local path).
 jellyfin_nas_mounts:
   - {src: "nas:/volume1/video", path: /srv/jellyfin-video,
      opts: "ro,noatime,vers=4,_netdev"}
 jellyfin_extra_media_mounts:
   - {host_path: /srv/jellyfin-video, container_path: /media/video-nas, ro: true}
-
 # Admin password for the role's postinstall (username defaults to `jellyadmin`).
 jellyfin_admin_password: !vault |
   <ansible-vault-encrypted admin password>
+###
+### Defaults — usually no need to change:
 # jellyfin_enable_hw_transcoding: true         # set to true if you have a VAAPI GPU
 ##################################################################################################
 
 
 ##################################################################################################
 ### Music Assistant
-# Same audio output preset as your DAC (see roles/apps/music-assistant/README.md).
+###
+### >>> YOU MUST SET:
+# Audio output preset matching your DAC (see roles/apps/music-assistant/README.md).
 music_assistant_squeezelite_preset: "topping-D10s"
-# Stable, locally-administered MAC so SlimProto identifies the player across redeploys.
+# Stable, locally-administered MAC so SlimProto identifies the player
+# across redeploys. Generate one: printf '02:%02x:%02x:%02x:%02x:%02x\n' \
+# $((RANDOM%256)) $((RANDOM%256)) $((RANDOM%256)) $((RANDOM%256)) $((RANDOM%256))
 music_assistant_squeezelite_mac: "02:53:25:03:c0:e2"
 # Hostnames the MA pod needs to resolve via the host gateway.
 music_assistant_internal_hosts:
@@ -261,7 +296,9 @@ music_assistant_internal_hosts:
 
 ##################################################################################################
 ### Shairport-sync (AirPlay receiver, optional).
-shairportsync_airplay_name: "living-room"
+###
+### >>> YOU MUST SET:
+shairportsync_airplay_name: "living-room"      # the name shown in AirPlay device pickers
 ##################################################################################################
 
 
