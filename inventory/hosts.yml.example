@@ -12,7 +12,7 @@
 #
 #   Host homeserver
 #       Hostname 192.168.1.10
-#       User youruser
+#       User ansible
 #       IdentityFile ~/.ssh/id_ed25519
 
 all:
@@ -21,11 +21,11 @@ all:
       hosts:
         homeserver:                            # Production server
           ansible_host: 192.168.1.10           # LAN IP (set as DHCP reservation)
-          ansible_user: youruser               # SSH user with passwordless sudo
+          ansible_user: ansible               # SSH user with passwordless sudo
           ansible_ssh_private_key_file: ~/.ssh/id_ed25519
 
         # Optional: a second host for testing playbook changes safely.
         # homeserver-test:
         #   ansible_host: 192.168.1.11
-        #   ansible_user: youruser
+        #   ansible_user: ansible
         #   ansible_ssh_private_key_file: ~/.ssh/id_ed25519
