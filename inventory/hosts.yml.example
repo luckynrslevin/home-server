@@ -1,20 +1,31 @@
-# Copy this file to hosts.yml and fill in your values.
-# Do NOT commit hosts.yml — it is gitignored.
+# Inventory hosts file — copy to inventory/hosts.yml and edit.
 #
-# Use --limit to target a specific host:
-#   ansible-playbook playbooks/syncthing.yml --limit homeserver
-#   ansible-playbook playbooks/syncthing.yml --limit homeserver-test
+# This file is gitignored. The recommended pattern is to keep the real
+# hosts.yml in a sibling PRIVATE repo and symlink it in:
+#
+#   ln -s ../home-server-private/inventory/hosts.yml inventory/hosts.yml
+#
+# See README.md "Public/private repo split" for the full bootstrap.
+#
+# Hostnames here MUST also be set up as SSH aliases in ~/.ssh/config so
+# you can `ssh homeserver` without raw IPs + key flags. Example block:
+#
+#   Host homeserver
+#       Hostname 192.168.1.10
+#       User youruser
+#       IdentityFile ~/.ssh/id_ed25519
+
 all:
   children:
     homeservers:
       hosts:
-        homeserver:
-          ansible_host: 192.168.x.x         # Production server IP
-          ansible_host_name: myserver        # Hostname
-          ansible_user: myuser              # SSH user
+        homeserver:                            # Production server
+          ansible_host: 192.168.1.10           # LAN IP (set as DHCP reservation)
+          ansible_user: youruser               # SSH user with passwordless sudo
           ansible_ssh_private_key_file: ~/.ssh/id_ed25519
-        homeserver-test:
-          ansible_host: 192.168.x.x         # Test server IP
-          ansible_host_name: mytest          # Hostname
-          ansible_user: myuser              # SSH user
-          ansible_ssh_private_key_file: ~/.ssh/id_ed25519
+
+        # Optional: a second host for testing playbook changes safely.
+        # homeserver-test:
+        #   ansible_host: 192.168.1.11
+        #   ansible_user: youruser
+        #   ansible_ssh_private_key_file: ~/.ssh/id_ed25519
