@@ -90,7 +90,7 @@ The Galaxy role at `roles/requirements.yml` (currently v1.2.1) does the actual q
 
 - **tar** — small config/state volumes, restored atomically
 - **pgdump** — logical SQL dumps for Postgres (container stays up)
-- **rsync** — large mutable trees (media, MinIO buckets) where a full-volume tar would be wasteful
+- **rsync** — large mutable trees (media, object-store buckets) where a full-volume tar would be wasteful
 
 Restore is `playbooks/restore.yml` plus `playbooks/tasks/restore_generic.yml` plus each role's `tasks/restore.yml`. When adding a backed-up service, add its `backup_manifest` in `defaults/main.yml` rather than touching the backup role.
 

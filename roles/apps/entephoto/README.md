@@ -5,14 +5,6 @@ with a web UI. Deployed as a rootless Podman pod with four
 containers: PostgreSQL, Garage (S3-compatible object storage), Museum
 (API backend), and Web (frontend).
 
-> **History note:** the object store was MinIO until issue #168.
-> MinIO upstream removed the admin UI from the community image and
-> pivoted toward a commercial SKU. Garage is a maintained Rust
-> alternative, single binary, native S3 API, designed for self-hosted
-> 1–3 node clusters. Existing deployments migrate via
-> `playbooks/entephoto-minio-to-garage.yml` (see
-> `docs/Garage-Migration.md`).
-
 ## Container images
 
 | Container | Image |

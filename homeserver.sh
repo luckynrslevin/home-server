@@ -1499,7 +1499,8 @@ resolve_secret() {
 
 resolve_secret PIHOLE_PW            pihole_api_password         rand -base64 24
 resolve_secret ENTEPHOTO_DB_PW      entephoto_db_password       rand -base64 24
-resolve_secret ENTEPHOTO_MINIO_PW   entephoto_minio_password    rand -base64 24
+resolve_secret ENTEPHOTO_GARAGE_RPC   entephoto_garage_rpc_secret    rand -hex 32
+resolve_secret ENTEPHOTO_GARAGE_ADMIN entephoto_garage_admin_token   rand -base64 24
 resolve_secret ENTEPHOTO_ENC_KEY    entephoto_encryption_key    rand -base64 32
 # Hash key is 64-byte base64; tr strips the trailing newline from openssl.
 existing_hash=$(inv_get entephoto_hash_key)
@@ -1694,7 +1695,9 @@ echo "entephoto_s3_local_buckets: false"
 echo ""
 vault_encrypt "$ENTEPHOTO_DB_PW" "entephoto_db_password"
 echo ""
-vault_encrypt "$ENTEPHOTO_MINIO_PW" "entephoto_minio_password"
+vault_encrypt "$ENTEPHOTO_GARAGE_RPC" "entephoto_garage_rpc_secret"
+echo ""
+vault_encrypt "$ENTEPHOTO_GARAGE_ADMIN" "entephoto_garage_admin_token"
 echo ""
 vault_encrypt "$ENTEPHOTO_ENC_KEY" "entephoto_encryption_key"
 echo ""
@@ -1828,7 +1831,9 @@ cat << EOF
         url: https://photos-api.${CADDY_DOMAIN}/ping
     volumes:
       - entephoto-postgres-data
-      - entephoto-minio-data
+      - entephoto-garage-data
+      - entephoto-garage-meta
+      - entephoto-garage-config
       - entephoto-museum-config
 
 EOF

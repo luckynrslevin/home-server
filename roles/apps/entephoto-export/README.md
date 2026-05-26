@@ -2,8 +2,8 @@
 
 Daily decrypted export of the Ente Photos library to a NAS NFS share.
 
-The companion to `roles/entephoto`. The encrypted pipeline (museum +
-MinIO + Postgres) stays in place; this role adds plain-file copies of
+The companion to `roles/apps/entephoto`. The encrypted pipeline (museum +
+Garage + Postgres) stays in place; this role adds plain-file copies of
 every photo (album folders + Google-Takeout-style metadata sidecars)
 on the NAS, independent of Ente.
 

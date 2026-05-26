@@ -8,7 +8,7 @@
 #   ansible-vault encrypt_string '<value>' --name '<var_name>'
 #
 # Generate password / key material:
-#   openssl rand -base64 24       # passwords / minio / db
+#   openssl rand -base64 24       # passwords / db
 #   openssl rand -base64 32       # entephoto_encryption_key
 #   openssl rand -base64 64       # entephoto_hash_key
 #   openssl rand -hex   32        # JWT / Django secret keys
@@ -170,8 +170,6 @@ entephoto_s3_local_buckets: false              # false => https:// in presigned 
 
 entephoto_db_password: !vault |
   <ansible-vault-encrypted postgres password>
-entephoto_minio_password: !vault |
-  <ansible-vault-encrypted — only needed during MinIO→Garage migration>
 entephoto_encryption_key: !vault |
   <ansible-vault-encrypted — openssl rand -base64 32>
 entephoto_hash_key: !vault |
@@ -179,7 +177,7 @@ entephoto_hash_key: !vault |
 entephoto_jwt_secret: !vault |
   <ansible-vault-encrypted — openssl rand -hex 32>
 
-# Garage S3 backend secrets (replaces MinIO). See docs/Garage-Migration.md.
+# Garage S3 backend secrets.
 entephoto_garage_rpc_secret: !vault |
   <ansible-vault-encrypted — openssl rand -hex 32>
 entephoto_garage_admin_token: !vault |
