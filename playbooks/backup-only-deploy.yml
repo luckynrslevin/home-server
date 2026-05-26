@@ -1,0 +1,49 @@
+---
+# One-off playbook to deploy the backup role WITHOUT re-running all the
+# other service roles. Loads each backup-having role's defaults so the
+# backup_manifest vars are visible, builds _backup_manifests by hand,
+# then runs the backup role.
+#
+# Use when you need to redeploy the backup script in isolation —
+# typically because the per-role manifests are stable but a service
+# role has an unrelated bug that blocks site.yml.
+
+- name: Deploy backup role with manifests from all roles
+  hosts: homeservers
+  become: true
+  gather_facts: true
+
+  vars:
+    _manifest_roles:
+      - caddy
+      - pihole
+      - syncthing
+      - entephoto
+      - paperless-ngx
+      - jellyfin
+      - nextcloud
+      - music-assistant
+
+  pre_tasks:
+    - name: Load defaults from each backup-having role
+      ansible.builtin.include_vars:
+        file: "{{ lookup('ansible.builtin.first_found', [
+                  playbook_dir + '/../roles/platform/' + item + '/defaults/main.yml',
+                  playbook_dir + '/../roles/apps/' + item + '/defaults/main.yml']) }}"
+        name: "_defaults_{{ item }}"
+      loop: "{{ _manifest_roles }}"
+      when: item in (deploy_services | default([]))
+
+    - name: Build _backup_manifests
+      ansible.builtin.set_fact:
+        _backup_manifests: >-
+          {{ (_backup_manifests | default([])) +
+             [lookup('vars', '_defaults_' + item).backup_manifest
+              | combine({'_role_name': item})] }}
+      loop: "{{ _manifest_roles }}"
+      when:
+        - item in (deploy_services | default([]))
+        - lookup('vars', '_defaults_' + item, default={}).backup_manifest is defined
+
+  roles:
+    - role: backup

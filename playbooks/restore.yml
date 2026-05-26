@@ -54,7 +54,9 @@
     # defaults are not automatically in scope.
     - name: Load role defaults for restorable services
       ansible.builtin.include_vars:
-        dir: "{{ playbook_dir }}/../roles/{{ item }}/defaults"
+        file: "{{ lookup('ansible.builtin.first_found', [
+                    playbook_dir + '/../roles/platform/' + item + '/defaults/main.yml',
+                    playbook_dir + '/../roles/apps/' + item + '/defaults/main.yml']) }}"
         name: "_role_defaults_{{ item }}"
       loop: "{{ _restorable_services }}"
       tags: [always]

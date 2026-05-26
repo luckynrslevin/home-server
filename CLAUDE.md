@@ -45,6 +45,19 @@ SSH to hosts by alias only (`ssh homeserver`, `ssh ans-test`) — never with raw
 
 ## Architecture
 
+### Platform vs apps
+
+`roles/` is split into two layers:
+
+- `roles/platform/` — infrastructure every app may rely on: `caddy`, `pihole`, `backup`, `os-base`, `os-tailscale`, `os-audio`, `dashboard`.
+- `roles/apps/` — self-contained application roles. Apps depend on platform contracts only; **never** on each other.
+
+The only allowed app→platform couplings are documented in `docs/PLATFORM-CONTRACT.md` (caddy proxy, pihole DNS, backup manifests, `my_linux_users`, `smtp_*`, `luckynrslevin.podman_quadlet`). The boundary is enforced by `scripts/check-role-boundaries.sh`.
+
+`ansible.cfg`'s `roles_path` resolves roles by name across both layers, so playbooks reference `- role: <name>` without caring where the role lives.
+
+A new role is an **app by default**. Promote to platform only when ≥2 apps depend on it.
+
 ### site.yml is the contract
 
 `playbooks/site.yml` is the only playbook that should grow when a new service is added. Each host declares a `deploy_services` list in its `host_vars`, and every optional role in `site.yml` is gated by `"<name>" in (deploy_services | default([]))`. **Caddy is mandatory and asserted** in pre_tasks — every web UI in the project is reverse-proxied through it on `https://*.<caddy_domain>` with a private CA. Per-service HTTP ports are not exposed on the LAN. `caddy_domain` is also asserted.
@@ -53,7 +66,7 @@ Single-service playbooks (`playbooks/pihole.yml` etc.) exist for fast iteration 
 
 ### Roles follow one shape
 
-Each app role under `roles/<name>/` looks like:
+Each app role under `roles/apps/<name>/` (and each platform role under `roles/platform/<name>/`) looks like:
 
 - `defaults/main.yml` — all tunables, including a `backup_manifest` (see below)
 - `tasks/main.yml` — create rootless user + group, enable linger, enable `podman-auto-update.timer`, deploy quadlet templates, hand off to `luckynrslevin.podman_quadlet`
@@ -73,7 +86,7 @@ The Galaxy role at `roles/requirements.yml` (currently v1.2.1) does the actual q
 
 ### Backup is generic; roles declare a manifest
 
-`roles/backup/` is a single role that walks every other role's `backup_manifest` (a cross-role shared variable name, intentionally not prefixed — see `.ansible-lint`) and produces backups per declared volume. Three flavours:
+`roles/platform/backup/` is a single role that walks every other role's `backup_manifest` (a cross-role shared variable name, intentionally not prefixed — see `.ansible-lint`) and produces backups per declared volume. Three flavours:
 
 - **tar** — small config/state volumes, restored atomically
 - **pgdump** — logical SQL dumps for Postgres (container stays up)
