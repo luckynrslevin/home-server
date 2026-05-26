@@ -61,6 +61,7 @@ my_linux_users:
 ##################################################################################################
 ### Caddy reverse proxy — TLS for *.<caddy_domain> via DNS-01 (deSEC example).
 ### Every web UI is exposed only via Caddy; per-service ports stay unpublished.
+### For deSEC account + token setup see docs/Setup-Guide/01-deSEC-account.md.
 caddy_domain: "example.dedyn.io"               # your public domain
 caddy_acme_provider: "desec"                   # see Caddy DNS provider docs
 caddy_acme_subdomain: "example"                # for deSEC: dynDNS subname
