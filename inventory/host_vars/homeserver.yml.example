@@ -46,7 +46,7 @@ deploy_services:
 ### the reference deployment. Only adjust if a UID/GID already collides
 ### with existing accounts on your host.
 my_linux_users:
-  youruser:       {uid: 1000, gid: 1000}
+  ansible:        {uid: 1000, gid: 1000}   # the SSH user ansible connects as
   webproxy:       {uid: 1001, gid: 1001}   # caddy
   pihole:         {uid: 1005, gid: 1005}
   syncthg:        {uid: 1003, gid: 1003}
