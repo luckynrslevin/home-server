@@ -20,6 +20,7 @@ one below.
 | **Mailbox.org** (recommended) | [Change e-mail password / app password](https://kb.mailbox.org/de/privat/sicherheit-privatsphaere/e-mail-passwort/) | [Server, ports, encryption](https://kb.mailbox.org/de/privat/e-mail/e-mail-konfiguration/#3-postausgangsserver-ports-und-verschl%C3%BCsselung) |
 | **Posteo** | [Account password / 2FA setup](https://posteo.de/hilfe/wie-andere-mein-passwort) | [SMTP server settings](https://posteo.de/hilfe/welche-einstellungen-brauche-ich-fuer-imap-pop3-und-smtp) |
 | **IONOS Mail** | [Mailbox password](https://www.ionos.de/hilfe/e-mail/allgemeine-themen/mailbox-passwort-aendern/) | [Server data for mail programs](https://www.ionos.de/hilfe/e-mail/allgemeine-themen/serverdaten-fuer-e-mail-programme/) |
+| **Google Mail** | [App password (requires 2-Step Verification)](https://support.google.com/mail/answer/185833) | [SMTP server settings](https://support.google.com/mail/answer/7126229) |
 
 > [!TIP]
 > Use an **app-specific password** wherever the provider supports it
