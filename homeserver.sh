@@ -1547,19 +1547,26 @@ else
     MUSIC_ASSISTANT_MAC="02:$(openssl rand -hex 5 | sed 's/\(..\)/\1:/g;s/:$//')"
 fi
 
-# Snapshot any existing main.yml so we can preserve operator-added
-# unmanaged keys after the heredoc rewrites the file. Empty snapshot
-# (or missing file) means a fresh install — nothing to preserve.
+# Snapshot any existing monolithic main.yml so split_inventory_extras.py
+# can preserve operator-added keys into 20-extras.yml after the split
+# files are written. Empty snapshot (or missing file) means a fresh
+# install — nothing to preserve.
+HOST_VARS_DIR="inventory/host_vars/$SERVER_HOSTNAME"
+APPS_DIR="$HOST_VARS_DIR/apps"
+mkdir -p "$APPS_DIR"
 _unmanaged_snapshot=$(mktemp)
-if [[ -f "inventory/host_vars/$SERVER_HOSTNAME/main.yml" ]]; then
-    cp "inventory/host_vars/$SERVER_HOSTNAME/main.yml" "$_unmanaged_snapshot"
+if [[ -f "$HOST_VARS_DIR/main.yml" ]]; then
+    cp "$HOST_VARS_DIR/main.yml" "$_unmanaged_snapshot"
 else
     : > "$_unmanaged_snapshot"
 fi
 
-# Build the host_vars file
+_split_header='# DO NOT EDIT — managed by homeserver.sh'
+
+# --- 00-services.yml: host identity + deploy_services list ---
 {
 cat << YAML
+$_split_header
 ##################################################################################################
 ### Host identity
 # Pin the system hostname so os-base never renames the box on a
@@ -1568,7 +1575,7 @@ os_base_hostname: $SERVER_HOSTNAME
 
 # home-server release pinned for this host. Used by homeserver.sh to
 # decide which tag to check out on rebuild + add-service flows
-# (so an `add` doesn't accidentally pull in a different major).
+# (so an \`add\` doesn't accidentally pull in a different major).
 # Override at install time with \`homeserver.sh -r <tag>\`.
 home_server_release: $HOME_SERVER_RELEASE
 
@@ -1576,20 +1583,18 @@ home_server_release: $HOME_SERVER_RELEASE
 ### Services to deploy on this host (used by playbooks/site.yml)
 deploy_services:
 YAML
-
 for svc in "${SELECTED_SERVICES[@]}"; do
     echo "  - $svc"
 done
+} > "$HOST_VARS_DIR/00-services.yml"
 
+# --- 01-linux-users.yml: my_linux_users dict ---
+{
 cat << YAML
-
+$_split_header
 ##################################################################################################
 ### Linux users — service accounts with fixed UIDs
 YAML
-
-# If inventory already has my_linux_users, emit that block verbatim
-# (preserves operator additions like extra service accounts).
-# Otherwise emit the canonical UID map.
 existing_users=$(inv_get my_linux_users)
 if [[ -n "$existing_users" ]]; then
     echo "$existing_users" | python3 -c "
@@ -1632,16 +1637,18 @@ my_linux_users:
     gid: 1015
 YAML
 fi
+} > "$HOST_VARS_DIR/01-linux-users.yml"
 
+# --- 10-caddy.yml: caddy core + reverse-proxy services ---
+{
 cat << YAML
+$_split_header
 ##################################################################################################
-
 ### Caddy reverse-proxy + Let's Encrypt via deSEC DNS-01
 caddy_domain: "$CADDY_DOMAIN"
 caddy_acme_provider: "desec"
 caddy_acme_subdomain: "$DESEC_SUBDOMAIN"
 YAML
-
 echo ""
 vault_encrypt "$DESEC_TOKEN" "caddy_acme_token"
 echo ""
@@ -1676,117 +1683,182 @@ print(yaml.safe_dump({'caddy_reverse_proxy_services': entries},
                      default_flow_style=False, sort_keys=False).rstrip())
 PY
 fi
-echo ""
+} > "$HOST_VARS_DIR/10-caddy.yml"
 
-cat << YAML
+# --- 30-smtp.yml: SMTP relay (whole block optional) ---
+if [[ -n "${SMTP_HOST:-}" ]]; then
+    {
+    cat << YAML
+$_split_header
+##################################################################################################
+### SMTP relay (project-level — used by Nextcloud, Ente, Paperless)
+# See docs/SMTP-Setup.md for provider/credential setup + rotation.
+smtp_host: "$SMTP_HOST"
+smtp_port: $SMTP_PORT
+smtp_username: "$SMTP_USERNAME"
+smtp_encryption: "$SMTP_ENCRYPTION"
+smtp_from: "$SMTP_FROM"
+YAML
+    vault_encrypt "$SMTP_PASSWORD" "smtp_password"
+    } > "$HOST_VARS_DIR/30-smtp.yml"
+fi
 
+# --- 40-pihole.yml: Pi-hole core ---
+if is_selected pihole; then
+    {
+    cat << YAML
+$_split_header
+##################################################################################################
 ### Pi-hole
 pihole_local_network: "$LAN_CIDR"
 pihole_local_router: "$LAN_GATEWAY"
 YAML
-
-echo ""
-vault_encrypt "$PIHOLE_PW" "pihole_api_password"
-echo ""
-echo "### Music Assistant"
-echo "# Stable MAC for the built-in Squeezelite player. SlimProto"
-echo "# identifies players by MAC, so a fixed value keeps the player"
-echo "# recognized across redeploys."
-echo "music_assistant_squeezelite_mac: \"$MUSIC_ASSISTANT_MAC\""
-echo "# On a host without a USB DAC / sound card, set this to false to"
-echo "# skip the local Squeezelite player container — MA server still"
-echo "# runs and can drive AirPlay / Cast / external Squeezelite."
-echo "# music_assistant_player_enabled: false"
-echo ""
-echo "### Ente Photos"
-echo "# Public URLs of the Ente services. Without these, the web client"
-echo "# auto-detects http://<host_ip>:<port> from defaults and pops a"
-echo "# 'developer settings' dialog at signup. Setting them here makes"
-echo "# Caddy the canonical entry point and uses real LE certs."
-echo "entephoto_api_url: \"https://photos-api.${CADDY_DOMAIN}\""
-echo "entephoto_photos_url: \"https://photos.${CADDY_DOMAIN}\""
-echo "# Caddy reverse-proxies the photos-s3 subdomain on standard 443,"
-echo "# so the endpoint uses the default https port — both the browser"
-echo "# and the museum pod hit the same caddy listener that way."
-echo "entephoto_s3_endpoint: \"photos-s3.${CADDY_DOMAIN}\""
-echo "entephoto_s3_host: \"photos-s3.${CADDY_DOMAIN}\""
-echo "# false here flips Ente's presigned upload URLs to https://, which"
-echo "# matches the Caddy-fronted endpoint above and avoids browser"
-echo "# mixed-content errors."
-echo "entephoto_s3_local_buckets: false"
-echo ""
-vault_encrypt "$ENTEPHOTO_DB_PW" "entephoto_db_password"
-echo ""
-vault_encrypt "$ENTEPHOTO_GARAGE_RPC" "entephoto_garage_rpc_secret"
-echo ""
-vault_encrypt "$ENTEPHOTO_GARAGE_ADMIN" "entephoto_garage_admin_token"
-echo ""
-vault_encrypt "$ENTEPHOTO_ENC_KEY" "entephoto_encryption_key"
-echo ""
-vault_encrypt "$ENTEPHOTO_HASH_KEY" "entephoto_hash_key"
-echo ""
-vault_encrypt "$ENTEPHOTO_JWT" "entephoto_jwt_secret"
-echo ""
-echo "entephoto_admin_user_ids: []"
-echo ""
-echo "### Paperless-NGX"
-echo "# Public URL of the web UI. Used for absolute-URL generation"
-echo "# and as the only entry in Django's CSRF trusted origins,"
-echo "# so login through the Caddy reverse-proxy stops returning 403."
-echo "paperless_url: \"https://paperless.${CADDY_DOMAIN}\""
-echo ""
-vault_encrypt "$PAPERLESS_SECRET_KEY" "paperless_secret_key"
-echo ""
-vault_encrypt "$PAPERLESS_DB_PW" "paperless_db_password"
-echo ""
-vault_encrypt "$PAPERLESS_ADMIN_PW" "paperless_admin_password"
-echo ""
-echo "### Jellyfin"
-vault_encrypt "$JELLYFIN_ADMIN_PW" "jellyfin_admin_password"
-
-if is_selected nextcloud; then
     echo ""
-    echo "### Nextcloud"
+    vault_encrypt "$PIHOLE_PW" "pihole_api_password"
+    } > "$HOST_VARS_DIR/40-pihole.yml"
+fi
+
+# --- 50-backup.yml: nightly backup to NAS ---
+if is_selected backup; then
+    {
+    cat << YAML
+$_split_header
+##################################################################################################
+### Backup — nightly rsync/tar/pgdump to a LAN NAS via NFS
+# See roles/platform/backup/README.md for NAS-side prep (exports + dirs).
+backup_nas_hostname: "$backup_nas_hostname"
+backup_nas_ip: "$backup_nas_ip"
+backup_nas_volume: "$backup_nas_volume"
+backup_time: "$backup_time"
+YAML
+    } > "$HOST_VARS_DIR/50-backup.yml"
+fi
+
+# --- apps/music-assistant.yml ---
+if is_selected music-assistant; then
+    {
+    cat << YAML
+$_split_header
+##################################################################################################
+### Music Assistant
+# Stable MAC for the built-in Squeezelite player. SlimProto identifies
+# players by MAC, so a fixed value keeps the player recognized across
+# redeploys.
+music_assistant_squeezelite_mac: "$MUSIC_ASSISTANT_MAC"
+# On a host without a USB DAC / sound card, set this to false in
+# 20-extras.yml to skip the local Squeezelite player container — MA
+# server still runs and can drive AirPlay / Cast / external Squeezelite.
+# music_assistant_player_enabled: false
+YAML
+    } > "$APPS_DIR/music-assistant.yml"
+fi
+
+# --- apps/entephoto.yml ---
+if is_selected entephoto; then
+    {
+    cat << YAML
+$_split_header
+##################################################################################################
+### Ente Photos
+# Public URLs of the Ente services. Without these, the web client
+# auto-detects http://<host_ip>:<port> from defaults and pops a
+# 'developer settings' dialog at signup. Setting them here makes
+# Caddy the canonical entry point and uses real LE certs.
+entephoto_api_url: "https://photos-api.${CADDY_DOMAIN}"
+entephoto_photos_url: "https://photos.${CADDY_DOMAIN}"
+# Caddy reverse-proxies the photos-s3 subdomain on standard 443, so
+# the endpoint uses the default https port — both the browser and the
+# museum pod hit the same caddy listener that way.
+entephoto_s3_endpoint: "photos-s3.${CADDY_DOMAIN}"
+entephoto_s3_host: "photos-s3.${CADDY_DOMAIN}"
+# false here flips Ente's presigned upload URLs to https://, which
+# matches the Caddy-fronted endpoint above and avoids browser
+# mixed-content errors.
+entephoto_s3_local_buckets: false
+YAML
+    echo ""
+    vault_encrypt "$ENTEPHOTO_DB_PW" "entephoto_db_password"
+    echo ""
+    vault_encrypt "$ENTEPHOTO_GARAGE_RPC" "entephoto_garage_rpc_secret"
+    echo ""
+    vault_encrypt "$ENTEPHOTO_GARAGE_ADMIN" "entephoto_garage_admin_token"
+    echo ""
+    vault_encrypt "$ENTEPHOTO_ENC_KEY" "entephoto_encryption_key"
+    echo ""
+    vault_encrypt "$ENTEPHOTO_HASH_KEY" "entephoto_hash_key"
+    echo ""
+    vault_encrypt "$ENTEPHOTO_JWT" "entephoto_jwt_secret"
+    echo ""
+    echo "entephoto_admin_user_ids: []"
+    } > "$APPS_DIR/entephoto.yml"
+fi
+
+# --- apps/paperless.yml ---
+if is_selected paperless-ngx; then
+    {
+    cat << YAML
+$_split_header
+##################################################################################################
+### Paperless-NGX
+# Public URL of the web UI. Used for absolute-URL generation and as
+# the only entry in Django's CSRF trusted origins, so login through
+# the Caddy reverse-proxy stops returning 403.
+paperless_url: "https://paperless.${CADDY_DOMAIN}"
+YAML
+    echo ""
+    vault_encrypt "$PAPERLESS_SECRET_KEY" "paperless_secret_key"
+    echo ""
+    vault_encrypt "$PAPERLESS_DB_PW" "paperless_db_password"
+    echo ""
+    vault_encrypt "$PAPERLESS_ADMIN_PW" "paperless_admin_password"
+    } > "$APPS_DIR/paperless.yml"
+fi
+
+# --- apps/jellyfin.yml ---
+if is_selected jellyfin; then
+    {
+    cat << YAML
+$_split_header
+##################################################################################################
+### Jellyfin
+YAML
+    vault_encrypt "$JELLYFIN_ADMIN_PW" "jellyfin_admin_password"
+    } > "$APPS_DIR/jellyfin.yml"
+fi
+
+# --- apps/nextcloud.yml ---
+if is_selected nextcloud; then
+    {
+    cat << YAML
+$_split_header
+##################################################################################################
+### Nextcloud
+YAML
     vault_encrypt "$NEXTCLOUD_ADMIN_PW" "nextcloud_admin_password"
     echo ""
     vault_encrypt "$NEXTCLOUD_DB_PW" "nextcloud_db_password"
+    } > "$APPS_DIR/nextcloud.yml"
 fi
 
-if [[ -n "${SMTP_HOST:-}" ]]; then
-    echo ""
-    echo "### SMTP relay (project-level — used by Nextcloud, Ente, Paperless)"
-    echo "# See docs/SMTP-Setup.md for provider/credential setup + rotation."
-    echo "smtp_host: \"$SMTP_HOST\""
-    echo "smtp_port: $SMTP_PORT"
-    echo "smtp_username: \"$SMTP_USERNAME\""
-    echo "smtp_encryption: \"$SMTP_ENCRYPTION\""
-    echo "smtp_from: \"$SMTP_FROM\""
-    vault_encrypt "$SMTP_PASSWORD" "smtp_password"
-fi
-
-if is_selected backup; then
-    echo ""
-    echo "### Backup — nightly rsync/tar/pgdump to a LAN NAS via NFS"
-    echo "# See roles/backup/README.md for NAS-side prep (exports + dirs)."
-    echo "backup_nas_hostname: \"$backup_nas_hostname\""
-    echo "backup_nas_ip: \"$backup_nas_ip\""
-    echo "backup_nas_volume: \"$backup_nas_volume\""
-    echo "backup_time: \"$backup_time\""
-fi
-echo "##################################################################################################"
-} > inventory/host_vars/$SERVER_HOSTNAME/main.yml
-
-# Re-attach any operator-added keys (jellyfin_nas_mounts, samba_*,
-# pihole_local_dns_records, etc.) that aren't part of homeserver.sh's
-# managed key set. Without this, a rebuild silently drops them.
-if [[ -s "$_unmanaged_snapshot" ]]; then
-    python3 scripts/preserve_unmanaged_inventory.py \
-        --old "$_unmanaged_snapshot" \
-        --new "inventory/host_vars/$SERVER_HOSTNAME/main.yml" \
-        2> >(while IFS= read -r line; do info "$line"; done >&2) \
-        || warn "preserve_unmanaged_inventory.py failed — check for lost operator-added keys"
-fi
+# Migrate any operator-added keys (jellyfin_nas_mounts,
+# pihole_local_dns_records, etc.) from the pre-split snapshot into
+# 20-extras.yml — the user-managed file the tool never touches again.
+# Always runs so 20-extras.yml exists with a stable header after a
+# fresh install too.
+python3 scripts/split_inventory_extras.py \
+    --old "$_unmanaged_snapshot" \
+    --host-vars-dir "$HOST_VARS_DIR" \
+    --extras "$HOST_VARS_DIR/20-extras.yml" \
+    2> >(while IFS= read -r line; do info "$line"; done >&2) \
+    || warn "split_inventory_extras.py failed — check for lost operator-added keys"
 rm -f "$_unmanaged_snapshot"
+
+# Archive any pre-split main.yml so a re-run is idempotent (the
+# snapshot above already captured the unmanaged keys into extras).
+if [[ -f "$HOST_VARS_DIR/main.yml" ]]; then
+    mv "$HOST_VARS_DIR/main.yml" "$HOST_VARS_DIR/main.yml.pre-split.bak"
+    info "Archived pre-split main.yml → $HOST_VARS_DIR/main.yml.pre-split.bak"
+fi
 
 ok "Generated inventory/host_vars/$SERVER_HOSTNAME/main.yml (with vault-encrypted secrets)"
 
