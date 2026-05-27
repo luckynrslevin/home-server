@@ -33,10 +33,30 @@ set -euo pipefail
 VERB="install"
 SERVICE=""
 _self_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" &>/dev/null && pwd)
+
+# Resolve a role directory across the platform/apps split.
+# Usage: resolve_role_path <base_dir> <service>. Prints the path on
+# success (returns 0); returns 1 if no matching role directory exists.
+resolve_role_path() {
+    local base=$1 svc=$2 p
+    for p in "$base/roles/platform/$svc" "$base/roles/apps/$svc"; do
+        [[ -d "$p" ]] && { printf '%s' "$p"; return 0; }
+    done
+    return 1
+}
+
+# Same, but resolves to the meta/install.yml file inside the role.
+resolve_meta_install() {
+    local base=$1 svc=$2 rp
+    rp=$(resolve_role_path "$base" "$svc") || return 1
+    [[ -f "$rp/meta/install.yml" ]] && { printf '%s' "$rp/meta/install.yml"; return 0; }
+    return 1
+}
+
 if [[ "${1:-}" =~ ^(install|add|remove|upgrade|backup|restore|uninstall|secret)$ ]]; then
     VERB="$1"
     shift
-elif [[ -n "${1:-}" && -d "$_self_dir/roles/$1/scripts" ]]; then
+elif [[ -n "${1:-}" ]] && _svc_path=$(resolve_role_path "$_self_dir" "$1") && [[ -d "$_svc_path/scripts" ]]; then
     VERB="service"
     SERVICE="$1"
     shift
@@ -353,7 +373,7 @@ case "$VERB" in
     service)
         # homeserver.sh <service> [<action>] [args...]  →  per-service helper
         # SERVICE was set during dispatch at the top of the file.
-        scripts_dir="$_self_dir/roles/$SERVICE/scripts"
+        scripts_dir="$(resolve_role_path "$_self_dir" "$SERVICE")/scripts"
         ACTION="${1:-}"
         if [[ -z "$ACTION" ]]; then
             # No action: list available helpers for this service.
@@ -565,7 +585,8 @@ PY
         if [[ -z "$SERVICE" ]]; then
             err "Usage: homeserver.sh add <service>"
             err "Available services:"
-            for m in "$INSTALL_DIR"/roles/*/meta/install.yml; do
+            for m in "$INSTALL_DIR"/roles/platform/*/meta/install.yml "$INSTALL_DIR"/roles/apps/*/meta/install.yml; do
+                [[ -f "$m" ]] || continue
                 svc=$(basename "$(dirname "$(dirname "$m")")")
                 desc=$(python3 -c "import yaml; print(yaml.safe_load(open('$m')).get('description',''))" 2>/dev/null)
                 printf "  %-18s %s\n" "$svc" "$desc"
@@ -574,9 +595,8 @@ PY
         fi
         ensure_install_dir
         ensure_ansible_on_path
-        META="$INSTALL_DIR/roles/$SERVICE/meta/install.yml"
-        if [[ ! -f "$META" ]]; then
-            err "Unknown service '$SERVICE' (no roles/$SERVICE/meta/install.yml)."
+        if ! META=$(resolve_meta_install "$INSTALL_DIR" "$SERVICE"); then
+            err "Unknown service '$SERVICE' (no roles/{platform,apps}/$SERVICE/meta/install.yml)."
             err "Run \`homeserver.sh add\` with no args to see available services."
             exit 1
         fi
@@ -728,9 +748,8 @@ PY
         fi
         ensure_install_dir
         ensure_ansible_on_path
-        META="$INSTALL_DIR/roles/$SERVICE/meta/install.yml"
-        if [[ ! -f "$META" ]]; then
-            err "Unknown service '$SERVICE' (no roles/$SERVICE/meta/install.yml)."
+        if ! META=$(resolve_meta_install "$INSTALL_DIR" "$SERVICE"); then
+            err "Unknown service '$SERVICE' (no roles/{platform,apps}/$SERVICE/meta/install.yml)."
             exit 1
         fi
         TARGET=$(resolve_target_host)
@@ -1629,7 +1648,8 @@ echo ""
 
 # caddy_reverse_proxy_services: prefer existing inventory block if
 # present (preserves operator port overrides / hand-added services);
-# otherwise emit canonical entries for the selected services.
+# otherwise aggregate canonical entries from each selected service's
+# roles/{platform,apps}/<svc>/meta/install.yml — single source of truth.
 existing_rps=$(inv_get caddy_reverse_proxy_services)
 if [[ -n "$existing_rps" ]]; then
     echo "$existing_rps" | python3 -c "
@@ -1638,21 +1658,23 @@ d = json.load(sys.stdin)
 print(yaml.safe_dump({'caddy_reverse_proxy_services': d}, default_flow_style=False, sort_keys=False).rstrip())
 "
 else
-    echo "caddy_reverse_proxy_services:"
-    is_selected pihole       && echo '  - { subdomain: pihole, port: 8443, proto: https }'
-    is_selected syncthing    && echo '  - { subdomain: syncthing, port: 8384, proto: https }'
-    if is_selected entephoto; then
-      echo '  - { subdomain: photos, port: 3000 }'
-      echo '  - { subdomain: accounts, port: 3001 }'
-      echo '  - { subdomain: cast, port: 3002 }'
-      echo '  - { subdomain: auth, port: 3003 }'
-      echo '  - { subdomain: photos-api, port: 8080 }'
-      echo '  - { subdomain: photos-s3, port: 3200 }'
-    fi
-    is_selected paperless-ngx   && echo '  - { subdomain: paperless, port: 8000 }'
-    is_selected jellyfin        && echo '  - { subdomain: jellyfin, port: 8096 }'
-    is_selected music-assistant && echo '  - { subdomain: music, port: 8095 }'
-    is_selected nextcloud       && echo '  - { subdomain: cloud, port: 8090 }'
+    META_PATHS=()
+    for svc in "${SELECTED_SERVICES[@]}"; do
+        if m=$(resolve_meta_install "$INSTALL_DIR" "$svc"); then
+            META_PATHS+=("$m")
+        fi
+    done
+    INSTALL_DIR="$INSTALL_DIR" python3 - "${META_PATHS[@]}" <<'PY'
+import sys, yaml
+entries = []
+for path in sys.argv[1:]:
+    with open(path) as fh:
+        meta = yaml.safe_load(fh) or {}
+    for entry in ((meta.get('side_effects') or {}).get('caddy_reverse_proxy_services') or []):
+        entries.append(entry)
+print(yaml.safe_dump({'caddy_reverse_proxy_services': entries},
+                     default_flow_style=False, sort_keys=False).rstrip())
+PY
 fi
 echo ""
 
