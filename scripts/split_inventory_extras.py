@@ -78,6 +78,9 @@ def main() -> int:
     ap.add_argument("--host-vars-dir", required=True,
                     help="Directory containing the freshly-emitted split files")
     ap.add_argument("--extras", required=True, help="Target file for unmanaged keys")
+    ap.add_argument("--ignore", action="append", default=[],
+                    help="Top-level key to drop from migration (deprecated keys "
+                         "that have been semantically replaced). May be repeated.")
     args = ap.parse_args()
 
     yaml = make_yaml()
@@ -98,7 +101,8 @@ def main() -> int:
         return 0
 
     managed = collect_managed_keys(yaml, args.host_vars_dir)
-    unmanaged = [k for k in old_doc.keys() if k not in managed]
+    ignore = set(args.ignore)
+    unmanaged = [k for k in old_doc.keys() if k not in managed and k not in ignore]
 
     if not unmanaged:
         if not os.path.exists(args.extras):
