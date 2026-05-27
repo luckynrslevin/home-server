@@ -608,10 +608,12 @@ PY
             exit 1
         fi
         # Idempotency check: is the service already deployed?
+        # ansible-inventory returns raw Jinja for the group_vars-computed
+        # `deploy_services`, so union platform_services + apps ourselves.
         if ANSIBLE_VAULT_PASSWORD_FILE="$VAULT_PW_FILE" \
                 ansible-inventory --host "$TARGET" 2>/dev/null \
-                | python3 -c "import json,sys; d=json.load(sys.stdin); sys.exit(0 if '$SERVICE' in (d.get('deploy_services') or []) else 1)"; then
-            warn "$SERVICE is already in deploy_services for $TARGET."
+                | python3 -c "import json,sys; d=json.load(sys.stdin); sys.exit(0 if '$SERVICE' in ((d.get('platform_services') or []) + (d.get('apps') or []) + (d.get('deploy_services') or [])) else 1)"; then
+            warn "$SERVICE is already deployed on $TARGET."
             warn "Use \`homeserver.sh upgrade\` to re-deploy with latest images."
             exit 1
         fi
@@ -759,11 +761,13 @@ PY
             err "$VAULT_PW_FILE not readable. Is the host installed?"
             exit 1
         fi
-        # Idempotency check: IS the service in deploy_services?
+        # Idempotency check: is the service in platform_services or apps?
+        # (Union both lists — group_vars-computed deploy_services would
+        # come back as a raw Jinja string from ansible-inventory --host.)
         if ! ANSIBLE_VAULT_PASSWORD_FILE="$VAULT_PW_FILE" \
                 ansible-inventory --host "$TARGET" 2>/dev/null \
-                | python3 -c "import json,sys; d=json.load(sys.stdin); sys.exit(0 if '$SERVICE' in (d.get('deploy_services') or []) else 1)"; then
-            warn "$SERVICE is not in deploy_services for $TARGET — nothing to remove."
+                | python3 -c "import json,sys; d=json.load(sys.stdin); sys.exit(0 if '$SERVICE' in ((d.get('platform_services') or []) + (d.get('apps') or []) + (d.get('deploy_services') or [])) else 1)"; then
+            warn "$SERVICE is not deployed on $TARGET — nothing to remove."
             exit 1
         fi
         # Extract service user + uid + volumes from meta + role defaults
@@ -1367,15 +1371,31 @@ declare -A SERVICE_DEFAULT_YES=(
     [paperless-ngx]=1
 )
 
-# If inventory has a deploy_services list, prefer it: a service is
-# defaulted Y iff it's in the existing list.
-EXISTING_DEPLOY_SERVICES=$(inv_get deploy_services)
+# If inventory has the platform_services / apps split (or a legacy
+# deploy_services list), prefer it: a service is defaulted Y iff it's
+# in the existing union.
+EXISTING_PLATFORM=$(inv_get platform_services)
+EXISTING_APPS=$(inv_get apps)
+EXISTING_LEGACY=$(inv_get deploy_services)
 declare -A INV_DEPLOY=()
-if [[ -n "$EXISTING_DEPLOY_SERVICES" ]]; then
+_have_existing=""
+for _src in "$EXISTING_PLATFORM" "$EXISTING_APPS" "$EXISTING_LEGACY"; do
+    [[ -z "$_src" ]] && continue
+    # inv_get returns a literal Jinja string ("{{ ... }}") for the
+    # group_vars-computed deploy_services — skip those.
+    [[ "$_src" == \{\{*\}\}* || "$_src" == *\{\{* ]] && continue
+    _have_existing=1
     while IFS= read -r svc; do
         [[ -n "$svc" ]] && INV_DEPLOY[$svc]=1
-    done < <(echo "$EXISTING_DEPLOY_SERVICES" | python3 -c "import json,sys; print('\n'.join(json.load(sys.stdin)))")
-fi
+    done < <(echo "$_src" | python3 -c "import json,sys
+try:
+    d = json.load(sys.stdin)
+    if isinstance(d, list):
+        print('\n'.join(d))
+except Exception:
+    pass")
+done
+EXISTING_DEPLOY_SERVICES="$_have_existing"
 
 for svc in "${SERVICE_ORDER[@]}"; do
     desc="${SERVICES[$svc]}"
@@ -1563,7 +1583,28 @@ fi
 
 _split_header='# DO NOT EDIT — managed by homeserver.sh'
 
-# --- 00-services.yml: host identity + deploy_services list ---
+# --- 00-services.yml: host identity + platform_services + apps lists ---
+# Split SELECTED_SERVICES into platform infrastructure vs application
+# roles. `deploy_services` is computed in inventory/group_vars/all.yml
+# as the concatenation of the two — playbooks keep iterating that name.
+PLATFORM_SERVICES_CANON=(caddy dashboard pihole backup os-tailscale)
+_is_platform() {
+    local needle=$1 p
+    for p in "${PLATFORM_SERVICES_CANON[@]}"; do
+        [[ "$p" == "$needle" ]] && return 0
+    done
+    return 1
+}
+PLATFORM_SELECTED=()
+APPS_SELECTED=()
+for svc in "${SELECTED_SERVICES[@]}"; do
+    if _is_platform "$svc"; then
+        PLATFORM_SELECTED+=("$svc")
+    else
+        APPS_SELECTED+=("$svc")
+    fi
+done
+
 {
 cat << YAML
 $_split_header
@@ -1580,12 +1621,30 @@ os_base_hostname: $SERVER_HOSTNAME
 home_server_release: $HOME_SERVER_RELEASE
 
 ##################################################################################################
-### Services to deploy on this host (used by playbooks/site.yml)
-deploy_services:
+### Platform services — mandatory + optional infrastructure roles
+# caddy + dashboard are mandatory (asserted in playbooks/site.yml).
+# pihole / backup / os-tailscale are optional and additionally gated by
+# their <svc>_enabled flag (defaults to true when listed).
+platform_services:
 YAML
-for svc in "${SELECTED_SERVICES[@]}"; do
+for svc in "${PLATFORM_SELECTED[@]}"; do
     echo "  - $svc"
 done
+
+cat << YAML
+
+##################################################################################################
+### Apps — user-managed list. Add via \`homeserver.sh add <name>\`;
+### remove via \`homeserver.sh remove <name>\`.
+apps:
+YAML
+if [[ ${#APPS_SELECTED[@]} -eq 0 ]]; then
+    echo "  []"
+else
+    for svc in "${APPS_SELECTED[@]}"; do
+        echo "  - $svc"
+    done
+fi
 } > "$HOST_VARS_DIR/00-services.yml"
 
 # --- 01-linux-users.yml: my_linux_users dict ---
@@ -1849,6 +1908,7 @@ python3 scripts/split_inventory_extras.py \
     --old "$_unmanaged_snapshot" \
     --host-vars-dir "$HOST_VARS_DIR" \
     --extras "$HOST_VARS_DIR/20-extras.yml" \
+    --ignore deploy_services \
     2> >(while IFS= read -r line; do info "$line"; done >&2) \
     || warn "split_inventory_extras.py failed — check for lost operator-added keys"
 rm -f "$_unmanaged_snapshot"

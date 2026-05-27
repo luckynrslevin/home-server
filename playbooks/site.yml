@@ -1,15 +1,18 @@
 ---
-# Unified playbook: deploys all services listed in deploy_services for each host.
+# Unified playbook: deploys all services listed in platform_services + apps
+# for each host. The legacy `deploy_services` name is the concatenation of
+# the two — computed in inventory/group_vars/all.yml so unmigrated
+# inventories keep working.
 #
 # Usage:
 #   ansible-playbook playbooks/site.yml --limit homeserver       # production
 #   ansible-playbook playbooks/site.yml --limit homeserver-test  # test
 #   ansible-playbook playbooks/site.yml                          # all hosts
 #
-# Each host defines its own deploy_services list in host_vars.
-# If deploy_services is not defined, nothing is deployed (safe default).
-# Individual playbooks (e.g. playbooks/syncthing.yml) still work for
-# targeted single-service deploys.
+# Each host defines its own platform_services + apps lists in host_vars.
+# Mandatory platform roles (caddy, dashboard) are asserted below.
+# Optional platform roles (pihole, backup, os-tailscale) are additionally
+# gated by <svc>_enabled (defaults to true when the service is listed).
 
 - name: Deploy all selected services
   hosts: homeservers
@@ -17,17 +20,18 @@
   gather_facts: true
 
   pre_tasks:
-    # Caddy is mandatory: every web UI in the project is reverse-proxied
-    # through Caddy on https://*.<caddy_domain>. Without Caddy + a
-    # configured domain, services have no externally trusted access path.
-    - name: Assert Caddy is in deploy_services
+    # Caddy + dashboard are mandatory: every web UI in the project is
+    # reverse-proxied through Caddy on https://*.<caddy_domain>, and the
+    # dashboard is the front-door landing page that surfaces them.
+    - name: Assert mandatory platform services are in platform_services
       ansible.builtin.assert:
         that:
           - "'caddy' in (deploy_services | default([]))"
+          - "'dashboard' in (deploy_services | default([]))"
         fail_msg: >-
-          'caddy' must be in deploy_services. Caddy is the mandatory
-          front-door reverse proxy for this project — direct per-service
-          HTTP ports are no longer exposed.
+          'caddy' and 'dashboard' are mandatory platform roles and must
+          appear in platform_services. Caddy is the front-door reverse
+          proxy; the dashboard surfaces the deployed services to users.
     - name: Assert caddy_domain is set
       ansible.builtin.assert:
         that:
@@ -42,11 +46,14 @@
     - { role: os-base }
     - role: os-tailscale
       when: >-
-        (os_tailscale_auth_key | default('') | length > 0)
-        or ('os-tailscale' in (deploy_services | default([])))
+        ('os-tailscale' in (deploy_services | default([])))
+        and (tailscale_enabled | default(true))
     - { role: caddy }
-    - { role: dashboard,     when: "'dashboard' in (deploy_services | default([]))" }
-    - { role: pihole,        when: "'pihole' in (deploy_services | default([]))" }
+    - { role: dashboard }
+    - role: pihole
+      when: >-
+        ('pihole' in (deploy_services | default([])))
+        and (pihole_enabled | default(true))
     - { role: syncthing,     when: "'syncthing' in (deploy_services | default([]))" }
     - { role: shairportsync, when: "'shairportsync' in (deploy_services | default([]))" }
     - { role: entephoto,     when: "'entephoto' in (deploy_services | default([]))" }
@@ -55,4 +62,7 @@
     - { role: jellyfin,        when: "'jellyfin' in (deploy_services | default([]))" }
     - { role: music-assistant, when: "'music-assistant' in (deploy_services | default([]))" }
     - { role: nextcloud,       when: "'nextcloud' in (deploy_services | default([]))" }
-    - { role: backup,          when: "'backup' in (deploy_services | default([]))" }
+    - role: backup
+      when: >-
+        ('backup' in (deploy_services | default([])))
+        and (backup_enabled | default(true))

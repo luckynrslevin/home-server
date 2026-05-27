@@ -1,0 +1,10 @@
+# Public group_vars — applies to every host in the inventory.
+#
+# Bridges the platform_services + apps inventory split (PR-B and beyond)
+# to the legacy `deploy_services` name that all playbooks still reference.
+# Host_vars precedence means this is silently overridden on any host that
+# still has a hand-written `deploy_services:` block — keeps unmigrated
+# inventories working until `homeserver.sh install` re-runs and writes
+# the split-layout 00-services.yml.
+
+deploy_services: "{{ (platform_services | default([])) + (apps | default([])) }}"
