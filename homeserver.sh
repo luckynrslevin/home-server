@@ -1164,7 +1164,7 @@ fi
 cat > ansible.cfg << EOF
 [defaults]
 inventory = inventory/hosts.yml
-roles_path = ./roles:./.ansible/roles:~/.ansible/roles:/usr/share/ansible/roles
+roles_path = ./roles/platform:./roles/apps:./roles:./.ansible/roles:~/.ansible/roles:/usr/share/ansible/roles
 stdout_callback = default
 host_key_checking = False
 vault_password_file = $VAULT_PW_FILE
