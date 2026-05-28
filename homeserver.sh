@@ -1262,14 +1262,32 @@ pipelining = True
 use_tty = False
 EOF
 
-# Replace the public repo's inventory/ stub with a symlink into the
-# overlay so generated (Case 2) or existing (Case 3) inventory lives
-# in the overlay repo.
+# Point the public repo's inventory/ at the overlay for host-specific
+# data (hosts.yml + host_vars/<host>/) while keeping inventory/group_vars/
+# from the public repo intact — that's where deploy_services is
+# computed from platform_services + apps. The old scheme (whole-dir
+# symlink) shadowed group_vars/ and broke `deploy_services` at runtime.
 if [[ -n "$OVERLAY_URL" ]]; then
-    if [[ ! -L inventory ]]; then
-        rm -rf inventory
-        ln -s "$OVERLAY_DIR/inventory" inventory
-        ok "Symlinked inventory/ → $OVERLAY_DIR/inventory"
+    # Migrate any pre-existing whole-dir symlink to the new selective
+    # scheme. Idempotent — does nothing if already selective.
+    if [[ -L inventory ]]; then
+        rm inventory
+        git checkout -- inventory/ 2>/dev/null || true
+    fi
+    # Ensure the public inventory/ dir is there with its group_vars.
+    if [[ ! -d inventory ]]; then
+        git checkout -- inventory/ 2>/dev/null || mkdir -p inventory
+    fi
+    # Selective symlinks: hosts.yml + host_vars → overlay.
+    if [[ ! -L inventory/hosts.yml ]]; then
+        rm -f inventory/hosts.yml
+        ln -s "$OVERLAY_DIR/inventory/hosts.yml" inventory/hosts.yml
+        ok "Symlinked inventory/hosts.yml → $OVERLAY_DIR/inventory/hosts.yml"
+    fi
+    if [[ ! -L inventory/host_vars ]]; then
+        rm -rf inventory/host_vars
+        ln -s "$OVERLAY_DIR/inventory/host_vars" inventory/host_vars
+        ok "Symlinked inventory/host_vars → $OVERLAY_DIR/inventory/host_vars"
     fi
 fi
 
