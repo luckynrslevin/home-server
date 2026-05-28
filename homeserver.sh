@@ -53,6 +53,49 @@ resolve_meta_install() {
     return 1
 }
 
+# --- Split-layout helpers (post-PR-260 host_vars layout) ---
+# host_vars/<host>/ contains 00-services.yml … 60-tailscale.yml plus
+# apps/<svc>.yml — no monolithic main.yml. These helpers replace the
+# old `[[ -f .../main.yml ]]` existence/lookup checks that survived
+# the split.
+
+# Source of truth for platform-vs-app classification. Add/remove verbs
+# and the install flow both need this, so it lives at the top.
+PLATFORM_SERVICES_CANON=(caddy dashboard pihole backup os-tailscale)
+is_platform_service() {
+    local needle=$1 p
+    for p in "${PLATFORM_SERVICES_CANON[@]}"; do
+        [[ "$p" == "$needle" ]] && return 0
+    done
+    return 1
+}
+
+# True if <dir> contains at least one *.yml file (top-level or under
+# apps/). Used to decide whether a host has an existing inventory in
+# the split layout, replacing the old `-f main.yml` check.
+host_vars_dir_has_content() {
+    local dir=$1
+    [[ -d "$dir" ]] || return 1
+    compgen -G "$dir"/*.yml >/dev/null 2>&1 && return 0
+    compgen -G "$dir"/apps/*.yml >/dev/null 2>&1 && return 0
+    return 1
+}
+
+# Print path to the first *.yml file under <dir> containing a
+# $ANSIBLE_VAULT block. Used by the install flow to verify the
+# supplied vault password decrypts the existing inventory.
+find_vault_yml() {
+    local dir=$1 f
+    [[ -d "$dir" ]] || return 1
+    while IFS= read -r -d '' f; do
+        if grep -q '\$ANSIBLE_VAULT' "$f" 2>/dev/null; then
+            printf '%s' "$f"
+            return 0
+        fi
+    done < <(find "$dir" -maxdepth 2 -type f -name '*.yml' -print0 2>/dev/null)
+    return 1
+}
+
 if [[ "${1:-}" =~ ^(install|add|remove|upgrade|backup|restore|uninstall|secret)$ ]]; then
     VERB="$1"
     shift
@@ -505,11 +548,17 @@ case "$VERB" in
                 info "Bumping release: $current_tag → $latest_in_major"
                 git checkout --quiet "$latest_in_major"
                 # Persist the new tag back to inventory so subsequent
-                # operations agree with the on-disk state.
+                # operations agree with the on-disk state. In the split
+                # layout home_server_release lives in 00-services.yml
+                # (next to platform_services + apps); fall back to the
+                # legacy main.yml if a pre-split host hasn't migrated.
                 NEW_TAG="$latest_in_major"
                 if [[ -r "$VAULT_PW_FILE" ]] && python3 -c "import ruamel.yaml" 2>/dev/null; then
-                    info "Updating inventory's home_server_release → $NEW_TAG"
-                    python3 - "$INSTALL_DIR/inventory/host_vars/$TARGET/main.yml" "$NEW_TAG" <<'PY' 2>/dev/null || warn "Could not auto-update inventory home_server_release; do it by hand."
+                    REL_FILE="$INSTALL_DIR/inventory/host_vars/$TARGET/00-services.yml"
+                    [[ -f "$REL_FILE" ]] || REL_FILE="$INSTALL_DIR/inventory/host_vars/$TARGET/main.yml"
+                    if [[ -f "$REL_FILE" ]]; then
+                        info "Updating inventory's home_server_release → $NEW_TAG ($REL_FILE)"
+                        python3 - "$REL_FILE" "$NEW_TAG" <<'PY' 2>/dev/null || warn "Could not auto-update inventory home_server_release; do it by hand."
 import sys
 from ruamel.yaml import YAML
 inv_path, new_tag = sys.argv[1], sys.argv[2]
@@ -520,6 +569,9 @@ data['home_server_release'] = new_tag
 with open(inv_path, 'w') as f:
     yaml.dump(data, f)
 PY
+                    else
+                        warn "Could not find a host_vars file to persist home_server_release; do it by hand."
+                    fi
                 fi
             else
                 ok "Already on latest v${major}.x release ($current_tag) — refreshing images + ansible state."
@@ -693,15 +745,33 @@ PY
                 exit 1
             fi
         fi
-        INV_FILE="$INSTALL_DIR/inventory/host_vars/$TARGET/main.yml"
-        info "Merging into $INV_FILE..."
-        if ! python3 scripts/inventory_merge.py \
-                --inventory "$INV_FILE" \
-                --vault-password-file "$VAULT_PW_FILE" \
-                --update "$UPDATE_JSON" \
-                --mode add; then
-            err "Failed to merge inventory."
-            exit 1
+        HV_DIR="$INSTALL_DIR/inventory/host_vars/$TARGET"
+        # Post-PR-260 layout: route the update across split files
+        # (00-services.yml / 01-linux-users.yml / 10-caddy.yml / apps/<svc>.yml).
+        # If the host hasn't migrated yet (only main.yml exists), fall
+        # back to the legacy single-file merge so the verb keeps working.
+        if [[ -f "$HV_DIR/main.yml" ]] && ! compgen -G "$HV_DIR"/*.yml | grep -qv '/main\.yml$'; then
+            INV_FILE="$HV_DIR/main.yml"
+            info "Merging into $INV_FILE (legacy layout)..."
+            if ! python3 scripts/inventory_merge.py \
+                    --inventory "$INV_FILE" \
+                    --vault-password-file "$VAULT_PW_FILE" \
+                    --update "$UPDATE_JSON" \
+                    --mode add; then
+                err "Failed to merge inventory."
+                exit 1
+            fi
+        else
+            info "Merging into $HV_DIR/ (split layout)..."
+            if ! python3 scripts/inventory_merge.py \
+                    --host-vars-dir "$HV_DIR" \
+                    --service "$SERVICE" \
+                    --vault-password-file "$VAULT_PW_FILE" \
+                    --update "$UPDATE_JSON" \
+                    --mode add; then
+                err "Failed to merge inventory."
+                exit 1
+            fi
         fi
         ok "Inventory updated."
         # Run the role's playbooks
@@ -841,14 +911,28 @@ print(' '.join(on_remove.get('volumes_to_preserve_unless_purge') or []))
             err "Failed to build remove spec for $SERVICE."
             exit 1
         fi
-        INV_FILE="$INSTALL_DIR/inventory/host_vars/$TARGET/main.yml"
-        if ! python3 scripts/inventory_merge.py \
-                --inventory "$INV_FILE" \
-                --vault-password-file "$VAULT_PW_FILE" \
-                --update "$UPDATE_JSON" \
-                --mode remove; then
-            err "Failed to update inventory."
-            exit 1
+        HV_DIR="$INSTALL_DIR/inventory/host_vars/$TARGET"
+        # Same legacy/split layout dispatch as `add` above.
+        if [[ -f "$HV_DIR/main.yml" ]] && ! compgen -G "$HV_DIR"/*.yml | grep -qv '/main\.yml$'; then
+            INV_FILE="$HV_DIR/main.yml"
+            if ! python3 scripts/inventory_merge.py \
+                    --inventory "$INV_FILE" \
+                    --vault-password-file "$VAULT_PW_FILE" \
+                    --update "$UPDATE_JSON" \
+                    --mode remove; then
+                err "Failed to update inventory."
+                exit 1
+            fi
+        else
+            if ! python3 scripts/inventory_merge.py \
+                    --host-vars-dir "$HV_DIR" \
+                    --service "$SERVICE" \
+                    --vault-password-file "$VAULT_PW_FILE" \
+                    --update "$UPDATE_JSON" \
+                    --mode remove; then
+                err "Failed to update inventory."
+                exit 1
+            fi
         fi
         ok "Inventory updated."
         info "Refreshing caddy + dashboard..."
@@ -1074,7 +1158,7 @@ if [[ -n "$OVERLAY_URL" ]]; then
         chmod 400 "$OVERLAY_DIR/vault.pw"
     fi
 
-    if [[ -f "$OVERLAY_DIR/inventory/host_vars/$SERVER_HOSTNAME/main.yml" ]]; then
+    if host_vars_dir_has_content "$OVERLAY_DIR/inventory/host_vars/$SERVER_HOSTNAME"; then
         USE_EXISTING_INVENTORY=true
         ok "Overlay has existing inventory for '$SERVER_HOSTNAME' — will reuse as defaults."
     else
@@ -1103,10 +1187,13 @@ if [[ -n "$OVERLAY_URL" ]]; then
     if [[ "$USE_EXISTING_INVENTORY" == "true" ]]; then
         # Verify vault password works against the existing inventory.
         # `ansible-vault view` only handles whole-file-encrypted files;
-        # our main.yml uses inline `!vault |` blocks. Extract the first
-        # such block, decrypt it standalone, check exit code.
+        # the split files use inline `!vault |` blocks (typically
+        # 10-caddy.yml's caddy_acme_token). Find the first split file
+        # carrying a vault block, extract that block, decrypt it
+        # standalone, check the exit code.
         verify_tmp=$(mktemp)
-        python3 - "$OVERLAY_DIR/inventory/host_vars/$SERVER_HOSTNAME/main.yml" > "$verify_tmp" <<'PY'
+        if vault_yml=$(find_vault_yml "$OVERLAY_DIR/inventory/host_vars/$SERVER_HOSTNAME"); then
+            python3 - "$vault_yml" > "$verify_tmp" <<'PY'
 import sys
 with open(sys.argv[1]) as f:
     lines = f.readlines()
@@ -1122,12 +1209,13 @@ while i < len(lines):
         break
     i += 1
 PY
+        fi
         if [[ -s "$verify_tmp" ]]; then
             if ! ANSIBLE_VAULT_PASSWORD_FILE="$VAULT_PW_FILE" \
                     ansible-vault decrypt --output - "$verify_tmp" &>/dev/null; then
                 rm -f "$verify_tmp"
                 err "Vault password doesn't decrypt the existing inventory at"
-                err "  $OVERLAY_DIR/inventory/host_vars/$SERVER_HOSTNAME/main.yml"
+                err "  ${vault_yml:-$OVERLAY_DIR/inventory/host_vars/$SERVER_HOSTNAME/}"
                 err "Re-run homeserver.sh with the correct vault password."
                 exit 1
             fi
@@ -1174,14 +1262,32 @@ pipelining = True
 use_tty = False
 EOF
 
-# Replace the public repo's inventory/ stub with a symlink into the
-# overlay so generated (Case 2) or existing (Case 3) inventory lives
-# in the overlay repo.
+# Point the public repo's inventory/ at the overlay for host-specific
+# data (hosts.yml + host_vars/<host>/) while keeping inventory/group_vars/
+# from the public repo intact — that's where deploy_services is
+# computed from platform_services + apps. The old scheme (whole-dir
+# symlink) shadowed group_vars/ and broke `deploy_services` at runtime.
 if [[ -n "$OVERLAY_URL" ]]; then
-    if [[ ! -L inventory ]]; then
-        rm -rf inventory
-        ln -s "$OVERLAY_DIR/inventory" inventory
-        ok "Symlinked inventory/ → $OVERLAY_DIR/inventory"
+    # Migrate any pre-existing whole-dir symlink to the new selective
+    # scheme. Idempotent — does nothing if already selective.
+    if [[ -L inventory ]]; then
+        rm inventory
+        git checkout -- inventory/ 2>/dev/null || true
+    fi
+    # Ensure the public inventory/ dir is there with its group_vars.
+    if [[ ! -d inventory ]]; then
+        git checkout -- inventory/ 2>/dev/null || mkdir -p inventory
+    fi
+    # Selective symlinks: hosts.yml + host_vars → overlay.
+    if [[ ! -L inventory/hosts.yml ]]; then
+        rm -f inventory/hosts.yml
+        ln -s "$OVERLAY_DIR/inventory/hosts.yml" inventory/hosts.yml
+        ok "Symlinked inventory/hosts.yml → $OVERLAY_DIR/inventory/hosts.yml"
+    fi
+    if [[ ! -L inventory/host_vars ]]; then
+        rm -rf inventory/host_vars
+        ln -s "$OVERLAY_DIR/inventory/host_vars" inventory/host_vars
+        ok "Symlinked inventory/host_vars → $OVERLAY_DIR/inventory/host_vars"
     fi
 fi
 
@@ -1189,7 +1295,9 @@ info "Step 5/7: Configuring your server..."
 
 # Load existing inventory (if any) so every prompt below can default
 # from its previous value. Decrypts vault blocks in the dict.
-if [[ -f "inventory/host_vars/$SERVER_HOSTNAME/main.yml" ]]; then
+# ansible-inventory --host walks every *.yml under host_vars/<host>/
+# (and the apps/ subdir), so any split-layout file present counts.
+if host_vars_dir_has_content "inventory/host_vars/$SERVER_HOSTNAME"; then
     EXISTING_VARS_JSON=$(ANSIBLE_VAULT_PASSWORD_FILE="$VAULT_PW_FILE" \
         ansible-inventory --host "$SERVER_HOSTNAME" 2>/dev/null) || EXISTING_VARS_JSON='{}'
     if [[ "$EXISTING_VARS_JSON" != "{}" ]]; then
@@ -1587,18 +1695,12 @@ _split_header='# DO NOT EDIT — managed by homeserver.sh'
 # Split SELECTED_SERVICES into platform infrastructure vs application
 # roles. `deploy_services` is computed in inventory/group_vars/all.yml
 # as the concatenation of the two — playbooks keep iterating that name.
-PLATFORM_SERVICES_CANON=(caddy dashboard pihole backup os-tailscale)
-_is_platform() {
-    local needle=$1 p
-    for p in "${PLATFORM_SERVICES_CANON[@]}"; do
-        [[ "$p" == "$needle" ]] && return 0
-    done
-    return 1
-}
+# (Platform classification helper `is_platform_service` is defined at
+# the top of this script so add/remove verbs can use it too.)
 PLATFORM_SELECTED=()
 APPS_SELECTED=()
 for svc in "${SELECTED_SERVICES[@]}"; do
-    if _is_platform "$svc"; then
+    if is_platform_service "$svc"; then
         PLATFORM_SELECTED+=("$svc")
     else
         APPS_SELECTED+=("$svc")
@@ -1920,7 +2022,7 @@ if [[ -f "$HOST_VARS_DIR/main.yml" ]]; then
     info "Archived pre-split main.yml → $HOST_VARS_DIR/main.yml.pre-split.bak"
 fi
 
-ok "Generated inventory/host_vars/$SERVER_HOSTNAME/main.yml (with vault-encrypted secrets)"
+ok "Generated split host_vars under inventory/host_vars/$SERVER_HOSTNAME/ (with vault-encrypted secrets)"
 
 # --- Generate dashboard config ---
 # Only include services that were actually selected for deployment, so
@@ -2169,7 +2271,7 @@ echo -e "${BOLD}Back up ${VAULT_PW_FILE} into your password manager now.${NC}"
 echo "Without it you cannot re-deploy this host or decrypt its inventory."
 echo
 echo "Configuration files:"
-echo "  $INSTALL_DIR/inventory/host_vars/$SERVER_HOSTNAME/main.yml"
+echo "  $INSTALL_DIR/inventory/host_vars/$SERVER_HOSTNAME/  (split host_vars: 00-services.yml … 60-tailscale.yml, apps/<svc>.yml)"
 echo "  $INSTALL_DIR/inventory/host_vars/$SERVER_HOSTNAME/dashboard-config.yaml"
 echo
 
