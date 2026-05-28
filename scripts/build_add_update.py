@@ -241,8 +241,12 @@ def main():
     dicts = {}
     side = meta.get("side_effects") or {}
 
-    # deploy_services always gets the service name appended
-    lists["deploy_services"] = {"items": [args.service]}
+    # Post platform/apps split: append the service name to whichever list
+    # it belongs to. Platform service names are canonical (see
+    # PLATFORM_SERVICES_CANON in homeserver.sh); everything else is an app.
+    _PLATFORM = {"caddy", "dashboard", "pihole", "backup", "os-tailscale"}
+    _list_name = "platform_services" if args.service in _PLATFORM else "apps"
+    lists[_list_name] = {"items": [args.service]}
 
     if "caddy_reverse_proxy_services" in side:
         lists["caddy_reverse_proxy_services"] = {

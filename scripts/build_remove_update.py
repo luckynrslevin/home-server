@@ -45,8 +45,10 @@ def main():
     # so a placeholder is fine — we just need the keys)
     scalars = {k: {"value": "_"} for k in on_remove.get("inventory_vars_to_clear", []) or []}
 
-    # lists — remove the items this role added (deploy_services + caddy entries)
-    lists = {"deploy_services": {"items": [args.service]}}
+    # lists — remove the items this role added (platform_services/apps + caddy entries)
+    _PLATFORM = {"caddy", "dashboard", "pihole", "backup", "os-tailscale"}
+    _list_name = "platform_services" if args.service in _PLATFORM else "apps"
+    lists = {_list_name: {"items": [args.service]}}
     # side_effect_reversals: "auto" (default) reverses side_effects.
     # "none" skips reversal (operator wants the caddy/user entries
     # preserved even after the role is gone — rare; documented opt-out).
