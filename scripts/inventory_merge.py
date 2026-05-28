@@ -1,10 +1,19 @@
 #!/usr/bin/env python3
 """
-scripts/inventory_merge.py — additively merge into an inventory main.yml.
+scripts/inventory_merge.py — additively merge into a host's inventory.
 
-Used by `setup.sh add <service>` and `setup.sh remove <service>` to mutate
-host_vars/<host>/main.yml without disturbing operator-added unmanaged
+Used by `homeserver.sh add <service>` and `homeserver.sh remove <service>`
+to mutate host_vars/<host>/ without disturbing operator-added unmanaged
 keys, comments, or formatting.
+
+Two layout modes:
+
+  --inventory <path>          legacy: write a single monolithic file
+                              (host_vars/<host>/main.yml).
+  --host-vars-dir <dir>       split layout (post-PR-260): route updates
+  --service <name>            across 00-services.yml / 01-linux-users.yml /
+                              10-caddy.yml / apps/<svc>.yml etc. according
+                              to which file owns each top-level key.
 
 Round-trip safety: built on ruamel.yaml's typ='rt' mode, which preserves
 comments, blank-line groupings, key order, and YAML tags (including
@@ -13,6 +22,12 @@ produce zero git diff.
 
 Usage:
     inventory_merge.py --inventory <main.yml>
+                       --vault-password-file <vault.pw>
+                       --update <update.json>
+                       --mode add|remove
+
+    inventory_merge.py --host-vars-dir <host_vars/<host>/>
+                       --service <name>
                        --vault-password-file <vault.pw>
                        --update <update.json>
                        --mode add|remove
@@ -339,40 +354,190 @@ def cmd_remove(data, update):
             _remove_dict_entry_preserving_comments(existing, k)
 
 
+# ----- Split-layout routing -----
+#
+# In the split host_vars layout (post-PR-260), shared keys live in
+# fixed files and service-specific scalars live in per-service files.
+# The map below is the source of truth for the "shared" half; everything
+# else falls through to the service's own file (apps/<svc>.yml for apps;
+# the dedicated <NN>-<svc>.yml for platform services that have one).
+
+KEY_TO_SPLIT_FILE = {
+    # 00-services.yml
+    "platform_services": "00-services.yml",
+    "apps": "00-services.yml",
+    "home_server_release": "00-services.yml",
+    "os_base_hostname": "00-services.yml",
+    # 01-linux-users.yml
+    "my_linux_users": "01-linux-users.yml",
+    # 10-caddy.yml
+    "caddy_domain": "10-caddy.yml",
+    "caddy_acme_provider": "10-caddy.yml",
+    "caddy_acme_subdomain": "10-caddy.yml",
+    "caddy_acme_token": "10-caddy.yml",
+    "caddy_reverse_proxy_services": "10-caddy.yml",
+    # 30-smtp.yml
+    "smtp_host": "30-smtp.yml",
+    "smtp_port": "30-smtp.yml",
+    "smtp_username": "30-smtp.yml",
+    "smtp_password": "30-smtp.yml",
+    "smtp_encryption": "30-smtp.yml",
+    "smtp_from": "30-smtp.yml",
+    # 40-pihole.yml
+    "pihole_enabled": "40-pihole.yml",
+    "pihole_local_network": "40-pihole.yml",
+    "pihole_local_router": "40-pihole.yml",
+    "pihole_api_password": "40-pihole.yml",
+    # 50-backup.yml
+    "backup_enabled": "50-backup.yml",
+    "backup_nas_hostname": "50-backup.yml",
+    "backup_nas_ip": "50-backup.yml",
+    "backup_nas_volume": "50-backup.yml",
+    "backup_time": "50-backup.yml",
+    # 60-tailscale.yml
+    "tailscale_enabled": "60-tailscale.yml",
+    "os_tailscale_auth_key": "60-tailscale.yml",
+}
+
+# Platform services that own a dedicated split-file. Their service-
+# specific scalars (e.g. pihole_api_password) land in that file rather
+# than apps/<svc>.yml. Most are listed in KEY_TO_SPLIT_FILE already, but
+# this mapping is used when a service-specific scalar from meta/install.yml
+# isn't in the static map (e.g. a future tailscale_X secret).
+PLATFORM_SVC_FILE = {
+    "pihole": "40-pihole.yml",
+    "backup": "50-backup.yml",
+    "os-tailscale": "60-tailscale.yml",
+}
+
+SPLIT_FILE_HEADER = "# DO NOT EDIT — managed by homeserver.sh\n"
+
+
+def service_specific_file(service):
+    """Return the split-file (relative to host_vars dir) where <service>'s
+    own scalars/lists/dicts land when the key isn't in KEY_TO_SPLIT_FILE."""
+    return PLATFORM_SVC_FILE.get(service, f"apps/{service}.yml")
+
+
+def slice_update_by_file(update, service):
+    """Slice update.json into per-file update dicts based on which split
+    file owns each key. Returns {relative_path: per_file_update}. Empty
+    slices are omitted."""
+    svc_file = service_specific_file(service)
+    slices = {}
+
+    def for_file(rel):
+        return slices.setdefault(rel, {"scalars": {}, "lists": {}, "dicts": {}})
+
+    for k, v in (update.get("scalars") or {}).items():
+        rel = KEY_TO_SPLIT_FILE.get(k, svc_file)
+        for_file(rel)["scalars"][k] = v
+    for k, v in (update.get("lists") or {}).items():
+        rel = KEY_TO_SPLIT_FILE.get(k, svc_file)
+        for_file(rel)["lists"][k] = v
+    for k, v in (update.get("dicts") or {}).items():
+        rel = KEY_TO_SPLIT_FILE.get(k, svc_file)
+        for_file(rel)["dicts"][k] = v
+    return slices
+
+
+def _load_doc(path, yaml):
+    """Load an existing YAML doc as a CommentedMap. Returns (doc, existed).
+    Missing or empty file → (CommentedMap(), False)."""
+    if not os.path.exists(path) or os.path.getsize(path) == 0:
+        return CommentedMap(), False
+    with open(path) as f:
+        data = yaml.load(f)
+    if data is None:
+        return CommentedMap(), True
+    if not isinstance(data, CommentedMap):
+        return CommentedMap(data), True
+    return data, True
+
+
+def _write_doc(path, data, yaml, write_header):
+    """Atomically write <data> to <path>. Prepends SPLIT_FILE_HEADER if
+    write_header=True (a freshly-created file)."""
+    os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
+    tmp = path + ".tmp"
+    with open(tmp, "w") as f:
+        if write_header:
+            f.write(SPLIT_FILE_HEADER)
+        yaml.dump(data, f)
+    os.replace(tmp, path)
+
+
+def merge_split_file(path, slice_update, mode, vault_pw_file, yaml):
+    """Apply a per-file slice to <path>. In add mode, missing files are
+    created (with header). In remove mode, missing files are skipped, and
+    files that become empty after the merge are deleted."""
+    data, existed = _load_doc(path, yaml)
+
+    if mode == "add":
+        cmd_add(data, slice_update, vault_pw_file)
+        _write_doc(path, data, yaml, write_header=not existed)
+        return
+
+    # remove mode
+    if not existed:
+        return  # nothing to remove from a non-existent file
+    cmd_remove(data, slice_update)
+    if len(data) == 0:
+        os.remove(path)
+    else:
+        _write_doc(path, data, yaml, write_header=False)
+
+
 def main():
     p = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
-    p.add_argument("--inventory", required=True, help="path to main.yml")
+    p.add_argument("--inventory", help="path to legacy monolithic main.yml")
+    p.add_argument("--host-vars-dir",
+                   help="path to host_vars/<host>/ for split-layout merge")
+    p.add_argument("--service",
+                   help="service name (required with --host-vars-dir)")
     p.add_argument("--vault-password-file", required=True, help="path to vault.pw")
     p.add_argument("--update", required=True, help="path to update.json")
     p.add_argument("--mode", choices=["add", "remove"], required=True)
     args = p.parse_args()
 
-    yaml = make_yaml()
-
-    if not os.path.exists(args.inventory):
-        data = CommentedMap()
-    else:
-        with open(args.inventory) as f:
-            data = yaml.load(f)
-        if data is None:
-            data = CommentedMap()
-        elif not isinstance(data, CommentedMap):
-            # Plain dict from an empty-ish doc — wrap so .ca works.
-            data = CommentedMap(data)
+    if bool(args.inventory) == bool(args.host_vars_dir):
+        sys.exit("ERROR: pass exactly one of --inventory or --host-vars-dir")
+    if args.host_vars_dir and not args.service:
+        sys.exit("ERROR: --service is required with --host-vars-dir")
 
     with open(args.update) as f:
         update = json.load(f)
 
-    if args.mode == "add":
-        cmd_add(data, update, args.vault_password_file)
-    else:
-        cmd_remove(data, update)
+    yaml = make_yaml()
 
-    # Write atomically to dodge half-written files on crash.
-    tmp = args.inventory + ".tmp"
-    with open(tmp, "w") as f:
-        yaml.dump(data, f)
-    os.replace(tmp, args.inventory)
+    if args.inventory:
+        # Legacy monolithic-file path. Preserved so a host that hasn't
+        # migrated yet can still run add/remove against its main.yml.
+        if not os.path.exists(args.inventory):
+            data = CommentedMap()
+        else:
+            with open(args.inventory) as f:
+                data = yaml.load(f)
+            if data is None:
+                data = CommentedMap()
+            elif not isinstance(data, CommentedMap):
+                data = CommentedMap(data)
+        if args.mode == "add":
+            cmd_add(data, update, args.vault_password_file)
+        else:
+            cmd_remove(data, update)
+        tmp = args.inventory + ".tmp"
+        with open(tmp, "w") as f:
+            yaml.dump(data, f)
+        os.replace(tmp, args.inventory)
+        return
+
+    # Split-layout path.
+    slices = slice_update_by_file(update, args.service)
+    for rel, slice_update in slices.items():
+        path = os.path.join(args.host_vars_dir, rel)
+        merge_split_file(path, slice_update, args.mode,
+                         args.vault_password_file, yaml)
 
 
 if __name__ == "__main__":
