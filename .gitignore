@@ -3,6 +3,11 @@ vault.pw
 .vscode/
 .claude/settings.local.json
 .ansible/
+# ansible.cfg is bootstrapped from ansible.cfg.example (dev workstations)
+# or written by homeserver.sh install (deployed hosts). It MUST stay
+# untracked so a `git pull` / `git reset` doesn't clobber the local
+# vault_password_file path each tool wrote.
+ansible.cfg
 
 # Private inventory and secrets (use *.example files as templates)
 inventory/hosts.yml

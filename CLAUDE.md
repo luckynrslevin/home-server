@@ -39,7 +39,7 @@ ansible-galaxy install -r roles/requirements.yml -p .ansible/roles/
 ansible-lint
 ```
 
-`ansible.cfg` already points at `inventory/hosts.yml` and `vault.pw`, so no `-i` / `--vault-password-file` flags are needed.
+`ansible.cfg` is gitignored — homeserver.sh writes it on install (pointing at `$HOME/.vaultpw`), and dev workstations bootstrap it once via `cp ansible.cfg.example ansible.cfg`. The tracked template points at `inventory/hosts.yml` and `vault.pw` (relative), so no `-i` / `--vault-password-file` flags are needed.
 
 SSH to hosts by alias only (`ssh homeserver`, `ssh ans-test`) — never with raw IPs + key flags.
 

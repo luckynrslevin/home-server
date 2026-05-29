@@ -407,6 +407,33 @@ ensure_install_dir() {
     fi
 }
 
+# Make sure $INSTALL_DIR/ansible.cfg exists and points at a real vault
+# password file. Used by `add` / `remove` / `upgrade` so a clobbered
+# ansible.cfg (e.g. after a git pull on a host where the install-time
+# rewrite was previously tracked) self-heals without forcing a full
+# `install` re-run. Idempotent and safe to call on every verb entry.
+ensure_ansible_cfg() {
+    local cfg="$INSTALL_DIR/ansible.cfg"
+    local example="$INSTALL_DIR/ansible.cfg.example"
+    local target_vault="${VAULT_PW_FILE:-$HOME/.vaultpw}"
+    if [[ -f "$cfg" ]]; then
+        # Already pointing at a usable vault file? Nothing to do.
+        local current
+        current=$(awk -F'= *' '/^vault_password_file/ {print $2; exit}' "$cfg")
+        if [[ -n "$current" && -r "$current" ]]; then
+            return 0
+        fi
+        # cfg is present but points somewhere broken — rewrite below.
+    fi
+    if [[ ! -f "$example" ]]; then
+        # Pre-PR-269 checkout without the example template; bail.
+        return 0
+    fi
+    sed "s|^vault_password_file = .*|vault_password_file = $target_vault|" \
+        "$example" > "$cfg.tmp" && mv "$cfg.tmp" "$cfg"
+    info "Regenerated $cfg (vault_password_file → $target_vault)"
+}
+
 resolve_target_host() {
     # Use -h flag if given; otherwise system hostname.
     printf '%s' "${HOSTNAME_FLAG:-$(hostname -s)}"
@@ -523,6 +550,7 @@ case "$VERB" in
         TARGET=$(resolve_target_host)
         cd "$INSTALL_DIR"
         VAULT_PW_FILE="$HOME/.vaultpw"
+        ensure_ansible_cfg
         # Resolve the "current" tag in priority order:
         #   1. inventory's home_server_release (the durable record)
         #   2. git describe --exact-match (whatever's checked out now)
@@ -619,6 +647,7 @@ PY
             err "$VAULT_PW_FILE not readable. Run \`homeserver.sh install\` first."
             exit 1
         fi
+        ensure_ansible_cfg
         TARGET=$(resolve_target_host)
         # inv_get reads $EXISTING_VARS_JSON, populate it from inventory first.
         EXISTING_VARS_JSON=$(ANSIBLE_VAULT_PASSWORD_FILE="$VAULT_PW_FILE" \
@@ -659,12 +688,16 @@ PY
             err "$VAULT_PW_FILE not readable. Run \`homeserver.sh install\` first."
             exit 1
         fi
+        ensure_ansible_cfg
         # Idempotency check: is the service already deployed?
-        # ansible-inventory returns raw Jinja for the group_vars-computed
-        # `deploy_services`, so union platform_services + apps ourselves.
+        # ansible-inventory returns `deploy_services` as the raw Jinja
+        # template string from inventory/group_vars/all.yml (it doesn't
+        # template), so `or []` against it would yield a non-empty string
+        # and `list + str` raises TypeError. Union platform_services + apps
+        # only — that's the actual source of truth post-PR-262.
         if ANSIBLE_VAULT_PASSWORD_FILE="$VAULT_PW_FILE" \
                 ansible-inventory --host "$TARGET" 2>/dev/null \
-                | python3 -c "import json,sys; d=json.load(sys.stdin); sys.exit(0 if '$SERVICE' in ((d.get('platform_services') or []) + (d.get('apps') or []) + (d.get('deploy_services') or [])) else 1)"; then
+                | python3 -c "import json,sys; d=json.load(sys.stdin); sys.exit(0 if '$SERVICE' in ((d.get('platform_services') or []) + (d.get('apps') or [])) else 1)"; then
             warn "$SERVICE is already deployed on $TARGET."
             warn "Use \`homeserver.sh upgrade\` to re-deploy with latest images."
             exit 1
@@ -831,12 +864,14 @@ PY
             err "$VAULT_PW_FILE not readable. Is the host installed?"
             exit 1
         fi
+        ensure_ansible_cfg
         # Idempotency check: is the service in platform_services or apps?
-        # (Union both lists — group_vars-computed deploy_services would
-        # come back as a raw Jinja string from ansible-inventory --host.)
+        # (group_vars-computed deploy_services comes back as a raw Jinja
+        # string from ansible-inventory --host, so unioning it would raise
+        # TypeError — see the matching comment in the `add` verb above.)
         if ! ANSIBLE_VAULT_PASSWORD_FILE="$VAULT_PW_FILE" \
                 ansible-inventory --host "$TARGET" 2>/dev/null \
-                | python3 -c "import json,sys; d=json.load(sys.stdin); sys.exit(0 if '$SERVICE' in ((d.get('platform_services') or []) + (d.get('apps') or []) + (d.get('deploy_services') or [])) else 1)"; then
+                | python3 -c "import json,sys; d=json.load(sys.stdin); sys.exit(0 if '$SERVICE' in ((d.get('platform_services') or []) + (d.get('apps') or [])) else 1)"; then
             warn "$SERVICE is not deployed on $TARGET — nothing to remove."
             exit 1
         fi
