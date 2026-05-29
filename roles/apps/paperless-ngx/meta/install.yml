@@ -22,7 +22,7 @@ inventory_vars:
 
 side_effects:
   caddy_reverse_proxy_services:
-    - { subdomain: paperless, port: 8000 }
+    - { subdomain: paperless, port: 8000, label: "Web UI" }  # label is a dashboard hint
   my_linux_users:
     paperless:
       uid: 1007

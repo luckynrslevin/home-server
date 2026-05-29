@@ -1,4 +1,2 @@
-# Path to the dashboard config file. By convention, each host keeps its
-# config at inventory/host_vars/<hostname>/dashboard-config.yaml in the
-# private repo.
-dashboard_config_file: "{{ inventory_dir }}/host_vars/{{ inventory_hostname }}/dashboard-config.yaml"
+# Dashboard auto-discovers what to render from the split host_vars layout
+# and each role's meta/install.yml. No per-host config file. See README.

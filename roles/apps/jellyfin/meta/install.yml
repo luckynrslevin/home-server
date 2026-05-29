@@ -11,7 +11,7 @@ inventory_vars:
 
 side_effects:
   caddy_reverse_proxy_services:
-    - { subdomain: jellyfin, port: 8096 }
+    - { subdomain: jellyfin, port: 8096, label: "Web UI" }  # label is a dashboard hint
   my_linux_users:
     jellyfin:
       uid: 1012

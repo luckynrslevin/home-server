@@ -46,12 +46,16 @@ inventory_vars:
 
 side_effects:
   caddy_reverse_proxy_services:
-    - { subdomain: photos, port: 3000 }
-    - { subdomain: accounts, port: 3001 }
-    - { subdomain: cast, port: 3002 }
-    - { subdomain: auth, port: 3003 }
-    - { subdomain: photos-api, port: 8080 }
-    - { subdomain: photos-s3, port: 3900 }
+    # `path` / `label` / `hidden` are dashboard hints — caddy ignores them.
+    # hidden: true keeps the caddy route but hides the link from the
+    # dashboard. accounts/cast/auth/photos-s3 are internal Ente
+    # backplanes that Caddy must proxy but the operator doesn't browse.
+    - { subdomain: photos, port: 3000, label: "Photos" }
+    - { subdomain: accounts, port: 3001, hidden: true }
+    - { subdomain: cast, port: 3002, hidden: true }
+    - { subdomain: auth, port: 3003, hidden: true }
+    - { subdomain: photos-api, port: 8080, path: /ping, label: "API" }
+    - { subdomain: photos-s3, port: 3900, hidden: true }
   my_linux_users:
     entephoto:
       uid: 1008
