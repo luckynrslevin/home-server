@@ -37,6 +37,7 @@ Usage:
 import argparse
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -61,16 +62,27 @@ def load_existing_inventory(target, vault_pw, inventory_dir):
     return json.loads(result.stdout)
 
 
+_JINJA_VAR_RE = re.compile(r"\{\{\s*([A-Za-z_][A-Za-z0-9_]*)\s*\}\}")
+
+
 def render_template(template_str, ctx):
     """Render a small Jinja-like template. Uses jinja2 if available
-    (ansible-core depends on it so it should be on PATH), otherwise
-    falls back to str.format-style {key} substitution."""
+    (ansible-core depends on it but its jinja2 lives in a pipx venv
+    that /usr/bin/python3 doesn't see), otherwise falls back to a
+    regex that handles `{{ var }}` substitution — same syntax as the
+    jinja path, just no filters / logic. Computed vars in
+    meta/install.yml are simple `{{ name }}` interpolations, so this
+    covers every current use without dragging jinja2 in as a hard dep.
+
+    str.format is NOT used: it treats `{{` as escaped `{` and would
+    silently mangle `{{ caddy_domain }}` into `{ caddy_domain }`."""
     try:
         from jinja2 import Template
         return Template(template_str).render(**ctx)
     except ImportError:
-        # Crude fallback — operators using `computed` vars need jinja2.
-        return template_str.format(**ctx)
+        return _JINJA_VAR_RE.sub(
+            lambda m: str(ctx.get(m.group(1), "")), template_str,
+        )
 
 
 def resolve_secret(generator):
