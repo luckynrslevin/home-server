@@ -2059,143 +2059,9 @@ fi
 
 ok "Generated split host_vars under inventory/host_vars/$SERVER_HOSTNAME/ (with vault-encrypted secrets)"
 
-# --- Generate dashboard config ---
-# Only include services that were actually selected for deployment, so
-# the dashboard doesn't display stale "Stopped" rows for un-deployed
-# services.
-
-{
-echo "services:"
-
-if is_selected shairportsync; then
-cat << EOF
-  - name: Shairport-sync
-    user: root
-    service: shairport-sync
-    rootful: true
-    volumes: []
-
-EOF
-fi
-
-if is_selected pihole; then
-cat << EOF
-  - name: Pi-hole
-    user: pihole
-    uid: 1005
-    service: pihole
-    urls:
-      - label: Admin UI
-        url: https://pihole.${CADDY_DOMAIN}/admin
-    volumes:
-      - systemd-pihole-etc
-      - systemd-pihole-dnsmasq
-
-EOF
-fi
-
-if is_selected syncthing; then
-cat << EOF
-  - name: Syncthing
-    user: syncthg
-    uid: 1003
-    service: syncthing
-    urls:
-      - label: Web UI
-        url: https://syncthing.${CADDY_DOMAIN}
-    volumes:
-      - systemd-syncthing
-
-EOF
-fi
-
-if is_selected entephoto; then
-cat << EOF
-  - name: Ente Photos
-    user: entephoto
-    uid: 1008
-    service: entephoto-pod
-    urls:
-      - label: Photos
-        url: https://photos.${CADDY_DOMAIN}
-      - label: API
-        url: https://photos-api.${CADDY_DOMAIN}/ping
-    volumes:
-      - entephoto-postgres-data
-      - entephoto-garage-data
-      - entephoto-garage-meta
-      - entephoto-garage-config
-      - entephoto-museum-config
-
-EOF
-fi
-
-if is_selected paperless-ngx; then
-cat << EOF
-  - name: Paperless-NGX
-    user: paperless
-    uid: 1007
-    service: paperless-ngx-pod
-    urls:
-      - label: Web UI
-        url: https://paperless.${CADDY_DOMAIN}
-    volumes:
-      - paperless-db-data
-      - paperless-media
-      - paperless-data
-
-EOF
-fi
-
-if is_selected jellyfin; then
-cat << EOF
-  - name: Jellyfin
-    user: jellyfin
-    uid: 1012
-    service: jellyfin
-    urls:
-      - label: Web UI
-        url: https://jellyfin.${CADDY_DOMAIN}
-    volumes:
-      - jellyfin-config
-      - jellyfin-media
-
-EOF
-fi
-
-if is_selected music-assistant; then
-cat << EOF
-  - name: Music Assistant
-    user: music-assistant
-    uid: 1014
-    service: music-assistant-pod
-    urls:
-      - label: Web UI
-        url: https://music.${CADDY_DOMAIN}
-    volumes:
-      - music-assistant-data
-
-EOF
-fi
-
-if is_selected nextcloud; then
-cat << EOF
-  - name: Nextcloud
-    user: nextcloud
-    uid: 1015
-    service: nextcloud-pod
-    urls:
-      - label: Web UI
-        url: https://cloud.${CADDY_DOMAIN}
-    volumes:
-      - nextcloud-config
-      - nextcloud-data
-
-EOF
-fi
-} > inventory/host_vars/$SERVER_HOSTNAME/dashboard-config.yaml
-
-ok "Generated inventory/host_vars/$SERVER_HOSTNAME/dashboard-config.yaml"
+# Dashboard auto-discovers what to render by reading the split host_vars +
+# each role's meta/install.yml at generation time; no dashboard-config.yaml
+# is written here. See roles/platform/dashboard/README.md.
 
 # ============================================================================
 # Step 6.5: deSEC API — upsert A records + clear stale ACME challenge TXT
@@ -2307,7 +2173,6 @@ echo "Without it you cannot re-deploy this host or decrypt its inventory."
 echo
 echo "Configuration files:"
 echo "  $INSTALL_DIR/inventory/host_vars/$SERVER_HOSTNAME/  (split host_vars: 00-services.yml … 60-tailscale.yml, apps/<svc>.yml)"
-echo "  $INSTALL_DIR/inventory/host_vars/$SERVER_HOSTNAME/dashboard-config.yaml"
 echo
 
 if [[ -n "${OVERLAY_URL:-}" && "$USE_EXISTING_INVENTORY" != "true" ]]; then

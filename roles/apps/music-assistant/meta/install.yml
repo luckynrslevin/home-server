@@ -13,7 +13,7 @@ inventory_vars:
 
 side_effects:
   caddy_reverse_proxy_services:
-    - { subdomain: music, port: 8095 }
+    - { subdomain: music, port: 8095, label: "Web UI" }  # label is a dashboard hint
   my_linux_users:
     music-assistant:
       uid: 1014

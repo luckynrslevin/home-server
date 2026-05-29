@@ -1,7 +1,8 @@
 ---
 # Deploy the home server dashboard: static HTML generator.
-# The dashboard script runs every 15 minutes via systemd timer.
-# HTML is served by the Caddy container (see caddy role).
+# The dashboard script runs every 15 minutes via systemd timer and
+# auto-discovers what to render by reading the split inventory + each
+# role's meta/install.yml (see role README for the contract).
 
 - name: Install PyYAML for dashboard script
   become: true
@@ -16,12 +17,11 @@
     dest: /usr/local/bin/home-server-dashboard.py
     mode: "0755"
 
-- name: Deploy dashboard configuration
+- name: Drop legacy /etc/home-server-dashboard.yaml (now auto-discovered from inventory)
   become: true
-  ansible.builtin.copy:
-    src: "{{ dashboard_config_file }}"
-    dest: /etc/home-server-dashboard.yaml
-    mode: "0644"
+  ansible.builtin.file:
+    path: /etc/home-server-dashboard.yaml
+    state: absent
 
 - name: Create dashboard output directory
   become: true

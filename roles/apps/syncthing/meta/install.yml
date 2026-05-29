@@ -9,7 +9,7 @@ inventory_vars: []
 
 side_effects:
   caddy_reverse_proxy_services:
-    - { subdomain: syncthing, port: 8384, proto: https }
+    - { subdomain: syncthing, port: 8384, proto: https, label: "Web UI" }  # label is a dashboard hint
   my_linux_users:
     syncthg:
       uid: 1003

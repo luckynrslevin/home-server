@@ -3,6 +3,12 @@ Description=Generate home server dashboard HTML
 
 [Service]
 Type=oneshot
-ExecStart=/usr/bin/python3 /usr/local/bin/home-server-dashboard.py
+# --inventory-dir / --roles-dir / --host fall back to env vars then
+# sensible defaults baked into the script (see home-server-dashboard.py).
+# Hosts that install home-server somewhere other than /home/ansible/home-server
+# can override these via drop-in: /etc/systemd/system/home-server-dashboard.service.d/*.conf
+ExecStart=/usr/bin/python3 /usr/local/bin/home-server-dashboard.py \
+    --inventory-dir /home/ansible/home-server/inventory \
+    --roles-dir /home/ansible/home-server/roles
 StandardOutput=journal
 StandardError=journal
