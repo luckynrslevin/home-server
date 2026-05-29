@@ -1,3 +1,16 @@
+# ansible.cfg — copy to ansible.cfg before running ansible commands.
+#
+# This file is the source-of-truth template for ansible.cfg. The real
+# ansible.cfg is gitignored because homeserver.sh rewrites the vault
+# path on each install, and an untracked file keeps that local mutation
+# safe from `git pull` / `git reset --hard` clobbering.
+#
+# Bootstrap for dev workstations:
+#   cp ansible.cfg.example ansible.cfg
+#   ln -s ~/path/to/vault.pw vault.pw   # or edit vault_password_file below
+#
+# `homeserver.sh install` writes its own ansible.cfg (pointing at
+# $HOME/.vaultpw) — operators don't need to touch this file.
 [defaults]
 inventory = inventory/hosts.yml
 roles_path = ./roles/platform:./roles/apps:./roles:./.ansible/roles:~/.ansible/roles:/usr/share/ansible/roles
