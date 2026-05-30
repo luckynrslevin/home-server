@@ -17,5 +17,10 @@ backup_nas_volume: "/volume1"                   # Synology Btrfs volume root
 ### Defaults — usually no need to change:
 backup_time: "21:00:00"                         # local time of the systemd timer
 
+# Master enable flag. Defaults to true. Set to false to pause nightly
+# backups without removing the role from platform_services (e.g. NAS
+# isn't on the LAN yet, or you're testing).
+# backup_enabled: true
+
 # Optional snapshot-trigger SSH config (sends a post-backup signal to
 # the NAS to take a Btrfs snapshot) goes in 20-extras.yml.

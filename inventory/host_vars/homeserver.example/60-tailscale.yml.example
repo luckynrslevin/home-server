@@ -11,3 +11,9 @@
 ### >>> YOU MUST SET:
 os_tailscale_auth_key: !vault |
   <ansible-vault-encrypted Tailscale auth key>
+
+###
+### Defaults — usually no need to change:
+# Master enable flag. Defaults to true. Set to false to keep the auth
+# key staged in inventory but skip joining the host to the tailnet.
+# tailscale_enabled: true

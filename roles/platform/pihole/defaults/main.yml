@@ -1,3 +1,16 @@
+# Master enable flag for the pihole role.
+#
+# site.yml gates the role's inclusion on BOTH `pihole in platform_services`
+# AND `pihole_enabled | default(true)`. Set this to `false` in host_vars to
+# keep pihole in the inventory list but skip its deployment on the next
+# `homeserver.sh install` / `ansible-playbook site.yml` run — useful for
+# pausing the role temporarily without losing the rest of its config
+# (admin password, custom DNS records in 20-extras.yml, etc.).
+#
+# Per-service playbooks (`ansible-playbook playbooks/pihole.yml`) bypass
+# this flag — they're explicit operator intent.
+pihole_enabled: true
+
 pihole_web_port_https: 8443
 
 # Pi-hole container image. Defaults to the official GHCR mirror to avoid

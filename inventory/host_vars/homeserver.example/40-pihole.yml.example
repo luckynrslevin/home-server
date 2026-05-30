@@ -15,3 +15,9 @@ pihole_api_password: !vault |
 
 # Static A records for LAN hosts not covered by the wildcard go in
 # 20-extras.yml — pihole_local_dns_records: [{ip: ..., hostname: ...}, ...]
+
+###
+### Defaults — usually no need to change:
+# Master enable flag. Defaults to true. Set to false to pause pihole
+# deployment without removing it from platform_services.
+# pihole_enabled: true
