@@ -1,0 +1,23 @@
+# EXAMPLE — copy to <hostname>/01-linux-users.yml and edit.
+# (Tool-managed in real installs — `homeserver.sh install` aggregates
+#  this from each selected role's meta/install.yml side_effects.my_linux_users
+#  and layers any existing inventory entries on top so operator-set UIDs win.)
+
+##################################################################################################
+### Linux users — service accounts with fixed UIDs.
+###
+### Defaults — usually no need to change. Only adjust if a UID/GID
+### already collides with another account on your host. The install
+### tool will preserve any per-key changes you make here on the next
+### re-deploy.
+my_linux_users:
+  ansible:         {uid: 1000, gid: 1000}   # operator's primary login (the SSH user)
+  webproxy:        {uid: 1001, gid: 1001}   # caddy
+  syncthg:         {uid: 1003, gid: 1003}   # syncthing
+  pihole:          {uid: 1005, gid: 1005}
+  paperless:       {uid: 1007, gid: 1007}
+  entephoto:       {uid: 1008, gid: 1008}   # also used by entephoto-export
+  shairport:       {uid: 1011, gid: 1011}
+  jellyfin:        {uid: 1012, gid: 1012}
+  music-assistant: {uid: 1014, gid: 1014}
+  nextcloud:       {uid: 1015, gid: 1015}

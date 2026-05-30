@@ -8,11 +8,13 @@ Ansible automation for a single-host home server (Fedora Server on `homeserver`,
 
 ## Public/private repo split
 
-This repo is the **public** half. Real inventory and secrets live in a sibling private overlay at `~/github/home-server-private/`. The public repo references private files via gitignored symlinks:
+This repo is the **public** half. Real inventory and secrets live in a sibling private overlay at `~/github/home-server-private/`. The public repo references private files via gitignored symlinks (set up by `homeserver.sh install` post-PR-266):
 
 - `inventory/hosts.yml` → `../home-server-private/inventory/hosts.yml`
-- `inventory/host_vars/homeserver.yml` → `../home-server-private/inventory/host_vars/homeserver.yml`
+- `inventory/host_vars` (whole dir) → `../home-server-private/inventory/host_vars`
 - (Optional) syncthing identity files under `roles/syncthing/{files,templates}/...`
+
+Per-host config under `inventory/host_vars/<host>/` is the split-file layout: `00-services.yml`, `01-linux-users.yml`, `10-caddy.yml`, `20-extras.yml` (operator-managed), `30-smtp.yml`, `40-pihole.yml`, `50-backup.yml`, `60-tailscale.yml`, plus `apps/<svc>.yml` per deployed app. See `inventory/host_vars/homeserver.example/README.md` for the contract.
 
 `vault.pw` is also a symlink into the private repo. When working on a fresh clone these symlinks may not exist yet — see README.md "Getting Started" for the bootstrap. **Never put real hostnames, IPs, or secrets into the public repo, examples, or GitHub issues/PRs.**
 

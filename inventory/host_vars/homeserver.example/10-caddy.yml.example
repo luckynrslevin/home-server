@@ -1,0 +1,39 @@
+# EXAMPLE — copy to <hostname>/10-caddy.yml and edit.
+# (Tool-managed in real installs — `homeserver.sh install` writes
+#  this from the deSEC/Cloudflare/Hetzner setup prompts + each
+#  selected role's caddy_reverse_proxy_services side effects.)
+
+##################################################################################################
+### Caddy reverse proxy — TLS for the apex + each subdomain via DNS-01.
+### Every web UI is exposed only via Caddy; per-service ports stay unpublished.
+### For deSEC account + token setup see docs/Setup-Guide/01-deSEC-account.md.
+###
+### >>> YOU MUST SET:
+caddy_domain: "example.dedyn.io"               # your public domain
+caddy_acme_subdomain: "example"                # for deSEC: dynDNS subname (omit for cloudflare/hetzner)
+caddy_acme_token: !vault |
+  <ansible-vault-encrypted DNS provider token>
+###
+### Defaults — usually no need to change:
+caddy_acme_provider: "desec"                   # also: cloudflare, hetzner
+# caddy_acme_zone: "example.com"               # set instead of acme_subdomain for cloudflare/hetzner
+
+# One entry per service fronted by Caddy. `subdomain` + `port` are required;
+# `proto` defaults to http. Optional dashboard-only hint fields (caddy
+# ignores them; the dashboard generator consumes them):
+#   path:    appended to the URL on the dashboard link  (e.g. /admin)
+#   label:   link text on the dashboard tile             (default: subdomain title-cased)
+#   hidden:  true keeps the caddy route, hides the dashboard link
+caddy_reverse_proxy_services:
+  - {subdomain: pihole,      port: 8443, proto: https, path: /admin, label: "Admin UI"}
+  - {subdomain: syncthing,   port: 8384, proto: https, label: "Web UI"}
+  - {subdomain: photos,      port: 3000, label: "Photos"}
+  - {subdomain: accounts,    port: 3001, hidden: true}   # Ente internal
+  - {subdomain: cast,        port: 3002, hidden: true}   # Ente internal
+  - {subdomain: auth,        port: 3003, hidden: true}   # Ente internal
+  - {subdomain: photos-api,  port: 8080, path: /ping, label: "API"}
+  - {subdomain: photos-s3,   port: 3900, hidden: true}   # Ente internal
+  - {subdomain: paperless,   port: 8000, label: "Web UI"}
+  - {subdomain: jellyfin,    port: 8096, label: "Web UI"}
+  - {subdomain: music,       port: 8095, label: "Web UI"}
+  - {subdomain: cloud,       port: 8090, label: "Web UI"}  # nextcloud

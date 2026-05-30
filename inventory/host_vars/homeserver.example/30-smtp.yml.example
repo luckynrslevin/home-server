@@ -1,0 +1,18 @@
+# EXAMPLE — copy to <hostname>/30-smtp.yml and edit.
+# (Tool-managed in real installs — `homeserver.sh install` prompts
+#  for these. Omit the whole file to disable email entirely.)
+
+##################################################################################################
+### SMTP relay (project-level — used by Nextcloud, Ente, Paperless, backup alerts).
+### See docs/SMTP-Setup.md for provider setup.
+###
+### >>> YOU MUST SET:
+smtp_host: "smtp.example.org"
+smtp_username: "you@example.org"
+smtp_from: "you@example.org"
+smtp_password: !vault |
+  <ansible-vault-encrypted SMTP password>
+###
+### Defaults — usually no need to change:
+smtp_port: 587
+smtp_encryption: "starttls"

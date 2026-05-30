@@ -1,0 +1,13 @@
+# EXAMPLE — copy to <hostname>/60-tailscale.yml and edit.
+# (Tool-managed in real installs — `homeserver.sh install` writes
+#  this when os-tailscale is selected.)
+#
+# Only present if `os-tailscale` is in platform_services.
+
+##################################################################################################
+### Tailscale — mesh VPN for off-LAN access without port forwarding.
+### Generate an auth key at https://login.tailscale.com/admin/settings/keys
+###
+### >>> YOU MUST SET:
+os_tailscale_auth_key: !vault |
+  <ansible-vault-encrypted Tailscale auth key>

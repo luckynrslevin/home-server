@@ -1,0 +1,9 @@
+# EXAMPLE — copy to <hostname>/apps/shairportsync.yml and edit.
+# (Tool-managed in real installs — `homeserver.sh add shairportsync`
+#  prompts for the AirPlay device name and writes this file.)
+
+##################################################################################################
+### Shairport-sync — AirPlay receiver (optional).
+###
+### >>> YOU MUST SET (prompted by `homeserver.sh add`):
+shairportsync_airplay_name: "living-room"      # the name shown in AirPlay device pickers
