@@ -1785,54 +1785,79 @@ fi
 } > "$HOST_VARS_DIR/00-services.yml"
 
 # --- 01-linux-users.yml: my_linux_users dict ---
+#
+# Source-of-truth: each selected role's meta/install.yml carries
+# side_effects.my_linux_users. Aggregate those, then layer the existing
+# inventory dict on top so operator-set UIDs are preserved per-key.
+# This stops nextcloud-style misses where a previously-deployed inventory's
+# dict didn't include a newly-selected service (the install then failed
+# at "Ensure rootless user group exists" because my_linux_users.<svc> was
+# undefined).
+existing_users_json=$(inv_get my_linux_users)
+META_PATHS=()
+for svc in "${SELECTED_SERVICES[@]}"; do
+    if m=$(resolve_meta_install "$INSTALL_DIR" "$svc"); then
+        META_PATHS+=("$m")
+    fi
+done
+
 {
 cat << YAML
 $_split_header
 ##################################################################################################
 ### Linux users — service accounts with fixed UIDs
+###
+### Merged from each selected role's meta/install.yml side_effects.my_linux_users,
+### with the existing inventory dict layered on top (operator overrides win
+### per-key). Add an operator-only user by editing 20-extras.yml.
 YAML
-existing_users=$(inv_get my_linux_users)
-if [[ -n "$existing_users" ]]; then
-    echo "$existing_users" | python3 -c "
-import json, sys, yaml
-d = json.load(sys.stdin)
-print(yaml.safe_dump({'my_linux_users': d}, default_flow_style=False, sort_keys=False).rstrip())
-"
-else
-    cat << YAML
-my_linux_users:
-  $SERVER_USER:
-    uid: 1000
-    gid: 1000
-  shairport:
-    uid: 1001
-    gid: 1001
-  syncthg:
-    uid: 1003
-    gid: 1003
-  pihole:
-    uid: 1005
-    gid: 1005
-  entephoto:
-    uid: 1008
-    gid: 1008
-  paperless:
-    uid: 1007
-    gid: 1007
-  jellyfin:
-    uid: 1012
-    gid: 1012
-  webproxy:
-    uid: 1011
-    gid: 1011
-  music-assistant:
-    uid: 1014
-    gid: 1014
-  nextcloud:
-    uid: 1015
-    gid: 1015
-YAML
-fi
+
+EXISTING="$existing_users_json" \
+    SERVER_USER="$SERVER_USER" \
+    python3 - "${META_PATHS[@]}" <<'PY'
+import json, os, sys, yaml
+
+merged = {}
+
+# Layer 1: union of side_effects.my_linux_users across selected roles.
+for path in sys.argv[1:]:
+    try:
+        with open(path) as fh:
+            meta = yaml.safe_load(fh) or {}
+    except Exception:
+        continue
+    users = (meta.get('side_effects') or {}).get('my_linux_users') or {}
+    for name, props in users.items():
+        merged[name] = dict(props)
+
+# Layer 2: existing inventory wins per-key — preserves operator-set
+# UIDs and any hand-added users.
+existing_raw = (os.environ.get('EXISTING') or '').strip()
+if existing_raw:
+    try:
+        existing = json.loads(existing_raw)
+        if isinstance(existing, dict):
+            for name, props in existing.items():
+                if isinstance(props, dict):
+                    merged[name] = dict(props)
+    except json.JSONDecodeError:
+        pass
+
+# Layer 3: always include the operator's primary login user (the host's
+# SERVER_USER) at uid 1000 so my_linux_users is never missing the root
+# operator account.
+server_user = os.environ.get('SERVER_USER') or 'ds'
+merged.setdefault(server_user, {'uid': 1000, 'gid': 1000})
+
+# Sort by uid for stable output (matches the visual ordering operators
+# expect when scanning the file).
+ordered = dict(sorted(merged.items(),
+                      key=lambda kv: kv[1].get('uid', 9999)))
+
+print(yaml.safe_dump({'my_linux_users': ordered},
+                     default_flow_style=False,
+                     sort_keys=False).rstrip())
+PY
 } > "$HOST_VARS_DIR/01-linux-users.yml"
 
 # --- 10-caddy.yml: caddy core + reverse-proxy services ---
