@@ -1,4 +1,17 @@
 ---
+# Master enable flag for the os-tailscale role.
+#
+# site.yml gates the role's inclusion on BOTH `os-tailscale in
+# platform_services` AND `tailscale_enabled | default(true)`. Set this
+# to `false` in host_vars to keep os-tailscale in the inventory list but
+# skip its deployment on the next `homeserver.sh install` /
+# `ansible-playbook site.yml` run — useful for staging the auth key in
+# inventory before you're ready to join the host to the tailnet.
+#
+# Per-service playbooks (`ansible-playbook playbooks/os-tailscale.yml`)
+# bypass this flag — they're explicit operator intent.
+tailscale_enabled: true
+
 # Authentication key for unattended `tailscale up`. When set (typically
 # from vault), the role will run `tailscale up --auth-key=...` once if
 # the host isn't already logged in. When empty, complete login

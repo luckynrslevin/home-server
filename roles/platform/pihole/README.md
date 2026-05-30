@@ -26,6 +26,7 @@ Pi-hole is mirrored on GHCR to sidestep Docker Hub's anonymous-pull rate limit. 
 
 | Variable                   | Default                              | Purpose                                                                |
 |----------------------------|--------------------------------------|------------------------------------------------------------------------|
+| `pihole_enabled`           | `true`                               | Master enable flag — site.yml skips the role if false even when `pihole` is in `platform_services`. Per-service playbook bypasses this. |
 | `pihole_web_port_https`    | `8443`                               | HTTPS port for the admin UI.                                           |
 | `pihole_image`             | `ghcr.io/pi-hole/pihole:latest`      | Pi-hole container image.                                               |
 | `pihole_unbound_image`     | `docker.io/klutchell/unbound:latest` | Unbound container image (pulled only when `pihole_enable_unbound`).    |

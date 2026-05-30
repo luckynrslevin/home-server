@@ -17,8 +17,14 @@ home_server_release: v2.7.1
 ##################################################################################################
 ### Platform services — mandatory + optional infrastructure roles.
 ### caddy + dashboard are mandatory (asserted in playbooks/site.yml).
-### pihole / backup / os-tailscale are optional infrastructure —
-### keep them in this list to deploy, remove to skip.
+### pihole / backup / os-tailscale are optional infrastructure — keep them
+### in this list to deploy, remove to skip.
+###
+### Each optional role also has a master enable flag (`<svc>_enabled`,
+### defaults to true) you can set to false in its per-service file
+### (40-pihole.yml, 50-backup.yml, 60-tailscale.yml) to pause deployment
+### without removing from this list. Useful for staging config before
+### the dependencies are ready (e.g. NAS not on the LAN yet).
 platform_services:
   - caddy            # mandatory — reverse proxy + LE certs
   - dashboard        # mandatory — static landing page

@@ -1,4 +1,17 @@
 ---
+# Master enable flag for the backup role.
+#
+# site.yml gates the role's inclusion on BOTH `backup in platform_services`
+# AND `backup_enabled | default(true)`. Set this to `false` in host_vars
+# to keep backup in the inventory list but skip its deployment on the
+# next `homeserver.sh install` / `ansible-playbook site.yml` run — useful
+# for hosts where you've staged the NAS coords but aren't ready to enable
+# nightly backups yet (e.g. NAS isn't on the LAN, or you're testing).
+#
+# Per-service playbooks (`ansible-playbook playbooks/backup.yml`) bypass
+# this flag — they're explicit operator intent.
+backup_enabled: true
+
 # NAS target for the NFS backup. Override ALL of these per-host in your
 # inventory (typically in host_vars/<host>.yml).
 #

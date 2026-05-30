@@ -44,6 +44,7 @@ See `defaults/main.yml`. Common knobs:
 
 | Variable | Default | Purpose |
 |---|---|---|
+| `tailscale_enabled` | `true` | Master enable flag — site.yml skips the role if false even when `os-tailscale` is in `platform_services`. Per-service playbook bypasses this. |
 | `os_tailscale_auth_key` | `""` | Vault-encrypted reusable / single-use auth key from the admin console. Empty = manual login. |
 | `os_tailscale_hostname` | `inventory_hostname` | The label that appears in the admin console. |
 | `os_tailscale_advertise_routes` | `[]` | List of CIDRs to advertise as subnet routes (e.g. `["192.168.1.0/24"]`). Routes also need approval in the admin console. |

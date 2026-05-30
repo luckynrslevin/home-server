@@ -23,6 +23,7 @@ rootless container volumes via `podman unshare`.
 
 | Variable                       | Default                | Purpose                                                            |
 |--------------------------------|------------------------|--------------------------------------------------------------------|
+| `backup_enabled`               | `true`                 | Master enable flag — site.yml skips the role if false even when `backup` is in `platform_services`. Per-service playbook bypasses this. |
 | `backup_time`                  | `02:00:00`             | systemd `OnCalendar` time-of-day (HH:MM:SS).                       |
 | `backup_nas_hostname`          | `nas`                  | Short hostname pinned in `/etc/hosts`.                             |
 | `backup_nas_ip`                | `192.168.x.x`          | NAS IP — pinned in `/etc/hosts` so backups don't depend on DNS.    |
