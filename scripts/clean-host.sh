@@ -16,7 +16,7 @@
 #   - Deployed scripts and configs
 #   - Firewall rules added by the roles
 #   - Resolved/modprobe overrides
-#   - The cloned repo and vault password (if from setup.sh)
+#   - The cloned repo and vault password (if from homeserver.sh)
 #
 # Does NOT remove:
 #   - The primary user (ds)
@@ -112,7 +112,7 @@ info "Removing setup artifacts..."
 
 rm -rf "$HOME/home-server"
 rm -f "$HOME/.vaultpw"
-rm -f /tmp/home-server-setup.sh
+rm -f /tmp/homeserver.sh /tmp/home-server-setup.sh  # legacy + current curl-pipe locations
 
 # ---- Verify ----
 info "Verifying clean state..."
