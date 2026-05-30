@@ -96,7 +96,7 @@ find_vault_yml() {
     return 1
 }
 
-if [[ "${1:-}" =~ ^(install|add|remove|upgrade|backup|restore|uninstall|secret)$ ]]; then
+if [[ "${1:-}" =~ ^(install|add|remove|config|upgrade|backup|restore|uninstall|secret)$ ]]; then
     VERB="$1"
     shift
 elif [[ -n "${1:-}" ]] && _svc_path=$(resolve_role_path "$_self_dir" "$1") && [[ -d "$_svc_path/scripts" ]]; then
@@ -154,6 +154,11 @@ Verbs:
   install         First install or interactive re-install (default).
   add <svc>       Add a service that wasn't deployed before.
   remove <svc>    Remove a service. Data volumes preserved unless --purge.
+  config <section>
+                  Edit one host_vars section in $EDITOR (default vi)
+                  + apply via the matching playbook. No full re-install.
+                  Sections: caddy, smtp, pihole, backup, tailscale, extras.
+                  Run `homeserver.sh config` (no section) to list.
   upgrade         Pull newer images + bump release tag within current major.
   backup          Trigger the backup systemd service now.
   restore         Restore from latest NAS backup.
@@ -659,6 +664,106 @@ PY
         fi
         # Plain stdout so the value pipes cleanly into other tools.
         printf '%s\n' "$value"
+        exit 0
+        ;;
+    config)
+        # homeserver.sh config <section> — targeted reconfig of one
+        # host_vars split file + apply via the matching playbook.
+        # Opens the file in $EDITOR (default vi); on save, runs the
+        # playbook so the change takes effect without a full install.
+        #
+        # Vault-encrypted values (smtp_password, caddy_acme_token, etc.)
+        # stay vault blocks across edits — the operator pastes a fresh
+        # `ansible-vault encrypt_string '<value>' --name '<var>'` output
+        # to rotate one. The hint banner printed below lists the
+        # vault-encrypt commands.
+        SECTION="${1:-}"
+        if [[ -z "$SECTION" ]]; then
+            cat <<USAGE >&2
+Usage: homeserver.sh config <section>
+
+Sections:
+  caddy       caddy_domain, ACME provider + token, reverse-proxy services
+              → file: 10-caddy.yml      → playbook: caddy.yml
+  smtp        SMTP relay (host/port/user/from/encryption/password)
+              → file: 30-smtp.yml       → playbook: site.yml
+                (re-runs every role; SMTP is used by multiple apps)
+  pihole      Pi-hole subnet, gateway, API password
+              → file: 40-pihole.yml     → playbook: pihole.yml
+  backup      NAS coords, backup time
+              → file: 50-backup.yml     → playbook: backup.yml
+  tailscale   Tailscale auth key
+              → file: 60-tailscale.yml  → playbook: os-tailscale.yml
+  extras      Operator overrides (Pi-hole DNS records, Jellyfin mounts,
+              MA internal hosts, NAS snapshot trigger, custom Caddy entries)
+              → file: 20-extras.yml     → playbook: site.yml
+
+Each section maps to one split host_vars file (see
+inventory/host_vars/<host>/) plus the playbook that reads from it.
+USAGE
+            exit 2
+        fi
+        case "$SECTION" in
+            caddy)     FILE=10-caddy.yml      PLAYBOOK=caddy.yml ;;
+            smtp)      FILE=30-smtp.yml       PLAYBOOK=site.yml ;;
+            pihole)    FILE=40-pihole.yml     PLAYBOOK=pihole.yml ;;
+            backup)    FILE=50-backup.yml     PLAYBOOK=backup.yml ;;
+            tailscale) FILE=60-tailscale.yml  PLAYBOOK=os-tailscale.yml ;;
+            extras|overrides) FILE=20-extras.yml PLAYBOOK=site.yml ;;
+            *)
+                err "Unknown section '$SECTION'. Run \`homeserver.sh config\` for the list."
+                exit 2
+                ;;
+        esac
+        ensure_install_dir
+        ensure_ansible_on_path
+        VAULT_PW_FILE="$HOME/.vaultpw"
+        if [[ ! -r "$VAULT_PW_FILE" ]]; then
+            err "$VAULT_PW_FILE not readable. Run \`homeserver.sh install\` first."
+            exit 1
+        fi
+        ensure_ansible_cfg
+        TARGET=$(resolve_target_host)
+        cd "$INSTALL_DIR"
+        FULL_PATH="inventory/host_vars/$TARGET/$FILE"
+        # Optional section files (smtp, tailscale, extras) may not exist
+        # yet — seed them from the .example template under
+        # inventory/host_vars/homeserver.example/ so the operator sees
+        # the expected schema + commented defaults.
+        if [[ ! -f "$FULL_PATH" ]]; then
+            TEMPLATE="inventory/host_vars/homeserver.example/$FILE.example"
+            if [[ -f "$TEMPLATE" ]]; then
+                cp "$TEMPLATE" "$FULL_PATH"
+                info "Seeded $FULL_PATH from $TEMPLATE (edit then save to apply)."
+            else
+                warn "$FULL_PATH doesn't exist and no template found; creating empty file."
+                : > "$FULL_PATH"
+            fi
+        fi
+        # Print the vault-encrypt hint before opening the editor — the
+        # operator may need to refresh a secret while editing.
+        info "Editing $FULL_PATH for $TARGET..."
+        info "Vault-encrypt a fresh secret in another terminal:"
+        info "  cd $INSTALL_DIR && ansible-vault encrypt_string '<value>' --name '<var>'"
+        info "(or run \`homeserver.sh secret <var>\` first to dump the current value)"
+        "${EDITOR:-vi}" "$FULL_PATH"
+        # Detect "no change" via mtime so we don't pointlessly run the
+        # playbook when the operator opens + quits.
+        info "Applying via playbooks/$PLAYBOOK --limit $TARGET..."
+        ansible-playbook "playbooks/$PLAYBOOK" --limit "$TARGET"
+        rc=$?
+        if [[ $rc -eq 0 ]]; then
+            ok "$SECTION reconfigured for $TARGET."
+            echo
+            info "Persist the change to the overlay:"
+            echo "  cd $HOME/home-server-private"
+            echo "  git add -A && git commit -m '$TARGET: config $SECTION' && git push"
+        else
+            err "Playbook failed (exit $rc). Inventory file has been updated; re-run"
+            err "  ansible-playbook playbooks/$PLAYBOOK --limit $TARGET"
+            err "after fixing the underlying issue."
+            exit $rc
+        fi
         exit 0
         ;;
     add)
