@@ -41,13 +41,16 @@ caddy_reverse_proxy_services: []
 caddy_acme_provider: ""
 
 # For provider == "desec": the dedyn.io subdomain (without the
-# .dedyn.io suffix). Caddy issues a wildcard cert for
-# *.<caddy_acme_subdomain>.dedyn.io.
+# .dedyn.io suffix). Caddy issues one cert per name —
+# <caddy_acme_subdomain>.dedyn.io for the apex plus
+# <subdomain>.<caddy_acme_subdomain>.dedyn.io for each
+# caddy_reverse_proxy_services entry.
 caddy_acme_subdomain: ""
 
 # For provider == "cloudflare" / "hetzner": the BYO apex zone
-# (e.g. "example.com"). Caddy issues a wildcard cert for
-# *.<caddy_acme_zone>.
+# (e.g. "example.com"). Caddy issues one cert per name —
+# <caddy_acme_zone> for the apex plus <subdomain>.<caddy_acme_zone>
+# for each caddy_reverse_proxy_services entry.
 caddy_acme_zone: ""
 
 # API token for the chosen DNS provider. Vault-encrypt this in
@@ -67,12 +70,13 @@ caddy_acme_token: ""
 caddy_acme_ca: ""
 
 # Backup manifest — consumed by the backup role and restore playbook.
-# Only caddy-data is backed up: it holds the LE-issued wildcard cert
-# and the ACME account key. Preserving it across an OS reinstall lets
-# `restore.yml` skip a fresh issuance entirely (and dodges LE's
-# 5-certs-per-week rate limit on aggressive rebuilds). caddy-config
-# is runtime state, caddy-etc is regenerated from the template — both
-# rebuild from scratch on every deploy.
+# Only caddy-data is backed up: it holds the LE-issued certs (one per
+# site name — apex + each subdomain) and the ACME account key.
+# Preserving it across an OS reinstall lets `restore.yml` skip a fresh
+# issuance entirely (and dodges LE's 50-certs-per-week-per-domain rate
+# limit on aggressive rebuilds). caddy-config is runtime state,
+# caddy-etc is regenerated from the template — both rebuild from
+# scratch on every deploy.
 backup_manifest:
   service_user: webproxy
   service_unit: caddy
