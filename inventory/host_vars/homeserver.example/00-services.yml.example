@@ -1,0 +1,41 @@
+# EXAMPLE — copy to <hostname>/00-services.yml and edit.
+# (Tool-managed in real installs — `homeserver.sh install` writes
+#  this from your service selection.)
+
+##################################################################################################
+### Host identity
+# Pin the system hostname so os-base never renames the box on a
+# re-deploy (the role's default would be inventory_hostname).
+os_base_hostname: homeserver
+
+# home-server release pinned for this host. Used by homeserver.sh to
+# decide which tag to check out on rebuild + add-service flows
+# (so an `add` doesn't accidentally pull in a different major).
+# Override at install time with `homeserver.sh -r <tag>`.
+home_server_release: v2.7.1
+
+##################################################################################################
+### Platform services — mandatory + optional infrastructure roles.
+### caddy + dashboard are mandatory (asserted in playbooks/site.yml).
+### pihole / backup / os-tailscale are optional infrastructure —
+### keep them in this list to deploy, remove to skip.
+platform_services:
+  - caddy            # mandatory — reverse proxy + LE certs
+  - dashboard        # mandatory — static landing page
+  - pihole           # optional — LAN DNS, resolves *.<caddy_domain>
+  - backup           # optional — nightly NAS backup
+  # - os-tailscale   # optional — mesh VPN
+
+##################################################################################################
+### Apps — pick the services you want on this host.
+### Add via `homeserver.sh add <name>`; remove via `homeserver.sh remove <name>`.
+### Each entry also needs a matching `apps/<name>.yml` for secrets.
+apps:
+  # - nextcloud
+  # - paperless-ngx
+  # - entephoto
+  # - entephoto-export
+  # - jellyfin
+  # - music-assistant
+  # - shairportsync
+  # - syncthing

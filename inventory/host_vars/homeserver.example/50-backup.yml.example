@@ -1,0 +1,21 @@
+# EXAMPLE — copy to <hostname>/50-backup.yml and edit.
+# (Tool-managed in real installs — `homeserver.sh install` writes
+#  this from your NAS coordinates prompts.)
+#
+# Only present if `backup` is in platform_services.
+
+##################################################################################################
+### Backup — nightly NAS backup of every role that declares a backup_manifest.
+### See docs/NAS-Setup.md for one-time NAS-side setup (per-host share,
+### NFS exports, snapshot trigger SSH key).
+###
+### >>> YOU MUST SET:
+backup_nas_hostname: "nas"                      # NAS hostname / SSH alias
+backup_nas_ip: "192.168.1.184"                  # NAS LAN IP (DHCP reservation on your router)
+backup_nas_volume: "/volume1"                   # Synology Btrfs volume root
+###
+### Defaults — usually no need to change:
+backup_time: "21:00:00"                         # local time of the systemd timer
+
+# Optional snapshot-trigger SSH config (sends a post-backup signal to
+# the NAS to take a Btrfs snapshot) goes in 20-extras.yml.

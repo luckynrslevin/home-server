@@ -1,0 +1,12 @@
+# EXAMPLE — copy to <hostname>/apps/entephoto-export.yml and edit.
+# (Tool-managed in real installs — `homeserver.sh add entephoto-export`
+#  prompts for the Ente account creds and writes this file.)
+
+##################################################################################################
+### Ente Photos export — daily decrypted export to NAS NFS share.
+###
+### >>> YOU MUST SET (prompted by `homeserver.sh add`):
+entephoto_export_account_email: !vault |
+  <ansible-vault-encrypted Ente account email>
+entephoto_export_account_password: !vault |
+  <ansible-vault-encrypted Ente account password>

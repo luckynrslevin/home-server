@@ -1,0 +1,17 @@
+# EXAMPLE — copy to <hostname>/40-pihole.yml and edit.
+# (Tool-managed in real installs — `homeserver.sh install` writes
+#  this from your LAN subnet + gateway prompts.)
+#
+# Only present if `pihole` is in platform_services.
+
+##################################################################################################
+### Pi-hole — LAN DNS that resolves *.<caddy_domain> to this host.
+###
+### >>> YOU MUST SET:
+pihole_local_network: "192.168.1.0/24"          # your LAN subnet
+pihole_local_router: "192.168.1.1"              # your router's LAN IP
+pihole_api_password: !vault |
+  <ansible-vault-encrypted password — openssl rand -base64 24>
+
+# Static A records for LAN hosts not covered by the wildcard go in
+# 20-extras.yml — pihole_local_dns_records: [{ip: ..., hostname: ...}, ...]

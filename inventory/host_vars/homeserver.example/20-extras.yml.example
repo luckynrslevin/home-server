@@ -1,0 +1,46 @@
+# EXAMPLE — copy to <hostname>/20-extras.yml and edit.
+#
+# EDIT FREELY — homeserver.sh never touches this file.
+#
+# Operator-managed host_vars: anything the install tool does not write
+# itself lives here. The split-layout sibling files (00-services.yml,
+# 10-caddy.yml, 40-pihole.yml, …) are regenerated on every
+# `homeserver.sh install` run — overrides there get reverted. Anything
+# in this file survives because the tool doesn't know it exists.
+
+##################################################################################################
+### Pi-hole — static A records for LAN hosts not covered by the wildcard.
+# pihole_local_dns_records:
+#   - {ip: "192.168.1.184", hostname: "nas"}
+
+##################################################################################################
+### Backup — snapshot trigger config (optional, for Btrfs NAS).
+# After each successful backup, SSH to the NAS and trigger a Btrfs
+# snapshot of backup-<host>. Empty user => skip the trigger.
+# backup_nas_snapshot_user: "homeserver-backup"
+# backup_nas_snapshot_port: 1022                # NAS sshd port if non-default
+# backup_nas_snapshot_key_path: /root/.ssh/nas-snapshot   # default shown
+
+##################################################################################################
+### Jellyfin — operator-supplied NFS mounts + HW transcode.
+# NFS-mount video shares from the NAS (or omit and use a local path).
+# jellyfin_nas_mounts:
+#   - {src: "nas:/volume1/video", path: /srv/jellyfin-video,
+#      opts: "ro,noatime,vers=4,_netdev"}
+# jellyfin_extra_media_mounts:
+#   - {host_path: /srv/jellyfin-video, container_path: /media/video-nas, ro: true}
+# jellyfin_enable_hw_transcoding: true        # requires a VAAPI-capable GPU
+
+##################################################################################################
+### Music Assistant — internal hostnames the MA pod needs to resolve.
+# music_assistant_internal_hosts:
+#   - "jellyfin.example.dedyn.io"
+
+##################################################################################################
+### Paperless-NGX — optional SFTP sidecar for network scanners.
+# paperless_sftp_ingest_enabled: true
+# paperless_sftp_ingest_authorized_keys:
+#   - "ssh-ed25519 AAAA... scanner@brother"
+# paperless_sftp_scan_subdirs:
+#   - alice
+#   - bob

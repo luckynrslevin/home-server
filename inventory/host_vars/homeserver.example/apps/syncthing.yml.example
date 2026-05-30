@@ -1,0 +1,10 @@
+# EXAMPLE — copy to <hostname>/apps/syncthing.yml.
+# (Tool-managed in real installs — `homeserver.sh add syncthing`
+#  writes an empty file with this header.)
+
+##################################################################################################
+### Syncthing — no role-level secrets.
+###
+### Identity (device ID, cert, API key) lives in the config volume and
+### survives redeploys via the NAS backup/restore flow. See
+### roles/apps/syncthing/README.md for restoring an existing identity.
