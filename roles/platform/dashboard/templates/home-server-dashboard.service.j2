@@ -1,0 +1,13 @@
+[Unit]
+Description=Generate home server dashboard HTML
+
+[Service]
+Type=oneshot
+# Paths are templated at deploy time from the install user's actual
+# clone location (inventory_dir is ansible's built-in for the loaded
+# inventory's directory; roles/ sits next to it).
+ExecStart=/usr/bin/python3 /usr/local/bin/home-server-dashboard.py \
+    --inventory-dir {{ inventory_dir }} \
+    --roles-dir {{ inventory_dir | dirname }}/roles
+StandardOutput=journal
+StandardError=journal

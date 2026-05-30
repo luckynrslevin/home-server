@@ -32,8 +32,11 @@
 
 - name: Deploy dashboard generator systemd service
   become: true
-  ansible.builtin.copy:
-    src: home-server-dashboard.service
+  ansible.builtin.template:
+    # Templated (not copied) because ExecStart embeds the on-host
+    # inventory + roles paths, which differ per install user
+    # (e.g. /home/ds/home-server/inventory vs /home/ansible/...).
+    src: home-server-dashboard.service.j2
     dest: /etc/systemd/system/home-server-dashboard.service
     mode: "0644"
 
