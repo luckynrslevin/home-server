@@ -48,16 +48,21 @@ Three providers are supported (all bundled in the image):
 | **`cloudflare`** | `caddy_acme_provider: cloudflare` + `caddy_acme_zone: <zone>` | You own a domain hosted at Cloudflare DNS. |
 | **`hetzner`** | `caddy_acme_provider: hetzner` + `caddy_acme_zone: <zone>` | You own a domain hosted at Hetzner DNS. |
 
-Caddy issues a **single wildcard cert** covering both the apex
-(`<caddy_domain>`) and every subdomain (`*.<caddy_domain>`), and
-auto-renews it. One Caddyfile site block routes every reverse-
-proxied service via `host` matchers, so adding a service is just
-an inventory entry — no extra cert, no extra ACME challenge.
+Caddy issues **one cert per site name** — the apex (`<caddy_domain>`)
+plus one cert for every entry in `caddy_reverse_proxy_services`. Each
+cert's DNS-01 challenge writes to its own `_acme-challenge.<name>`
+TXT, so concurrent challenges never collide on the same RRset.
 
-The DNS provider's API only sees a single temporary
-`_acme-challenge.<domain>` TXT record per renewal — your homeserver
-is never reachable from the public internet, and there are no
-per-subdomain TXTs to leave behind.
+(Earlier versions used a single wildcard cert with one shared site
+block, but the apex + wildcard ACME orders ran in parallel and both
+DNS-01 challenges wrote to the SAME `_acme-challenge.<domain>` TXT
+name — under deSEC's RRset-replace semantics, one would clobber the
+other and Caddy would fall back to staging certs. See issue #170.)
+
+For N reverse-proxied services + apex, you get N+1 ACME orders on
+first deploy. Way under Let's Encrypt's 50-certs-per-domain-per-week
+rate limit for a typical home-server (~12 services). Renewals happen
+on each cert's own schedule so there's no surge.
 
 ### Example: deSEC (default platform path)
 
@@ -131,9 +136,9 @@ ansible-vault encrypt_string --encrypt-vault-id default --stdin-name 'caddy_acme
 
 - `caddy-data` — TLS certificates issued by Let's Encrypt and
   auto-renewed, plus the ACME account key. **Backed up** so a
-  rebuilt host can restore the wildcard cert instead of re-issuing
-  (and burning a slot in LE's 5-certs-per-week-per-identifier-set
-  rate limit during testing cycles).
+  rebuilt host can restore the certs instead of re-issuing N+1
+  fresh ones (and burning slots in LE's per-domain weekly rate
+  limit during testing cycles).
 - `caddy-config` — runtime config. Regenerated.
 - `caddy-etc` — staged `Caddyfile` (rendered from Jinja2 template).
 
@@ -151,11 +156,13 @@ The role:
 5. Runs `caddy reload` at the end so config changes apply without a
    container restart.
 
-On first deploy Caddy contacts Let's Encrypt, writes a temporary
-`_acme-challenge.<domain>` TXT record at the DNS provider, waits
-for DNS propagation (2 min, to give recursive resolvers time to
-clear any negative cache), then gets the wildcard cert issued.
-HTTPS for every site is live ~3 min after the play finishes.
+On first deploy Caddy contacts Let's Encrypt once per site name
+(apex + each reverse-proxied subdomain), writes a temporary TXT
+record at `_acme-challenge.<name>` per challenge, waits for DNS
+propagation (2 min, to give recursive resolvers time to clear any
+negative cache), then issues the cert. HTTPS for every site is live
+within a few minutes after the play finishes; subdomains may go
+live one-by-one as their orders complete.
 
 ## Cross-role dependencies
 
