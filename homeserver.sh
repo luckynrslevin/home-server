@@ -663,21 +663,19 @@ PY
     config)
         # homeserver.sh config <section> — targeted reconfig of one
         # host_vars split file + apply via the matching playbook.
-        # Opens the file in $EDITOR (default vi); on save, runs the
-        # playbook so the change takes effect without a full install.
+        # Default: walk each variable, pre-filled from inventory (or
+        # role default), prompt to confirm/change. With --editor, fall
+        # back to opening the file directly in $EDITOR.
         #
-        # Vault-encrypted values (smtp_password, caddy_acme_token, etc.)
-        # stay vault blocks across edits — the operator pastes a fresh
-        # `ansible-vault encrypt_string '<value>' --name '<var>'` output
-        # to rotate one. The hint banner printed below lists the
-        # vault-encrypt commands.
+        # `extras` always uses the editor since it's the operator-owned
+        # bucket with no schema.
         SECTION="${1:-}"
         if [[ -z "$SECTION" ]]; then
             cat <<USAGE >&2
-Usage: homeserver.sh config <section>
+Usage: homeserver.sh config <section> [--editor] [-y]
 
 Sections:
-  caddy       caddy_domain, ACME provider + token, reverse-proxy services
+  caddy       deSEC subdomain + API token (regenerates caddy_domain)
               → file: 10-caddy.yml      → playbook: caddy.yml
   smtp        SMTP relay (host/port/user/from/encryption/password)
               → file: 30-smtp.yml       → playbook: site.yml
@@ -685,25 +683,47 @@ Sections:
   pihole      Pi-hole subnet, gateway, API password
               → file: 40-pihole.yml     → playbook: pihole.yml
   backup      NAS coords, backup time
-              → file: 50-backup.yml     → playbook: backup.yml
+              → file: 50-backup.yml     → playbook: backup-only-deploy.yml
   tailscale   Tailscale auth key
               → file: 60-tailscale.yml  → playbook: os-tailscale.yml
   extras      Operator overrides (Pi-hole DNS records, Jellyfin mounts,
               MA internal hosts, NAS snapshot trigger, custom Caddy entries)
-              → file: 20-extras.yml     → playbook: site.yml
+              → file: 20-extras.yml     → playbook: site.yml   (editor-only)
 
-Each section maps to one split host_vars file (see
-inventory/host_vars/<host>/) plus the playbook that reads from it.
+By default each section walks its variables interactively (pre-filled
+from inventory or the role's default; press Enter to keep). Pass
+--editor to drop into \$EDITOR on the underlying split file instead
+(implicit for `extras`).
 USAGE
             exit 2
         fi
+        shift || true
+        EDITOR_MODE=false
+        while [[ $# -gt 0 ]]; do
+            case "$1" in
+                --editor) EDITOR_MODE=true ;;
+                -h) shift; HOSTNAME_FLAG="${1:-}" ;;
+                -v) shift; VAULT_PW_FLAG_FILE="${1:-}" ;;
+                -y|--yes) YES_FLAG=true ;;
+                *) err "Unknown config flag: $1"; exit 2 ;;
+            esac
+            shift
+        done
+        # Static per-section table. SECTION_STYLE picks the prompt
+        # source: `inline` (var list hardcoded below — for caddy/smtp/
+        # tailscale which aren't owned by a single role meta), `meta`
+        # (read inventory_vars from the named role meta), or `editor`
+        # (skip the walker entirely — extras has no schema).
+        SECTION_META=""
         case "$SECTION" in
-            caddy)     FILE=10-caddy.yml      PLAYBOOK=caddy.yml ;;
-            smtp)      FILE=30-smtp.yml       PLAYBOOK=site.yml ;;
-            pihole)    FILE=40-pihole.yml     PLAYBOOK=pihole.yml ;;
-            backup)    FILE=50-backup.yml     PLAYBOOK=backup.yml ;;
-            tailscale) FILE=60-tailscale.yml  PLAYBOOK=os-tailscale.yml ;;
-            extras|overrides) FILE=20-extras.yml PLAYBOOK=site.yml ;;
+            caddy)     FILE=10-caddy.yml      PLAYBOOK=caddy.yml              SECTION_STYLE=inline ;;
+            smtp)      FILE=30-smtp.yml       PLAYBOOK=site.yml               SECTION_STYLE=inline ;;
+            pihole)    FILE=40-pihole.yml     PLAYBOOK=pihole.yml             SECTION_STYLE=meta \
+                       SECTION_META=roles/platform/pihole/meta/install.yml ;;
+            backup)    FILE=50-backup.yml     PLAYBOOK=backup-only-deploy.yml SECTION_STYLE=meta \
+                       SECTION_META=roles/platform/backup/meta/install.yml ;;
+            tailscale) FILE=60-tailscale.yml  PLAYBOOK=os-tailscale.yml       SECTION_STYLE=inline ;;
+            extras|overrides) FILE=20-extras.yml PLAYBOOK=site.yml            SECTION_STYLE=editor ;;
             *)
                 err "Unknown section '$SECTION'. Run \`homeserver.sh config\` for the list."
                 exit 2
@@ -720,29 +740,169 @@ USAGE
         TARGET=$(resolve_target_host)
         cd "$INSTALL_DIR"
         FULL_PATH="inventory/host_vars/$TARGET/$FILE"
-        # Optional section files (smtp, tailscale, extras) may not exist
-        # yet — seed them from the .example template under
-        # inventory/host_vars/homeserver.example/ so the operator sees
-        # the expected schema + commented defaults.
-        if [[ ! -f "$FULL_PATH" ]]; then
-            TEMPLATE="inventory/host_vars/homeserver.example/$FILE.example"
-            if [[ -f "$TEMPLATE" ]]; then
-                cp "$TEMPLATE" "$FULL_PATH"
-                info "Seeded $FULL_PATH from $TEMPLATE (edit then save to apply)."
-            else
-                warn "$FULL_PATH doesn't exist and no template found; creating empty file."
-                : > "$FULL_PATH"
+        # Walker needs ansible to be able to read the host's existing
+        # inventory so inv_get pulls the current values. Populate
+        # EXISTING_VARS_JSON once, before the prompt loop.
+        if [[ "$SECTION_STYLE" != "editor" && "$EDITOR_MODE" != "true" ]]; then
+            EXISTING_VARS_JSON=$(ANSIBLE_VAULT_PASSWORD_FILE="$VAULT_PW_FILE" \
+                ansible-inventory --host "$TARGET" 2>/dev/null || echo '{}')
+        fi
+
+        if [[ "$SECTION_STYLE" == "editor" || "$EDITOR_MODE" == "true" ]]; then
+            # --- Editor flow (extras, or `--editor` override) ---
+            # Optional section files (smtp, tailscale, extras) may not
+            # exist yet — seed from the .example template under
+            # inventory/host_vars/homeserver.example/ so the operator
+            # sees the expected schema + commented defaults.
+            if [[ ! -f "$FULL_PATH" ]]; then
+                TEMPLATE="inventory/host_vars/homeserver.example/$FILE.example"
+                if [[ -f "$TEMPLATE" ]]; then
+                    cp "$TEMPLATE" "$FULL_PATH"
+                    info "Seeded $FULL_PATH from $TEMPLATE (edit then save to apply)."
+                else
+                    warn "$FULL_PATH doesn't exist and no template found; creating empty file."
+                    : > "$FULL_PATH"
+                fi
+            fi
+            info "Editing $FULL_PATH for $TARGET..."
+            info "Vault-encrypt a fresh secret in another terminal:"
+            info "  cd $INSTALL_DIR && ansible-vault encrypt_string '<value>' --name '<var>'"
+            info "(or run \`homeserver.sh secret <var>\` first to dump the current value)"
+            "${EDITOR:-vi}" "$FULL_PATH"
+        else
+            # --- Walker flow ---
+            # Build per-section spec lines: name|prompt|fallback|vault(true|false)|mask(true|false)
+            # vault=true triggers vault-encrypt on write; mask=true uses
+            # prompt_default_hidden (kept-or-overwrite-secret semantics).
+            #
+            # Pipe `|` separator (not TAB) so empty fields don't collapse:
+            # `IFS=$'\t' read` treats tabs as whitespace and folds
+            # consecutive ones, which would shift columns and parse
+            # `name<TAB>prompt<TAB><TAB>vault<TAB>mask` as if vault was
+            # the default. `|` is non-whitespace, so consecutive
+            # separators stay distinct.
+            SPEC=""
+            case "$SECTION" in
+                caddy)
+                    # Two operator-supplied vars; caddy_domain is derived
+                    # below from caddy_acme_subdomain.
+                    SPEC='caddy_acme_subdomain|deSEC subdomain (without .dedyn.io)||false|false'
+                    SPEC+=$'\ncaddy_acme_token|deSEC API token (input hidden)||true|true'
+                    ;;
+                smtp)
+                    SPEC='smtp_host|SMTP host|smtp.mailbox.org|false|false'
+                    SPEC+=$'\nsmtp_port|SMTP port|587|false|false'
+                    SPEC+=$'\nsmtp_username|SMTP username (full email)||false|false'
+                    SPEC+=$'\nsmtp_password|SMTP password / app password (input hidden)||true|true'
+                    SPEC+=$'\nsmtp_encryption|Encryption (starttls / ssl)|starttls|false|false'
+                    SPEC+=$'\nsmtp_from|From address||false|false'
+                    ;;
+                tailscale)
+                    SPEC='os_tailscale_auth_key|Tailscale auth key (input hidden)||true|true'
+                    ;;
+                pihole|backup)
+                    # Derive spec from the role's meta/install.yml.
+                    SPEC=$(python3 - "$SECTION_META" <<'PY'
+import sys, yaml
+with open(sys.argv[1]) as f:
+    meta = yaml.safe_load(f) or {}
+for var in meta.get("inventory_vars", []) or []:
+    vtype = var.get("type")
+    # config        → plaintext value the operator chose at install time
+    # secret_prompt → an operator-supplied secret (e.g. external API key)
+    # secret/computed/literal are intentionally skipped:
+    #   `secret` is auto-generated (rotate via `homeserver.sh secret <var>`)
+    #   `computed`/`literal` are derived/static — not operator-tunable
+    if vtype not in ("config", "secret_prompt"):
+        continue
+    name = var["name"]
+    prompt = var.get("prompt", name)
+    # config defaults of the form `host_detect:lan_subnet` are placeholders
+    # for install-time auto-detection; we don't re-run host_detect from
+    # `config` (the operator is reconfiguring an existing host, so the
+    # inventory value already reflects whatever resolved at install time).
+    default = var.get("default") or ""
+    if isinstance(default, str) and default.startswith("host_detect:"):
+        default = ""
+    vault = "true" if var.get("vault") or vtype == "secret_prompt" else "false"
+    mask = "true" if vault == "true" else "false"
+    # `|` separator (non-whitespace) keeps empty fields intact when
+    # the bash walker's `IFS='|' read` splits each line.
+    print(f"{name}|{prompt}|{default}|{vault}|{mask}")
+PY
+                    )
+                    ;;
+            esac
+
+            if [[ -z "$SPEC" ]]; then
+                err "Internal: no var spec built for section '$SECTION'."
+                exit 1
+            fi
+
+            echo
+            info "Reconfiguring $SECTION on $TARGET (press Enter to keep current value, type to change)"
+            echo
+
+            # Walk the spec, populating an associative array of new
+            # values. prompt_default / prompt_default_hidden write into
+            # the shell variable named by their first arg (and honour
+            # the existing inventory value via inv_get + YES_FLAG).
+            #
+            # Route the spec through FD 3 (not stdin) so prompt_default's
+            # `read -r answer` keeps reading from the terminal. Without
+            # this, the inner `read` swallows the next SPEC line as the
+            # operator's "answer" — which silently writes garbage like
+            #   backup_nas_hostname: "backup_nas_ip\tNAS IP address..."
+            # to the split file.
+            declare -A NEW_VALUES NEW_VAULT
+            while IFS='|' read -r vname vprompt vdefault vvault vmask <&3; do
+                [[ -z "$vname" ]] && continue
+                if [[ "$vmask" == "true" ]]; then
+                    prompt_default_hidden "$vname" "$vprompt"
+                else
+                    prompt_default "$vname" "$vprompt" "$vdefault"
+                fi
+                NEW_VALUES["$vname"]="${!vname}"
+                NEW_VAULT["$vname"]="$vvault"
+            done 3<<< "$SPEC"
+
+            # Caddy: caddy_domain is `<subdomain>.dedyn.io`; auto-derive
+            # so the operator only ever sees the subdomain prompt above.
+            if [[ "$SECTION" == "caddy" && -n "${NEW_VALUES[caddy_acme_subdomain]:-}" ]]; then
+                NEW_VALUES[caddy_domain]="${NEW_VALUES[caddy_acme_subdomain]}.dedyn.io"
+                NEW_VAULT[caddy_domain]="false"
+            fi
+
+            # Compose update.json from the collected values.
+            UPDATE_JSON=$(mktemp --suffix=.json)
+            # shellcheck disable=SC2064
+            trap "rm -f $UPDATE_JSON" EXIT
+            {
+                printf '{"scalars": {'
+                first=true
+                for k in "${!NEW_VALUES[@]}"; do
+                    [[ "$first" == true ]] && first=false || printf ','
+                    # JSON-encode value via python to handle quotes/newlines safely.
+                    python3 -c "import json,sys; print(json.dumps({'value': sys.argv[1], 'vault': sys.argv[2] == 'true'}), end='')" \
+                        "${NEW_VALUES[$k]}" "${NEW_VAULT[$k]}" | \
+                        awk -v k="$k" '{printf "\"%s\":%s", k, $0}'
+                done
+                printf '}, "lists": {}, "dicts": {}}\n'
+            } > "$UPDATE_JSON"
+
+            HV_DIR="inventory/host_vars/$TARGET"
+            info "Writing changes to $HV_DIR/ ..."
+            if ! python3 scripts/inventory_merge.py \
+                    --host-vars-dir "$HV_DIR" \
+                    --service "$SECTION" \
+                    --vault-password-file "$VAULT_PW_FILE" \
+                    --update "$UPDATE_JSON" \
+                    --mode set; then
+                err "Failed to write inventory."
+                exit 1
             fi
         fi
-        # Print the vault-encrypt hint before opening the editor — the
-        # operator may need to refresh a secret while editing.
-        info "Editing $FULL_PATH for $TARGET..."
-        info "Vault-encrypt a fresh secret in another terminal:"
-        info "  cd $INSTALL_DIR && ansible-vault encrypt_string '<value>' --name '<var>'"
-        info "(or run \`homeserver.sh secret <var>\` first to dump the current value)"
-        "${EDITOR:-vi}" "$FULL_PATH"
-        # Detect "no change" via mtime so we don't pointlessly run the
-        # playbook when the operator opens + quits.
+
         info "Applying via playbooks/$PLAYBOOK --limit $TARGET..."
         ansible-playbook "playbooks/$PLAYBOOK" --limit "$TARGET"
         rc=$?
