@@ -120,6 +120,33 @@ def load_role_meta(roles_dir, service):
     return None
 
 
+def discover_role_timer_units(roles_dir, service):
+    """Parse the role's quadlets to find `*.timer[.j2]` units.
+
+    Used by gather_service to surface "Scheduled — next at <time>"
+    for oneshot+timer services (e.g. entephoto-export, backup) whose
+    container only exists during the brief daily run. Without this,
+    such services badge "Stopped" between runs, which is technically
+    accurate but UX-misleading.
+
+    Returns a set of systemd unit names like {"entephoto-export.timer"}.
+    """
+    units = set()
+    for layer in ("platform", "apps"):
+        base = os.path.join(roles_dir, layer, service)
+        for quadlet_dir, suffix in (
+            (os.path.join(base, "templates", "quadlets"), ".timer.j2"),
+            (os.path.join(base, "files",     "quadlets"), ".timer"),
+        ):
+            if not os.path.isdir(quadlet_dir):
+                continue
+            for entry in os.listdir(quadlet_dir):
+                if entry.endswith(suffix):
+                    name = entry[: -len(suffix)]
+                    units.add(name + ".timer")
+    return units
+
+
 def discover_role_container_names(roles_dir, service):
     """Parse the role's quadlets to find which container names it owns.
 
@@ -195,6 +222,7 @@ def build_service_specs(inventory, roles_dir):
                 "urls": [],
                 "rootful": False,
                 "container_names": set(),
+                "timer_units": set(),
                 "_warn": f"No meta/install.yml found for {svc}",
             })
             continue
@@ -232,6 +260,11 @@ def build_service_specs(inventory, roles_dir):
             # entephoto-export both running as `entephoto`) don't show
             # each other's containers.
             "container_names": discover_role_container_names(roles_dir, svc),
+            # Systemd .timer units the role owns. Used so a
+            # oneshot+timer service (entephoto-export, backup) badges
+            # "Scheduled — next at …" instead of a misleading
+            # "Stopped" between fires.
+            "timer_units": discover_role_timer_units(roles_dir, svc),
         })
     return specs
 
@@ -321,6 +354,31 @@ def get_volume_size(user, volume_name, rootful=False):
     try:
         return int(output.split()[0])
     except (ValueError, IndexError):
+        return None
+
+
+def get_timer_next_run(user, timer_unit, rootful=False):
+    """Return next-fire timestamp for a systemd .timer (user-scope),
+    formatted as 'YYYY-MM-DD HH:MM' local, or None if not set/scheduled.
+
+    Reads `NextElapseUSecRealtime` from `systemctl show` — microseconds
+    since epoch, or 0 when the timer isn't armed (disabled, paused,
+    monotonic-only). Reuses `_podman_wrap` because the user-namespace
+    handling is identical for any user-scope systemd query.
+    """
+    cmd = _podman_wrap(
+        "systemctl --user show %s -p NextElapseUSecRealtime --value" % timer_unit,
+        user, rootful,
+    )
+    out = run_cmd(cmd, timeout=10)
+    if not out:
+        return None
+    try:
+        us = int(out.strip())
+        if us == 0:
+            return None
+        return datetime.fromtimestamp(us / 1_000_000).strftime("%Y-%m-%d %H:%M")
+    except (ValueError, TypeError, OSError):
         return None
 
 
@@ -519,6 +577,16 @@ def gather_service(spec, last_known, backup_log, nas_host_display):
             "volumes": ct_volumes,
         })
 
+    # Timer-driven services with no live containers: query the earliest
+    # next-fire from their declared *.timer units so we can badge
+    # "Scheduled" instead of "Stopped" in the caption.
+    next_run = None
+    if not container_rows:
+        for timer_unit in (spec.get("timer_units") or set()):
+            t = get_timer_next_run(user, timer_unit, rootful=rootful)
+            if t and (next_run is None or t < next_run):
+                next_run = t
+
     return {
         "name": spec["name"],
         "urls": spec.get("urls", []),
@@ -526,6 +594,7 @@ def gather_service(spec, last_known, backup_log, nas_host_display):
         "containers": container_rows,
         "last_backup": get_last_backup(spec["name"], backup_log),
         "nas_host_display": nas_host_display,
+        "next_run": next_run,
     }
 
 
@@ -549,9 +618,10 @@ CSS = """
   .svc caption .links a { color: #d9eaf6; margin-left: 10px;
                           text-decoration: none; font-weight: 400; }
   .svc caption .links a:hover { text-decoration: underline; }
-  .svc caption .last-backup { display: block; font-size: 0.8em;
-                              color: #cdd7e0; font-weight: 400;
-                              margin-top: 2px; }
+  .svc caption .last-backup,
+  .svc caption .next-run { display: block; font-size: 0.8em;
+                           color: #cdd7e0; font-weight: 400;
+                           margin-top: 2px; }
   .svc th { background: #ecf0f1; color: #2c3e50; text-align: left;
             font-weight: 600; font-size: 0.85em; padding: 8px 12px;
             border-bottom: 1px solid #d0d7dc; }
@@ -565,6 +635,7 @@ CSS = """
            font-size: 0.78em; font-weight: 500; vertical-align: middle; }
   .running { background: #d4edda; color: #155724; }
   .stopped { background: #f8d7da; color: #721c24; }
+  .scheduled { background: #d1ecf1; color: #0c5460; }
   .update { background: #fff3cd; color: #856404; }
   .current { background: #d4edda; color: #155724; }
   .unknown { background: #e2e3e5; color: #383d41; }
@@ -595,9 +666,18 @@ CSS = """
 """
 
 
-def render_status_badge(running):
-    cls, text = ("running", "Running") if running else ("stopped", "Stopped")
-    return '<span class="badge %s">%s</span>' % (cls, text)
+def render_status_badge(running, next_run=None):
+    """Three-state badge:
+      Running   — at least one container is up
+      Scheduled — no containers, but a systemd timer is armed
+                  (oneshot+timer services like entephoto-export / backup)
+      Stopped   — neither
+    """
+    if running:
+        return '<span class="badge running">Running</span>'
+    if next_run:
+        return '<span class="badge scheduled">Scheduled</span>'
+    return '<span class="badge stopped">Stopped</span>'
 
 
 def render_update_badge(state):
@@ -623,7 +703,8 @@ def render_volumes_cell(volumes):
 
 def render_service_table(svc):
     name = html_escape(svc["name"])
-    status = render_status_badge(svc.get("running"))
+    next_run = svc.get("next_run")
+    status = render_status_badge(svc.get("running"), next_run=next_run)
     links_html = ""
     if svc.get("urls"):
         anchors = [
@@ -632,17 +713,24 @@ def render_service_table(svc):
             for u in svc["urls"]
         ]
         links_html = '<span class="links">%s</span>' % "".join(anchors)
-    backup_html = ""
+    # Caption metadata stack: last-backup + next-run go on their own
+    # lines below the title row.
+    meta_html = ""
     last_backup = svc.get("last_backup")
     if last_backup:
-        backup_html = (
+        meta_html += (
             '<span class="last-backup">Last backup: %s</span>'
             % html_escape(last_backup)
+        )
+    if next_run:
+        meta_html += (
+            '<span class="next-run">Next run: %s</span>'
+            % html_escape(next_run)
         )
 
     caption = (
         '<caption>%s &nbsp;·&nbsp; %s%s%s</caption>'
-        % (name, status, links_html, backup_html)
+        % (name, status, links_html, meta_html)
     )
 
     # Warn row (no rootless user / no meta): render the caption + a single
@@ -662,9 +750,14 @@ def render_service_table(svc):
 
     rows = []
     if not svc.get("containers"):
+        msg = (
+            "Oneshot service — runs on the schedule above, no long-lived "
+            "container between fires."
+            if next_run
+            else "No containers running for this service."
+        )
         rows.append(
-            '<tr><td colspan="4" class="empty">'
-            'No containers running for this service.</td></tr>'
+            '<tr><td colspan="4" class="empty">%s</td></tr>' % msg
         )
     else:
         for ct in svc["containers"]:
