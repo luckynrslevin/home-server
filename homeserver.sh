@@ -1979,36 +1979,65 @@ echo ""
 vault_encrypt "$DESEC_TOKEN" "caddy_acme_token"
 echo ""
 
-# caddy_reverse_proxy_services: prefer existing inventory block if
-# present (preserves operator port overrides / hand-added services);
-# otherwise aggregate canonical entries from each selected service's
-# roles/{platform,apps}/<svc>/meta/install.yml — single source of truth.
-existing_rps=$(inv_get caddy_reverse_proxy_services)
-if [[ -n "$existing_rps" ]]; then
-    echo "$existing_rps" | python3 -c "
-import json, sys, yaml
-d = json.load(sys.stdin)
-print(yaml.safe_dump({'caddy_reverse_proxy_services': d}, default_flow_style=False, sort_keys=False).rstrip())
-"
-else
-    META_PATHS=()
-    for svc in "${SELECTED_SERVICES[@]}"; do
-        if m=$(resolve_meta_install "$INSTALL_DIR" "$svc"); then
-            META_PATHS+=("$m")
-        fi
-    done
-    INSTALL_DIR="$INSTALL_DIR" python3 - "${META_PATHS[@]}" <<'PY'
-import sys, yaml
-entries = []
+# caddy_reverse_proxy_services: union of (each selected role's meta
+# side_effects.caddy_reverse_proxy_services) + the existing inventory's
+# list, keyed by subdomain. Existing entries win per-key — preserves
+# operator port overrides and hand-added subdomains. Missing entries
+# for newly-selected services get filled in from meta.
+#
+# (Bug class fixed previously for my_linux_users in PR #272: the old
+# "if existing present, copy verbatim" branch silently dropped any
+# newly-selected service's subdomain because the existing inventory
+# was preserved with no union.)
+existing_rps_json=$(inv_get caddy_reverse_proxy_services)
+META_PATHS=()
+for svc in "${SELECTED_SERVICES[@]}"; do
+    if m=$(resolve_meta_install "$INSTALL_DIR" "$svc"); then
+        META_PATHS+=("$m")
+    fi
+done
+
+EXISTING="$existing_rps_json" \
+    python3 - "${META_PATHS[@]}" <<'PY'
+import json, os, sys, yaml
+
+# Layer 1: aggregate from each selected role's meta/install.yml.
+merged = {}
 for path in sys.argv[1:]:
-    with open(path) as fh:
-        meta = yaml.safe_load(fh) or {}
+    try:
+        with open(path) as fh:
+            meta = yaml.safe_load(fh) or {}
+    except Exception:
+        continue
     for entry in ((meta.get('side_effects') or {}).get('caddy_reverse_proxy_services') or []):
-        entries.append(entry)
-print(yaml.safe_dump({'caddy_reverse_proxy_services': entries},
+        sub = entry.get('subdomain')
+        if sub:
+            merged[sub] = dict(entry)
+
+# Layer 2: existing inventory wins per-subdomain (preserves operator
+# port overrides + any hand-added subdomains that don't come from
+# meta — e.g. an extra Caddy route in 20-extras.yml that's been
+# duplicated into the main reverse_proxy list).
+existing_raw = (os.environ.get('EXISTING') or '').strip()
+if existing_raw:
+    try:
+        existing = json.loads(existing_raw)
+        if isinstance(existing, list):
+            for entry in existing:
+                if isinstance(entry, dict):
+                    sub = entry.get('subdomain')
+                    if sub:
+                        merged[sub] = dict(entry)
+    except json.JSONDecodeError:
+        pass
+
+# Stable order: alphabetical by subdomain. Matches `ls` output for
+# anyone diffing the file by hand.
+ordered = [merged[k] for k in sorted(merged.keys())]
+
+print(yaml.safe_dump({'caddy_reverse_proxy_services': ordered},
                      default_flow_style=False, sort_keys=False).rstrip())
 PY
-fi
 } > "$HOST_VARS_DIR/10-caddy.yml"
 
 # --- 30-smtp.yml: SMTP relay (whole block optional) ---
