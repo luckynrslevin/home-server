@@ -44,8 +44,8 @@ After creating your account create your domain:
 
 You now own `mydomain.dedyn.io` and any subdomain under it
 (`pihole.mydomain.dedyn.io`, `paperless.mydomain.dedyn.io`,
-etc.) — Caddy will mint a wildcard cert covering all of them in
-Step 4.
+etc.) — Caddy will mint one Let's Encrypt cert per name (apex
++ each subdomain) via DNS-01 against deSEC in Step 4.
 
 (~1 min.)
 

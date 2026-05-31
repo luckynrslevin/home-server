@@ -61,14 +61,22 @@ Roughly in order:
 - Writes the wildcard A record (`*.<sub>.dedyn.io → <server LAN
   IP>`) to deSEC via API. (One less manual step in the deSEC
   dashboard.)
-- Generates your inventory file under
-  `~/home-server/inventory/host_vars/homeserver/main.yml`,
-  including vault-encrypted secrets for every service.
-- Runs `ansible-playbook playbooks/site.yml --connection=local`
+- Generates your split-layout inventory under
+  `~/home-server/inventory/host_vars/<hostname>/` — one file per
+  section (`00-services.yml`, `10-caddy.yml`, `30-smtp.yml`,
+  `40-pihole.yml`, …, plus `apps/<svc>.yml` per deployed app),
+  with vault-encrypted secrets in the relevant files. See
+  `inventory/host_vars/homeserver.example/README.md` for the
+  layout contract.
+- If you provide a private overlay repo URL, the inventory is
+  written there and selective symlinks (`inventory/hosts.yml` and
+  `inventory/host_vars`) point the public clone at the overlay
+  — secrets stay out of the public repo.
+- Runs `ansible-playbook playbooks/site.yml --limit <hostname>`
   against your box, deploying every role you picked.
-- Caddy issues a wildcard Let's Encrypt cert for
-  `*.<sub>.dedyn.io` via DNS-01 against deSEC — no inbound port
-  forwarding needed.
+- Caddy issues one Let's Encrypt cert per site name (apex + each
+  reverse-proxied subdomain) via DNS-01 against deSEC — no
+  inbound port forwarding needed.
 - Pi-hole gets a wildcard local DNS record so LAN clients resolve
   the subdomain to your homeserver's IP.
 

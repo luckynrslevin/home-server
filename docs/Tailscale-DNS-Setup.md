@@ -9,8 +9,8 @@ This guide assumes:
 - You've completed the [Setup Guide](Setup-Guide/README.md) — the
   homeserver is deployed, dashboards are reachable on your LAN.
 - Tailscale is installed on the homeserver (the `os-tailscale` role
-  is in your `deploy_services`) and the box is logged into your
-  tailnet.
+  is in your `platform_services` list with `tailscale_enabled: true`)
+  and the box is logged into your tailnet.
 - You have at least one device (laptop, phone) on the same tailnet.
 
 ## What this fixes

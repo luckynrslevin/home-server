@@ -66,8 +66,9 @@ the cleaner path is: turn on 2FA first, then generate an app password.
 
 ## Inventory configuration
 
-Add these vars to `inventory/host_vars/<host>/main.yml` (in your
-private overlay):
+Add these vars to `inventory/host_vars/<host>/30-smtp.yml` (in
+your private overlay — or use `homeserver.sh config smtp` to open
+it in your `$EDITOR` and auto-apply via `playbooks/site.yml`):
 
 ```yaml
 ##################################################################################################

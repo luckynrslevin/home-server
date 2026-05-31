@@ -51,8 +51,8 @@ to any other app you add later.
 
 ## Step 2 — Add the credentials to inventory
 
-In your private overlay's `inventory/host_vars/<host>/main.yml`,
-under the Paperless block:
+In your private overlay's
+`inventory/host_vars/<host>/apps/paperless-ngx.yml`:
 
 ```yaml
 paperless_oidc_enabled: true

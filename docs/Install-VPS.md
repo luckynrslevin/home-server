@@ -107,7 +107,7 @@ Continue with **[Quickstart](Quickstart.md)** → Step 2.
 
 ## Caveats for cloud deploys
 
-The default `deploy_services` list assumes a home-LAN context (NAS
-mounts, AirPlay, USB DAC, etc.). On a cloud VPS, you'll want to
-pare it down. The example `dnsvserver` host in the inventory is a
-good template for a small cloud-only deploy.
+The default `platform_services` + `apps` lists assume a home-LAN
+context (NAS mounts, AirPlay, USB DAC, etc.). On a cloud VPS,
+you'll want to pare them down. The example `dnsvserver` host in
+the inventory is a good template for a small cloud-only deploy.

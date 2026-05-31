@@ -33,7 +33,7 @@ deployed*. No SSH session opened.
      for security).
    - Your vault password.
    - Hostname + chosen SSH port.
-   - Which `deploy_services` preset to use (e.g.
+   - Which `platform_services` + `apps` preset to use (e.g.
      `cloud-vserver-dns`, `cloud-vserver-files`, `cloud-vserver-full`).
 3. Click "Create VM".
 4. Wait 15–30 minutes.
