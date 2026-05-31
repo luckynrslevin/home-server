@@ -771,27 +771,34 @@ USAGE
             "${EDITOR:-vi}" "$FULL_PATH"
         else
             # --- Walker flow ---
-            # Build per-section spec lines: name<TAB>prompt<TAB>fallback<TAB>vault(true|false)<TAB>mask(true|false)
+            # Build per-section spec lines: name|prompt|fallback|vault(true|false)|mask(true|false)
             # vault=true triggers vault-encrypt on write; mask=true uses
             # prompt_default_hidden (kept-or-overwrite-secret semantics).
+            #
+            # Pipe `|` separator (not TAB) so empty fields don't collapse:
+            # `IFS=$'\t' read` treats tabs as whitespace and folds
+            # consecutive ones, which would shift columns and parse
+            # `name<TAB>prompt<TAB><TAB>vault<TAB>mask` as if vault was
+            # the default. `|` is non-whitespace, so consecutive
+            # separators stay distinct.
             SPEC=""
             case "$SECTION" in
                 caddy)
                     # Two operator-supplied vars; caddy_domain is derived
                     # below from caddy_acme_subdomain.
-                    SPEC=$'caddy_acme_subdomain\tdeSEC subdomain (without .dedyn.io)\t\tfalse\tfalse'
-                    SPEC+=$'\ncaddy_acme_token\tdeSEC API token (input hidden)\t\ttrue\ttrue'
+                    SPEC='caddy_acme_subdomain|deSEC subdomain (without .dedyn.io)||false|false'
+                    SPEC+=$'\ncaddy_acme_token|deSEC API token (input hidden)||true|true'
                     ;;
                 smtp)
-                    SPEC=$'smtp_host\tSMTP host\tsmtp.mailbox.org\tfalse\tfalse'
-                    SPEC+=$'\nsmtp_port\tSMTP port\t587\tfalse\tfalse'
-                    SPEC+=$'\nsmtp_username\tSMTP username (full email)\t\tfalse\tfalse'
-                    SPEC+=$'\nsmtp_password\tSMTP password / app password (input hidden)\t\ttrue\ttrue'
-                    SPEC+=$'\nsmtp_encryption\tEncryption (starttls / ssl)\tstarttls\tfalse\tfalse'
-                    SPEC+=$'\nsmtp_from\tFrom address\t\tfalse\tfalse'
+                    SPEC='smtp_host|SMTP host|smtp.mailbox.org|false|false'
+                    SPEC+=$'\nsmtp_port|SMTP port|587|false|false'
+                    SPEC+=$'\nsmtp_username|SMTP username (full email)||false|false'
+                    SPEC+=$'\nsmtp_password|SMTP password / app password (input hidden)||true|true'
+                    SPEC+=$'\nsmtp_encryption|Encryption (starttls / ssl)|starttls|false|false'
+                    SPEC+=$'\nsmtp_from|From address||false|false'
                     ;;
                 tailscale)
-                    SPEC=$'os_tailscale_auth_key\tTailscale auth key (input hidden)\t\ttrue\ttrue'
+                    SPEC='os_tailscale_auth_key|Tailscale auth key (input hidden)||true|true'
                     ;;
                 pihole|backup)
                     # Derive spec from the role's meta/install.yml.
@@ -819,7 +826,9 @@ for var in meta.get("inventory_vars", []) or []:
         default = ""
     vault = "true" if var.get("vault") or vtype == "secret_prompt" else "false"
     mask = "true" if vault == "true" else "false"
-    print(f"{name}\t{prompt}\t{default}\t{vault}\t{mask}")
+    # `|` separator (non-whitespace) keeps empty fields intact when
+    # the bash walker's `IFS='|' read` splits each line.
+    print(f"{name}|{prompt}|{default}|{vault}|{mask}")
 PY
                     )
                     ;;
@@ -846,7 +855,7 @@ PY
             #   backup_nas_hostname: "backup_nas_ip\tNAS IP address..."
             # to the split file.
             declare -A NEW_VALUES NEW_VAULT
-            while IFS=$'\t' read -r vname vprompt vdefault vvault vmask <&3; do
+            while IFS='|' read -r vname vprompt vdefault vvault vmask <&3; do
                 [[ -z "$vname" ]] && continue
                 if [[ "$vmask" == "true" ]]; then
                     prompt_default_hidden "$vname" "$vprompt"
