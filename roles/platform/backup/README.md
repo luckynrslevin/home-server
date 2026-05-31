@@ -124,6 +124,42 @@ Used for **PostgreSQL databases**.
   as `backup-<host>/<app>/<container>/<container>-YYYYMMDD-HHMMSS.sql.gz`.
 - **Retention:** last 7 daily snapshots on the share.
 
+### 4. Image-version manifest (auto, every run)
+
+Most quadlets use `:latest` image tags with `podman auto-update`
+enabled — the running container image may have moved forward between
+the moment a backup was written and the moment a restore happens.
+Restoring an older volume into a newer container risks DB-schema
+mismatches, config-format breakage, or worse.
+
+Each backup run snapshots the running images for every container
+owned by the service's rootless user **before any state mutation**
+(pre-pgdump, pre-stop). The manifest pairs 1:1 with the volume/db
+backups from that run.
+
+- Output: `backup-<host>/<app>/images/images-YYYYMMDD-HHMMSS.json`
+- Format:
+  ```json
+  {
+    "timestamp": "20260531-020000",
+    "containers": [
+      {
+        "name": "nextcloud-server",
+        "image": "docker.io/library/nextcloud:apache",
+        "image_id": "sha256:abc…",
+        "image_digest": "sha256:def…"
+      },
+      …
+    ]
+  }
+  ```
+- **Retention**: same 7-day window as the rest.
+- **Restore-side usage**: pin the role's image to the recorded digest
+  before re-deploy, so the restored volumes meet the version that
+  produced them. (Manual today; auto-pin is a planned follow-up.)
+- **Non-fatal**: a capture failure logs an error but does not abort
+  the run — volume backups still proceed.
+
 ## Cross-volume consistency (and why)
 
 Each role's backup_manifest may declare multiple volumes plus a
