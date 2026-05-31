@@ -154,9 +154,13 @@ backups from that run.
   }
   ```
 - **Retention**: same 7-day window as the rest.
-- **Restore-side usage**: pin the role's image to the recorded digest
-  before re-deploy, so the restored volumes meet the version that
-  produced them. (Manual today; auto-pin is a planned follow-up.)
+- **Restore-side usage** (PR #282): `playbooks/restore.yml` reads the
+  latest manifest per role, compares each container's current
+  `ImageDigest` against the recorded one, and (default ON) pulls +
+  re-tags the recorded digest so the post-restore start uses the
+  exact image that wrote the data. Skip with
+  `-e restore_pin_images=false` to deliberately restore into the
+  current (newer) image.
 - **Non-fatal**: a capture failure logs an error but does not abort
   the run — volume backups still proceed.
 

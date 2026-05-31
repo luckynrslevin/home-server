@@ -6,6 +6,16 @@
 # Special post-restore logic (pihole listsCache, entephoto DB restore) is
 # handled by per-role hooks in roles/<service>/tasks/restore.yml.
 #
+# Image-version pinning (PR #281 capture + PR #282 pin):
+#   The backup captures {container, image-tag, image-digest} alongside
+#   the volumes. At restore-time this playbook reads the latest manifest
+#   and re-pulls + re-tags each recorded digest so the restart picks up
+#   the image that wrote the data — avoids the "restore older volumes
+#   into a newer :latest image" trap. Default ON. To skip and use
+#   whatever image is currently tagged:
+#     ansible-playbook playbooks/restore.yml --limit homeserver \
+#       -e restore_pin_images=false
+#
 # Usage:
 #   ansible-playbook playbooks/restore.yml --limit homeserver
 #
