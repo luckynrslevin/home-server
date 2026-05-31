@@ -441,6 +441,37 @@ resolve_target_host() {
     printf '%s' "${HOSTNAME_FLAG:-$(hostname -s)}"
 }
 
+# Guard against a broken overlay symlink for <target>'s host_vars dir.
+# `homeserver.sh install` symlinks inventory/host_vars/<host> →
+# <overlay>/inventory/host_vars/<host>. A `git reset --hard` or accidental
+# rm can replace the symlink with a regular directory; subsequent
+# add/remove/config writes would land in the working tree and never
+# reach the overlay, silently losing data on the operator's next git pull
+# in the overlay repo. Detect that case and abort with a fix-it hint.
+ensure_overlay_symlink_intact() {
+    local target=$1
+    local hv="$INSTALL_DIR/inventory/host_vars/$target"
+    local overlay="$HOME/home-server-private/inventory/host_vars/$target"
+    # No overlay present → operator is running without one; nothing to guard.
+    [[ -d "$overlay" ]] || return 0
+    # Symlink resolves into the overlay → all good.
+    if [[ -L "$hv" ]] && [[ "$(readlink -f "$hv" 2>/dev/null)" == "$(readlink -f "$overlay")" ]]; then
+        return 0
+    fi
+    err "Overlay symlink missing or broken:"
+    err "  $hv"
+    err "should be a symlink to:"
+    err "  $overlay"
+    err
+    err "Without this, any inventory change you make here would NOT reach"
+    err "the overlay repo and would be silently lost on the next pull."
+    err
+    err "Fix with:"
+    err "  rm -rf '$hv'"
+    err "  ln -sfn '$overlay' '$hv'"
+    exit 1
+}
+
 case "$VERB" in
     service)
         # homeserver.sh <service> [<action>] [args...]  →  per-service helper
@@ -688,12 +719,17 @@ Sections:
               → file: 60-tailscale.yml  → playbook: os-tailscale.yml
   extras      Operator overrides (Pi-hole DNS records, Jellyfin mounts,
               MA internal hosts, NAS snapshot trigger, custom Caddy entries)
-              → file: 20-extras.yml     → playbook: site.yml   (editor-only)
+              → file: 20-extras.yml     (editor-only; you re-run a playbook)
 
 By default each section walks its variables interactively (pre-filled
 from inventory or the role's default; press Enter to keep). Pass
 --editor to drop into \$EDITOR on the underlying split file instead
 (implicit for `extras`).
+
+`extras` does NOT auto-run a playbook — it'd be site.yml (full
+multi-role re-deploy). The tool prints a hint with candidate
+playbooks for the operator to pick the right one for what they
+changed.
 USAGE
             exit 2
         fi
@@ -738,6 +774,7 @@ USAGE
         fi
         ensure_ansible_cfg
         TARGET=$(resolve_target_host)
+        ensure_overlay_symlink_intact "$TARGET"
         cd "$INSTALL_DIR"
         FULL_PATH="inventory/host_vars/$TARGET/$FILE"
         # Walker needs ansible to be able to read the host's existing
@@ -903,6 +940,26 @@ PY
             fi
         fi
 
+        # `extras` is operator-managed and points at site.yml — a full
+        # multi-role re-deploy. Running that automatically after every
+        # edit is wildly disproportionate (10+ min run for a comment
+        # tweak in 20-extras.yml). Skip the auto-apply and let the
+        # operator decide which playbook is actually affected by what
+        # they changed.
+        if [[ "$SECTION_STYLE" == "editor" ]]; then
+            ok "$SECTION edited for $TARGET."
+            echo
+            info "Re-deploy whatever your change affects (extras can carry"
+            info "vars consumed by many roles — only you know which one):"
+            echo "  ansible-playbook playbooks/<role>.yml --limit $TARGET   # single role"
+            echo "  ansible-playbook playbooks/site.yml   --limit $TARGET   # everything"
+            echo
+            info "Persist the change to the overlay:"
+            echo "  cd $HOME/home-server-private"
+            echo "  git add -A && git commit -m '$TARGET: config $SECTION' && git push"
+            exit 0
+        fi
+
         info "Applying via playbooks/$PLAYBOOK --limit $TARGET..."
         ansible-playbook "playbooks/$PLAYBOOK" --limit "$TARGET"
         rc=$?
@@ -965,6 +1022,7 @@ PY
             exit 1
         fi
         TARGET=$(resolve_target_host)
+        ensure_overlay_symlink_intact "$TARGET"
         cd "$INSTALL_DIR"
         VAULT_PW_FILE="$HOME/.vaultpw"
         if [[ ! -r "$VAULT_PW_FILE" ]]; then
@@ -1151,6 +1209,7 @@ PY
             exit 1
         fi
         TARGET=$(resolve_target_host)
+        ensure_overlay_symlink_intact "$TARGET"
         cd "$INSTALL_DIR"
         VAULT_PW_FILE="$HOME/.vaultpw"
         if [[ ! -r "$VAULT_PW_FILE" ]]; then
