@@ -53,11 +53,9 @@ resolve_meta_install() {
     return 1
 }
 
-# --- Split-layout helpers (post-PR-260 host_vars layout) ---
+# --- Split-layout helpers ---
 # host_vars/<host>/ contains 00-services.yml … 60-tailscale.yml plus
-# apps/<svc>.yml — no monolithic main.yml. These helpers replace the
-# old `[[ -f .../main.yml ]]` existence/lookup checks that survived
-# the split.
+# apps/<svc>.yml — one file per topic, no monolithic main.yml.
 
 # Source of truth for platform-vs-app classification. Add/remove verbs
 # and the install flow both need this, so it lives at the top.
@@ -71,8 +69,7 @@ is_platform_service() {
 }
 
 # True if <dir> contains at least one *.yml file (top-level or under
-# apps/). Used to decide whether a host has an existing inventory in
-# the split layout, replacing the old `-f main.yml` check.
+# apps/). Used to decide whether a host has an existing inventory.
 host_vars_dir_has_content() {
     local dir=$1
     [[ -d "$dir" ]] || return 1
@@ -581,14 +578,11 @@ case "$VERB" in
                 info "Bumping release: $current_tag → $latest_in_major"
                 git checkout --quiet "$latest_in_major"
                 # Persist the new tag back to inventory so subsequent
-                # operations agree with the on-disk state. In the split
-                # layout home_server_release lives in 00-services.yml
-                # (next to platform_services + apps); fall back to the
-                # legacy main.yml if a pre-split host hasn't migrated.
+                # operations agree with the on-disk state. home_server_release
+                # lives in 00-services.yml (next to platform_services + apps).
                 NEW_TAG="$latest_in_major"
                 if [[ -r "$VAULT_PW_FILE" ]] && python3 -c "import ruamel.yaml" 2>/dev/null; then
                     REL_FILE="$INSTALL_DIR/inventory/host_vars/$TARGET/00-services.yml"
-                    [[ -f "$REL_FILE" ]] || REL_FILE="$INSTALL_DIR/inventory/host_vars/$TARGET/main.yml"
                     if [[ -f "$REL_FILE" ]]; then
                         info "Updating inventory's home_server_release → $NEW_TAG ($REL_FILE)"
                         python3 - "$REL_FILE" "$NEW_TAG" <<'PY' 2>/dev/null || warn "Could not auto-update inventory home_server_release; do it by hand."
@@ -884,32 +878,17 @@ USAGE
             fi
         fi
         HV_DIR="$INSTALL_DIR/inventory/host_vars/$TARGET"
-        # Post-PR-260 layout: route the update across split files
-        # (00-services.yml / 01-linux-users.yml / 10-caddy.yml / apps/<svc>.yml).
-        # If the host hasn't migrated yet (only main.yml exists), fall
-        # back to the legacy single-file merge so the verb keeps working.
-        if [[ -f "$HV_DIR/main.yml" ]] && ! compgen -G "$HV_DIR"/*.yml | grep -qv '/main\.yml$'; then
-            INV_FILE="$HV_DIR/main.yml"
-            info "Merging into $INV_FILE (legacy layout)..."
-            if ! python3 scripts/inventory_merge.py \
-                    --inventory "$INV_FILE" \
-                    --vault-password-file "$VAULT_PW_FILE" \
-                    --update "$UPDATE_JSON" \
-                    --mode add; then
-                err "Failed to merge inventory."
-                exit 1
-            fi
-        else
-            info "Merging into $HV_DIR/ (split layout)..."
-            if ! python3 scripts/inventory_merge.py \
-                    --host-vars-dir "$HV_DIR" \
-                    --service "$SERVICE" \
-                    --vault-password-file "$VAULT_PW_FILE" \
-                    --update "$UPDATE_JSON" \
-                    --mode add; then
-                err "Failed to merge inventory."
-                exit 1
-            fi
+        # Route the update across split files (00-services.yml /
+        # 01-linux-users.yml / 10-caddy.yml / apps/<svc>.yml).
+        info "Merging into $HV_DIR/ ..."
+        if ! python3 scripts/inventory_merge.py \
+                --host-vars-dir "$HV_DIR" \
+                --service "$SERVICE" \
+                --vault-password-file "$VAULT_PW_FILE" \
+                --update "$UPDATE_JSON" \
+                --mode add; then
+            err "Failed to merge inventory."
+            exit 1
         fi
         ok "Inventory updated."
         # Run the role's playbooks
@@ -1052,27 +1031,14 @@ print(' '.join(on_remove.get('volumes_to_preserve_unless_purge') or []))
             exit 1
         fi
         HV_DIR="$INSTALL_DIR/inventory/host_vars/$TARGET"
-        # Same legacy/split layout dispatch as `add` above.
-        if [[ -f "$HV_DIR/main.yml" ]] && ! compgen -G "$HV_DIR"/*.yml | grep -qv '/main\.yml$'; then
-            INV_FILE="$HV_DIR/main.yml"
-            if ! python3 scripts/inventory_merge.py \
-                    --inventory "$INV_FILE" \
-                    --vault-password-file "$VAULT_PW_FILE" \
-                    --update "$UPDATE_JSON" \
-                    --mode remove; then
-                err "Failed to update inventory."
-                exit 1
-            fi
-        else
-            if ! python3 scripts/inventory_merge.py \
-                    --host-vars-dir "$HV_DIR" \
-                    --service "$SERVICE" \
-                    --vault-password-file "$VAULT_PW_FILE" \
-                    --update "$UPDATE_JSON" \
-                    --mode remove; then
-                err "Failed to update inventory."
-                exit 1
-            fi
+        if ! python3 scripts/inventory_merge.py \
+                --host-vars-dir "$HV_DIR" \
+                --service "$SERVICE" \
+                --vault-password-file "$VAULT_PW_FILE" \
+                --update "$UPDATE_JSON" \
+                --mode remove; then
+            err "Failed to update inventory."
+            exit 1
         fi
         ok "Inventory updated."
         info "Refreshing caddy + dashboard..."
@@ -1207,7 +1173,7 @@ ok "Galaxy roles installed."
 # Step 3.5: Hostname + optional private overlay
 # ============================================================================
 # Capture hostname early so the overlay prompt can look for an
-# existing host_vars/<hostname>/main.yml. The hostname prompt in
+# existing host_vars/<hostname>/ inventory. The hostname prompt in
 # Step 5 used to live here; consolidated into this block.
 
 # Hostname: CLI flag wins, else `hostname -s` as default in prompt.
@@ -1815,19 +1781,9 @@ else
     MUSIC_ASSISTANT_MAC="02:$(openssl rand -hex 5 | sed 's/\(..\)/\1:/g;s/:$//')"
 fi
 
-# Snapshot any existing monolithic main.yml so split_inventory_extras.py
-# can preserve operator-added keys into 20-extras.yml after the split
-# files are written. Empty snapshot (or missing file) means a fresh
-# install — nothing to preserve.
 HOST_VARS_DIR="inventory/host_vars/$SERVER_HOSTNAME"
 APPS_DIR="$HOST_VARS_DIR/apps"
 mkdir -p "$APPS_DIR"
-_unmanaged_snapshot=$(mktemp)
-if [[ -f "$HOST_VARS_DIR/main.yml" ]]; then
-    cp "$HOST_VARS_DIR/main.yml" "$_unmanaged_snapshot"
-else
-    : > "$_unmanaged_snapshot"
-fi
 
 _split_header='# DO NOT EDIT — managed by homeserver.sh'
 
@@ -2195,25 +2151,20 @@ YAML
     } > "$APPS_DIR/nextcloud.yml"
 fi
 
-# Migrate any operator-added keys (jellyfin_nas_mounts,
-# pihole_local_dns_records, etc.) from the pre-split snapshot into
-# 20-extras.yml — the user-managed file the tool never touches again.
-# Always runs so 20-extras.yml exists with a stable header after a
-# fresh install too.
-python3 scripts/split_inventory_extras.py \
-    --old "$_unmanaged_snapshot" \
-    --host-vars-dir "$HOST_VARS_DIR" \
-    --extras "$HOST_VARS_DIR/20-extras.yml" \
-    --ignore deploy_services \
-    2> >(while IFS= read -r line; do info "$line"; done >&2) \
-    || warn "split_inventory_extras.py failed — check for lost operator-added keys"
-rm -f "$_unmanaged_snapshot"
-
-# Archive any pre-split main.yml so a re-run is idempotent (the
-# snapshot above already captured the unmanaged keys into extras).
-if [[ -f "$HOST_VARS_DIR/main.yml" ]]; then
-    mv "$HOST_VARS_DIR/main.yml" "$HOST_VARS_DIR/main.yml.pre-split.bak"
-    info "Archived pre-split main.yml → $HOST_VARS_DIR/main.yml.pre-split.bak"
+# Ensure 20-extras.yml exists with a stable header. Operator-managed
+# file the tool never touches again — overrides (Pi-hole DNS records,
+# Jellyfin NFS mounts, Caddy extras, NAS snapshot trigger config, etc.)
+# go here.
+if [[ ! -f "$HOST_VARS_DIR/20-extras.yml" ]]; then
+    cat > "$HOST_VARS_DIR/20-extras.yml" << 'YAML'
+# EDIT FREELY — homeserver.sh never touches this file.
+#
+# Operator-managed host_vars: anything the install tool does not
+# write itself lives here. Add overrides (custom Pi-hole DNS records,
+# Jellyfin NFS mounts, Caddy extras, NAS snapshot trigger config, etc.)
+# below.
+##################################################################################################
+YAML
 fi
 
 ok "Generated split host_vars under inventory/host_vars/$SERVER_HOSTNAME/ (with vault-encrypted secrets)"

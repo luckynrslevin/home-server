@@ -159,10 +159,10 @@ if [[ -n $configured_ca && -n $restored_ca_dirs ]] \
     printf '\n'
     printf '   To use the restored cert, point Caddy at the matching CA in inventory:\n'
     if [[ "$configured_ca" == *staging* ]]; then
-        printf '     - edit  ~/<home-server-private>/inventory/host_vars/%s/main.yml\n' "$HOSTNAME_DIR"
+        printf '     - edit  ~/<home-server-private>/inventory/host_vars/%s/10-caddy.yml\n' "$HOSTNAME_DIR"
         printf '     - comment out the caddy_acme_ca line (defaults to LE production)\n'
     else
-        printf '     - edit  ~/<home-server-private>/inventory/host_vars/%s/main.yml\n' "$HOSTNAME_DIR"
+        printf '     - edit  ~/<home-server-private>/inventory/host_vars/%s/10-caddy.yml\n' "$HOSTNAME_DIR"
         printf '     - set     caddy_acme_ca: "https://%s/directory"\n' "${restored_ca_dirs%-directory}" | sed 's/acme-/acme-/'
     fi
     printf '     - then    ansible-playbook playbooks/caddy.yml --limit %s\n' "$HOSTNAME_DIR"

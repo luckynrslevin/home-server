@@ -1,5 +1,5 @@
 #!/bin/bash
-# Smoke tests for scripts/inventory_merge.py.
+# Smoke tests for scripts/inventory_merge.py (split-layout mode).
 # Run from the repo root: bash scripts/test_inventory_merge.sh
 set -euo pipefail
 
@@ -25,20 +25,27 @@ report() {
 echo "testpw" > "$WORK/vault.pw"
 chmod 400 "$WORK/vault.pw"
 
-cat > "$WORK/baseline.yml" << 'EOF'
-##################################################################################################
-### Host identity
+# Build a baseline split host_vars dir. Reflects the on-disk layout
+# homeserver.sh install writes: 00-services.yml, 01-linux-users.yml,
+# 10-caddy.yml, 20-extras.yml (operator-managed), apps/.
+make_baseline() {
+    local dir=$1
+    rm -rf "$dir"
+    mkdir -p "$dir/apps"
+
+    cat > "$dir/00-services.yml" << 'EOF'
+# DO NOT EDIT — managed by homeserver.sh
 os_base_hostname: testhost
 
-##################################################################################################
-### Services to deploy
-deploy_services:
+platform_services:
   - caddy
   - dashboard
   - pihole
+apps: []
+EOF
 
-##################################################################################################
-### Linux users
+    cat > "$dir/01-linux-users.yml" << 'EOF'
+# DO NOT EDIT — managed by homeserver.sh
 my_linux_users:
   ds:
     uid: 1000
@@ -46,17 +53,20 @@ my_linux_users:
   pihole:
     uid: 1005
     gid: 1005
-##################################################################################################
+EOF
 
-### Caddy
+    cat > "$dir/10-caddy.yml" << 'EOF'
+# DO NOT EDIT — managed by homeserver.sh
 caddy_domain: "test.dedyn.io"
-
-# Operator-added unmanaged key — must survive
-operator_custom_var: "keep me"
-
 caddy_reverse_proxy_services:
   - { subdomain: pihole, port: 8443, proto: https }
 EOF
+
+    cat > "$dir/20-extras.yml" << 'EOF'
+# EDIT FREELY — homeserver.sh never touches this file.
+operator_custom_var: "keep me"
+EOF
+}
 
 cat > "$WORK/update_nextcloud.json" << 'EOF'
 {
@@ -64,7 +74,7 @@ cat > "$WORK/update_nextcloud.json" << 'EOF'
     "nextcloud_admin_password": {"value": "secret123", "vault": true}
   },
   "lists": {
-    "deploy_services": {"items": ["nextcloud"]},
+    "apps": {"items": ["nextcloud"]},
     "caddy_reverse_proxy_services": {"items": [{"subdomain": "cloud", "port": 8090}]}
   },
   "dicts": {
@@ -73,51 +83,68 @@ cat > "$WORK/update_nextcloud.json" << 'EOF'
 }
 EOF
 
-echo "Test 1: add produces valid YAML with all the expected pieces"
-cp "$WORK/baseline.yml" "$WORK/test1.yml"
-python3 "$MERGE" --inventory "$WORK/test1.yml" --vault-password-file "$WORK/vault.pw" --update "$WORK/update_nextcloud.json" --mode add
-python3 -c "import yaml; d=yaml.safe_load(open('$WORK/test1.yml').read().replace('!vault |', '!vault ').replace('!vault ', ''))" 2>/dev/null \
-    && report "parses as YAML" PASS || report "parses as YAML" FAIL
-grep -q "^  - nextcloud$" "$WORK/test1.yml" \
-    && report "nextcloud in deploy_services" PASS || report "nextcloud in deploy_services" FAIL
-grep -q "^  nextcloud:" "$WORK/test1.yml" \
-    && report "nextcloud in my_linux_users" PASS || report "nextcloud in my_linux_users" FAIL
-grep -q "nextcloud_admin_password: !vault" "$WORK/test1.yml" \
-    && report "nextcloud_admin_password emitted as !vault" PASS || report "nextcloud_admin_password emitted as !vault" FAIL
-grep -q "operator_custom_var" "$WORK/test1.yml" \
-    && report "operator_custom_var preserved" PASS || report "operator_custom_var preserved" FAIL
-grep -q '### Linux users' "$WORK/test1.yml" \
-    && report "section comments preserved" PASS || report "section comments preserved" FAIL
+echo "Test 1: add routes each key to the right split file"
+make_baseline "$WORK/test1"
+python3 "$MERGE" --host-vars-dir "$WORK/test1" --service nextcloud \
+    --vault-password-file "$WORK/vault.pw" --update "$WORK/update_nextcloud.json" --mode add
+grep -q "^  - nextcloud$" "$WORK/test1/00-services.yml" \
+    && report "nextcloud appended to apps in 00-services.yml" PASS \
+    || report "nextcloud appended to apps in 00-services.yml" FAIL
+grep -q "^  nextcloud:" "$WORK/test1/01-linux-users.yml" \
+    && report "nextcloud entry added to my_linux_users in 01-linux-users.yml" PASS \
+    || report "nextcloud entry added to my_linux_users in 01-linux-users.yml" FAIL
+grep -q "subdomain: cloud" "$WORK/test1/10-caddy.yml" \
+    && report "caddy reverse-proxy entry appended to 10-caddy.yml" PASS \
+    || report "caddy reverse-proxy entry appended to 10-caddy.yml" FAIL
+[[ -f "$WORK/test1/apps/nextcloud.yml" ]] \
+    && grep -q "nextcloud_admin_password: !vault" "$WORK/test1/apps/nextcloud.yml" \
+    && report "nextcloud_admin_password emitted as !vault into apps/nextcloud.yml" PASS \
+    || report "nextcloud_admin_password emitted as !vault into apps/nextcloud.yml" FAIL
+grep -q "operator_custom_var" "$WORK/test1/20-extras.yml" \
+    && report "operator_custom_var preserved in 20-extras.yml" PASS \
+    || report "operator_custom_var preserved in 20-extras.yml" FAIL
 
 echo
 echo "Test 2: add is idempotent (running twice is a no-op)"
-cp "$WORK/test1.yml" "$WORK/test2.yml"
-python3 "$MERGE" --inventory "$WORK/test2.yml" --vault-password-file "$WORK/vault.pw" --update "$WORK/update_nextcloud.json" --mode add
-diff -q "$WORK/test1.yml" "$WORK/test2.yml" >/dev/null \
-    && report "second add is no-op" PASS || report "second add is no-op" FAIL
+cp -a "$WORK/test1" "$WORK/test2"
+python3 "$MERGE" --host-vars-dir "$WORK/test2" --service nextcloud \
+    --vault-password-file "$WORK/vault.pw" --update "$WORK/update_nextcloud.json" --mode add
+diff -qr "$WORK/test1" "$WORK/test2" >/dev/null \
+    && report "second add is no-op" PASS \
+    || report "second add is no-op" FAIL
 
 echo
-echo "Test 3: remove reverses add (modulo cosmetic noise)"
-cp "$WORK/baseline.yml" "$WORK/test3.yml"
-python3 "$MERGE" --inventory "$WORK/test3.yml" --vault-password-file "$WORK/vault.pw" --update "$WORK/update_nextcloud.json" --mode add
-python3 "$MERGE" --inventory "$WORK/test3.yml" --vault-password-file "$WORK/vault.pw" --update "$WORK/update_nextcloud.json" --mode remove
-! grep -q "nextcloud" "$WORK/test3.yml" \
-    && report "nextcloud references all gone" PASS || report "nextcloud references all gone" FAIL
-grep -q '### Linux users' "$WORK/test3.yml" \
-    && report "### Linux users comment survived round-trip" PASS || report "### Linux users comment survived round-trip" FAIL
-grep -q '### Caddy' "$WORK/test3.yml" \
-    && report "### Caddy comment survived round-trip" PASS || report "### Caddy comment survived round-trip" FAIL
-grep -q 'operator_custom_var' "$WORK/test3.yml" \
-    && report "operator_custom_var survived round-trip" PASS || report "operator_custom_var survived round-trip" FAIL
+echo "Test 3: remove reverses add"
+make_baseline "$WORK/test3"
+python3 "$MERGE" --host-vars-dir "$WORK/test3" --service nextcloud \
+    --vault-password-file "$WORK/vault.pw" --update "$WORK/update_nextcloud.json" --mode add
+python3 "$MERGE" --host-vars-dir "$WORK/test3" --service nextcloud \
+    --vault-password-file "$WORK/vault.pw" --update "$WORK/update_nextcloud.json" --mode remove
+! grep -rq "nextcloud" "$WORK/test3"/*.yml \
+    && report "nextcloud refs gone from shared files" PASS \
+    || report "nextcloud refs gone from shared files" FAIL
+[[ ! -e "$WORK/test3/apps/nextcloud.yml" ]] \
+    && report "apps/nextcloud.yml deleted when emptied" PASS \
+    || report "apps/nextcloud.yml deleted when emptied" FAIL
+grep -q 'operator_custom_var' "$WORK/test3/20-extras.yml" \
+    && report "operator_custom_var survived round-trip" PASS \
+    || report "operator_custom_var survived round-trip" FAIL
 
 echo
-echo "Test 4: add merges into empty starter file"
-echo "" > "$WORK/test4.yml"
-python3 "$MERGE" --inventory "$WORK/test4.yml" --vault-password-file "$WORK/vault.pw" --update "$WORK/update_nextcloud.json" --mode add
-grep -q "^  - nextcloud$" "$WORK/test4.yml" \
-    && report "creates deploy_services list" PASS || report "creates deploy_services list" FAIL
-grep -q "^  nextcloud:" "$WORK/test4.yml" \
-    && report "creates my_linux_users dict" PASS || report "creates my_linux_users dict" FAIL
+echo "Test 4: add creates missing files (fresh-host case)"
+rm -rf "$WORK/test4"
+mkdir -p "$WORK/test4"
+python3 "$MERGE" --host-vars-dir "$WORK/test4" --service nextcloud \
+    --vault-password-file "$WORK/vault.pw" --update "$WORK/update_nextcloud.json" --mode add
+grep -q "^  - nextcloud$" "$WORK/test4/00-services.yml" \
+    && report "creates 00-services.yml apps list" PASS \
+    || report "creates 00-services.yml apps list" FAIL
+grep -q "^  nextcloud:" "$WORK/test4/01-linux-users.yml" \
+    && report "creates 01-linux-users.yml my_linux_users dict" PASS \
+    || report "creates 01-linux-users.yml my_linux_users dict" FAIL
+[[ -f "$WORK/test4/apps/nextcloud.yml" ]] \
+    && report "creates apps/nextcloud.yml for service-specific scalar" PASS \
+    || report "creates apps/nextcloud.yml for service-specific scalar" FAIL
 
 echo
 echo "=========================================="
