@@ -30,7 +30,11 @@ inventory_vars:
 side_effects: {}
 
 playbooks:
-  - playbooks/backup.yml
+  # backup-only-deploy.yml pre-aggregates each role's backup_manifest
+  # into _backup_manifests via pre_tasks; playbooks/backup.yml expects
+  # that fact to already be set and fails with `_backup_manifests
+  # undefined` when invoked standalone (i.e. from `homeserver.sh add`).
+  - playbooks/backup-only-deploy.yml
   - playbooks/dashboard.yml  # refresh tile (if backup adds one)
 
 on_remove:
