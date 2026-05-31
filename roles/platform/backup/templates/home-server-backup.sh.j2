@@ -188,6 +188,72 @@ backup_pgdump() {
   find "$dest" -name "*.sql.gz" -mtime +"$RETENTION_DAYS" -delete
 }
 
+# ---------------------------------------------------------------------------
+# Capture image-version manifest for each container the service owns at
+# backup time. Most quadlets use :latest tags + podman-auto-update, so
+# the running image may be NEWER than what produced the backup data by
+# the time a restore happens. Recording {name, image-tag, image-digest}
+# alongside the volume backups lets restore pin to the exact version
+# that wrote the data — avoids DB-schema-vs-binary mismatches on the
+# restore-into-newer-image path.
+#
+# Writes one file per backup run: <app>/images/images-<TS>.json
+# Format: { "timestamp": "...", "containers": [{name, image, image_id, image_digest}, ...] }
+# Captures every container owned by the rootless service user (filters
+# out pod infra containers). Same retention as the rest (7 days).
+# ---------------------------------------------------------------------------
+backup_image_manifest() {
+  local user=$1 uid=$2 app=$3
+  local dest="$BACKUP_ROOT/$app/images"
+  mkdir -p "$dest"
+  local out="$dest/images-${TIMESTAMP}.json"
+
+  if ! sudo -u "$user" XDG_RUNTIME_DIR="/run/user/$uid" python3 - "$TIMESTAMP" > "$out" 2>>"$LOG_FILE" <<'PY'
+import json, subprocess, sys
+ts = sys.argv[1]
+try:
+    ps = subprocess.run(['podman', 'ps', '--format', 'json'],
+                        capture_output=True, text=True, check=True).stdout.strip()
+    containers = json.loads(ps) if ps else []
+except Exception:
+    containers = []
+manifest = []
+for c in containers:
+    names = c.get('Names') or []
+    name = names[0] if names else (c.get('Name') or '')
+    if not name or 'infra' in name:
+        continue
+    try:
+        ins = subprocess.run(['podman', 'inspect', name],
+                             capture_output=True, text=True, check=True).stdout
+        d = json.loads(ins)[0]
+    except Exception:
+        continue
+    manifest.append({
+        'name':         name,
+        'image':        d.get('ImageName', ''),
+        'image_id':     d.get('Image', ''),
+        'image_digest': d.get('ImageDigest', ''),
+    })
+print(json.dumps({'timestamp': ts, 'containers': manifest}, indent=2))
+PY
+  then
+    log_error "image manifest capture failed for $app (user=$user)"
+    rm -f "$out"
+    return 0   # non-fatal — volume backups still proceed
+  fi
+
+  if [ -s "$out" ]; then
+    local n
+    n=$(python3 -c "import json; print(len(json.load(open('$out'))['containers']))" 2>/dev/null || echo "?")
+    log "  image manifest: $n containers recorded → $app/images/$(basename "$out")"
+    find "$dest" -name "images-*.json" -mtime +"$RETENTION_DAYS" -delete
+  else
+    log "  image manifest: no containers running for $user, skipping"
+    rm -f "$out"
+  fi
+}
+
 # =======================================================================
 # Backup definitions per service
 # Generated from backup_manifest declarations in each role's defaults.
@@ -197,6 +263,11 @@ backup_pgdump() {
 
 # === {{ svc._role_name | capitalize }} ===
 log "--- {{ svc._role_name | capitalize }} ---"
+# Snapshot the running container image versions before any state mutation
+# (pg_dump or stop). The manifest pairs 1:1 with the volume/db backups
+# from this run, so restore can pin to the exact image versions that
+# wrote the data.
+backup_image_manifest {{ svc.service_user }} {{ my_linux_users[svc.service_user].uid }} {{ svc._role_name }}
 {% if svc.databases is defined %}
 {% for db in svc.databases %}
 # pg_dump runs while service is up (consistent logical snapshot)
