@@ -357,28 +357,54 @@ def get_volume_size(user, volume_name, rootful=False):
         return None
 
 
+def _systemctl_user_cmd(inner, user, rootful):
+    """Wrap a systemctl --user invocation with the env it needs.
+
+    Different from _podman_wrap because systemctl --user requires
+    XDG_RUNTIME_DIR + DBUS_SESSION_BUS_ADDRESS to find the user's
+    session bus — `su -` doesn't set those up (modern systemd).
+    Rootful skips the user entirely (host-scope systemctl).
+    """
+    if rootful:
+        return "%s 2>/dev/null" % inner
+    return (
+        'uid=$(id -u %s 2>/dev/null) && '
+        'sudo -u %s '
+        'XDG_RUNTIME_DIR=/run/user/$uid '
+        'DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/$uid/bus '
+        '%s 2>/dev/null'
+    ) % (user, user, inner)
+
+
 def get_timer_next_run(user, timer_unit, rootful=False):
     """Return next-fire timestamp for a systemd .timer (user-scope),
-    formatted as 'YYYY-MM-DD HH:MM' local, or None if not set/scheduled.
+    formatted as 'YYYY-MM-DD HH:MM' local, or None if not set.
 
-    Reads `NextElapseUSecRealtime` from `systemctl show` — microseconds
-    since epoch, or 0 when the timer isn't armed (disabled, paused,
-    monotonic-only). Reuses `_podman_wrap` because the user-namespace
-    handling is identical for any user-scope systemd query.
+    Reads NextElapseUSecRealtime from `systemctl show`. systemd 250+
+    prints it as a human-readable timestamp ('Mon 2026-06-01 03:00:00
+    CEST'); older versions print raw microseconds. Handle both.
     """
-    cmd = _podman_wrap(
+    cmd = _systemctl_user_cmd(
         "systemctl --user show %s -p NextElapseUSecRealtime --value" % timer_unit,
         user, rootful,
     )
     out = run_cmd(cmd, timeout=10)
     if not out:
         return None
+    text = out.strip()
+    if not text or text == "0":
+        return None
+    # Newer systemd: 'Day YYYY-MM-DD HH:MM:SS TZ'. Take YYYY-MM-DD HH:MM.
+    parts = text.split()
+    if len(parts) >= 3 and "-" in parts[1] and ":" in parts[2]:
+        return "%s %s" % (parts[1], parts[2][:5])
+    # Older systemd: raw microseconds since epoch.
     try:
-        us = int(out.strip())
+        us = int(text)
         if us == 0:
             return None
         return datetime.fromtimestamp(us / 1_000_000).strftime("%Y-%m-%d %H:%M")
-    except (ValueError, TypeError, OSError):
+    except (ValueError, OSError):
         return None
 
 
