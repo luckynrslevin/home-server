@@ -763,7 +763,7 @@ USAGE
     add)
         SERVICE="${1:-}"
         if [[ -z "$SERVICE" ]]; then
-            err "Usage: homeserver.sh add <service>"
+            err "Usage: homeserver.sh add <service> [--overrides k=v ...] [-y]"
             err "Available services:"
             for m in "$INSTALL_DIR"/roles/platform/*/meta/install.yml "$INSTALL_DIR"/roles/apps/*/meta/install.yml; do
                 [[ -f "$m" ]] || continue
@@ -773,6 +773,30 @@ USAGE
             done
             exit 2
         fi
+        shift || true
+        # Per-verb flag parsing. Mirrors `remove`'s loop so flags can
+        # follow the positional service name, e.g.
+        # `homeserver.sh add backup -h homeserver2 --overrides backup_nas_ip=192.168.1.184`.
+        # OVERRIDE_ARGS feeds `--overrides` to build_add_update.py and
+        # also short-circuits the interactive prompt for matching vars.
+        OVERRIDE_ARGS=()
+        while [[ $# -gt 0 ]]; do
+            case "$1" in
+                --overrides)
+                    shift
+                    while [[ $# -gt 0 && "$1" != -* ]]; do
+                        OVERRIDE_ARGS+=("$1")
+                        shift
+                    done
+                    continue
+                    ;;
+                -h) shift; HOSTNAME_FLAG="${1:-}" ;;
+                -v) shift; VAULT_PW_FLAG_FILE="${1:-}" ;;
+                -y|--yes) YES_FLAG=true ;;
+                *) err "Unknown add flag: $1"; exit 2 ;;
+            esac
+            shift
+        done
         ensure_install_dir
         ensure_ansible_on_path
         if ! META=$(resolve_meta_install "$INSTALL_DIR" "$SERVICE"); then
@@ -819,28 +843,45 @@ USAGE
         # shellcheck disable=SC2064
         trap "rm -f $UPDATE_JSON $PROMPTS_TXT" EXIT
         PROMPTED_ARGS=()
+        # Build the base build_add_update.py argv. --overrides may carry
+        # values the operator pre-supplied on the CLI; the same flag
+        # gets extended below with anything the interactive prompt
+        # collects for `config`-type vars.
+        BUILD_ARGS=(--meta "$META" --service "$SERVICE"
+                    --vault-password-file "$VAULT_PW_FILE"
+                    --target-host "$TARGET"
+                    --inventory-dir "$INSTALL_DIR/inventory")
+        if (( ${#OVERRIDE_ARGS[@]} > 0 )); then
+            BUILD_ARGS+=(--overrides "${OVERRIDE_ARGS[@]}")
+        fi
         # Discovery pass: build_add_update.py exits 3 with PROMPTS_NEEDED
-        # on stdout if the role declares `secret_prompt` vars. We collect
-        # operator-supplied values and re-invoke with --prompted-secrets.
+        # on stdout when the role declares vars the wrapper must collect
+        # (secret_prompt vars, or config vars with no resolvable default
+        # and no pre-supplied --overrides). Each line carries a `kind`
+        # column that tells us whether the captured value gets routed
+        # through --prompted-secrets (kind=secret) or --overrides
+        # (kind=config) on the re-invoke.
         if ! python3 scripts/build_add_update.py \
-                --meta "$META" \
-                --service "$SERVICE" \
-                --vault-password-file "$VAULT_PW_FILE" \
-                --target-host "$TARGET" \
-                --inventory-dir "$INSTALL_DIR/inventory" \
+                "${BUILD_ARGS[@]}" \
                 --output "$UPDATE_JSON" > "$PROMPTS_TXT" 2>&1; then
             if grep -q '^PROMPTS_NEEDED$' "$PROMPTS_TXT"; then
-                info "Role needs operator-supplied secret(s):"
+                if [[ "$YES_FLAG" == "true" ]]; then
+                    err "Role needs operator-supplied values but -y was passed."
+                    err "Pre-supply them with --overrides key=val ... and retry."
+                    grep -v '^PROMPTS_NEEDED$' "$PROMPTS_TXT" | \
+                        awk -F'\t' 'NF>=2 { printf "  - %s  (%s)\n", $1, $2 }' >&2
+                    exit 1
+                fi
+                info "Role needs operator-supplied value(s):"
                 # Inner `read` MUST come from /dev/tty — the while loop's
                 # stdin is the file we're iterating over, so a bare
                 # `read pval` would silently consume the next line of
                 # PROMPTS_TXT (the password's own metadata) as the user's
                 # input. /dev/tty bypasses the redirect.
-                while IFS=$'\t' read -r pkey ptext pconfirm pmask; do
+                while IFS=$'\t' read -r pkey ptext pconfirm pmask pkind; do
                     [[ "$pkey" == "PROMPTS_NEEDED" || -z "$pkey" ]] && continue
-                    # Default mask=true if the older build_add_update.py
-                    # didn't emit the field (back-compat).
                     pmask="${pmask:-true}"
+                    pkind="${pkind:-secret}"
                     read_flags="-r"
                     [[ "$pmask" == "true" ]] && read_flags="-rs"
                     echo
@@ -858,16 +899,24 @@ USAGE
                             exit 1
                         fi
                     fi
-                    PROMPTED_ARGS+=("$pkey=$pval")
+                    if [[ "$pkind" == "config" ]]; then
+                        OVERRIDE_ARGS+=("$pkey=$pval")
+                    else
+                        PROMPTED_ARGS+=("$pkey=$pval")
+                    fi
                 done < "$PROMPTS_TXT"
+                REINVOKE=(--meta "$META" --service "$SERVICE"
+                          --vault-password-file "$VAULT_PW_FILE"
+                          --target-host "$TARGET"
+                          --inventory-dir "$INSTALL_DIR/inventory")
+                if (( ${#OVERRIDE_ARGS[@]} > 0 )); then
+                    REINVOKE+=(--overrides "${OVERRIDE_ARGS[@]}")
+                fi
+                if (( ${#PROMPTED_ARGS[@]} > 0 )); then
+                    REINVOKE+=(--prompted-secrets "${PROMPTED_ARGS[@]}")
+                fi
                 if ! python3 scripts/build_add_update.py \
-                        --meta "$META" \
-                        --service "$SERVICE" \
-                        --vault-password-file "$VAULT_PW_FILE" \
-                        --target-host "$TARGET" \
-                        --inventory-dir "$INSTALL_DIR/inventory" \
-                        --prompted-secrets "${PROMPTED_ARGS[@]}" \
-                        --output "$UPDATE_JSON"; then
+                        "${REINVOKE[@]}" --output "$UPDATE_JSON"; then
                     err "Failed to build update spec after collecting prompts."
                     exit 1
                 fi

@@ -11,9 +11,11 @@ Resolves each declared inventory_var:
                     the list of needed prompts on stdout (machine
                     readable) so the wrapper can collect them and
                     re-invoke.
-  - config        → leave for setup.sh's interactive prompt (skipped
-                    here; caller supplies via --extra-overrides if
-                    non-interactive)
+  - config        → use literal `default` or `host_detect:<key>` if
+                    one resolves. Otherwise treated like secret_prompt
+                    (exit 3 with PROMPTS_NEEDED, kind=config) so the
+                    wrapper can collect the value interactively. Pre-
+                    supplied values can be passed via --overrides.
   - computed      → render `template` Jinja against existing inventory
   - literal       → emit value verbatim
 
@@ -188,8 +190,11 @@ def main():
 
     # Resolve inventory_vars
     scalars = {}
-    config_needed = []  # config-type vars not in inventory or overrides
-    prompt_needed = []  # secret_prompt vars not in inventory or --prompted-secrets
+    # Vars the wrapper must collect interactively. Each entry is
+    # (kind, var); kind in {"secret", "config"} so the wrapper knows
+    # whether to route the answer through --prompted-secrets (vault)
+    # or --overrides (plaintext).
+    prompt_needed = []
     for var in meta.get("inventory_vars", []) or []:
         name = var["name"]
         vtype = var["type"]
@@ -205,7 +210,7 @@ def main():
             value = resolve_secret(var["generator"])
             scalars[name] = {"value": value, "vault": var.get("vault", True)}
         elif vtype == "secret_prompt":
-            prompt_needed.append(var)
+            prompt_needed.append(("secret", var))
         elif vtype == "computed":
             value = render_template(var["template"], existing)
             scalars[name] = {"value": value, "vault": False}
@@ -213,39 +218,38 @@ def main():
             scalars[name] = {"value": var["value"], "vault": False}
         elif vtype == "config":
             # Auto-resolve via host_detect or literal default. Only
-            # fall through to config_needed if there's no default to
-            # work with (operator must supply via --overrides).
+            # fall through to prompt_needed if there's no default to
+            # work with — wrapper collects the value interactively (or
+            # operator pre-supplies it via --overrides on the CLI).
             resolved = resolve_config_default(var.get("default"))
             if resolved:
                 scalars[name] = {"value": resolved, "vault": False}
             else:
-                config_needed.append(var)
+                prompt_needed.append(("config", var))
         else:
             print(f"ERROR: unknown var type {vtype!r} for {name!r}", file=sys.stderr)
             sys.exit(1)
 
-    if config_needed:
-        print("ERROR: the following `config`-type vars need values but"
-              " weren't found in inventory or --overrides:", file=sys.stderr)
-        for var in config_needed:
-            prompt = var.get("prompt", var["name"])
-            print(f"  --overrides {var['name']}=<...>  ({prompt})", file=sys.stderr)
-        sys.exit(2)
-
     if prompt_needed:
-        # Machine-readable on stdout, human-readable on stderr.
-        # Wrapper (setup.sh add) reads stdout to know which prompts
-        # to ask the operator for, then re-invokes with --prompted-secrets.
+        # Machine-readable on stdout. Wrapper (homeserver.sh add) reads
+        # this to know which prompts to ask the operator for, then
+        # re-invokes — routing each captured value into the right
+        # bucket based on `kind`:
+        #   secret → --prompted-secrets  (vault-encrypted scalar)
+        #   config → --overrides         (plaintext scalar)
         print("PROMPTS_NEEDED")
-        for var in prompt_needed:
+        for kind, var in prompt_needed:
             prompt_text = var.get("prompt", var["name"])
             confirm = "true" if var.get("confirm", False) else "false"
             # `mask` controls echo: true = hide input (passwords).
-            # Default true since `secret_prompt` is intended for secrets;
-            # roles set `mask: false` on visible fields like email.
-            mask = "true" if var.get("mask", True) else "false"
-            # name<TAB>prompt_text<TAB>confirm<TAB>mask
-            print(f"{var['name']}\t{prompt_text}\t{confirm}\t{mask}")
+            # secret_prompt defaults to mask=true; config vars are
+            # plaintext (subnets, hostnames, IPs) — never masked.
+            if kind == "config":
+                mask = "false"
+            else:
+                mask = "true" if var.get("mask", True) else "false"
+            # name<TAB>prompt_text<TAB>confirm<TAB>mask<TAB>kind
+            print(f"{var['name']}\t{prompt_text}\t{confirm}\t{mask}\t{kind}")
         sys.exit(3)
 
     # Side effects → lists + dicts
