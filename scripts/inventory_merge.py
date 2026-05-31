@@ -323,6 +323,23 @@ def _remove_seq_item_preserving_comments(seq, item):
             seq.ca.items[new_last_idx] = saved
 
 
+def cmd_set(data, update, vault_pw_file):
+    """Overwrite mode for `homeserver.sh config <section>`. Each scalar is
+    written verbatim — existing values get replaced (preserving their
+    trailing comment); missing keys are inserted. Lists/dicts not used
+    here (the config walker prompts scalars only)."""
+    for key, spec in (update.get("scalars") or {}).items():
+        value = spec["value"]
+        if spec.get("vault"):
+            value = vault_encrypt(value, key, vault_pw_file)
+        if key in data:
+            # Overwrite in place — ruamel preserves the key's existing
+            # trailing comment when we reassign through __setitem__.
+            data[key] = value
+        else:
+            _set_dict_entry_preserving_comments(data, key, value)
+
+
 def cmd_remove(data, update):
     # scalars — delete keys
     for key in (update.get("scalars") or {}).keys():
@@ -457,13 +474,18 @@ def _write_doc(path, data, yaml, write_header):
 
 
 def merge_split_file(path, slice_update, mode, vault_pw_file, yaml):
-    """Apply a per-file slice to <path>. In add mode, missing files are
+    """Apply a per-file slice to <path>. In add/set modes, missing files are
     created (with header). In remove mode, missing files are skipped, and
     files that become empty after the merge are deleted."""
     data, existed = _load_doc(path, yaml)
 
     if mode == "add":
         cmd_add(data, slice_update, vault_pw_file)
+        _write_doc(path, data, yaml, write_header=not existed)
+        return
+
+    if mode == "set":
+        cmd_set(data, slice_update, vault_pw_file)
         _write_doc(path, data, yaml, write_header=not existed)
         return
 
@@ -484,7 +506,7 @@ def main():
     p.add_argument("--service", required=True, help="service name")
     p.add_argument("--vault-password-file", required=True, help="path to vault.pw")
     p.add_argument("--update", required=True, help="path to update.json")
-    p.add_argument("--mode", choices=["add", "remove"], required=True)
+    p.add_argument("--mode", choices=["add", "set", "remove"], required=True)
     args = p.parse_args()
 
     with open(args.update) as f:

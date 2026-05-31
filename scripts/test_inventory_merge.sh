@@ -147,6 +147,32 @@ grep -q "^  nextcloud:" "$WORK/test4/01-linux-users.yml" \
     || report "creates apps/nextcloud.yml for service-specific scalar" FAIL
 
 echo
+echo "Test 5: set mode overwrites scalars in place (used by config <section>)"
+make_baseline "$WORK/test5"
+cat > "$WORK/set_caddy_domain.json" << 'EOF'
+{
+  "scalars": {
+    "caddy_domain": {"value": "newdomain.dedyn.io", "vault": false}
+  },
+  "lists": {},
+  "dicts": {}
+}
+EOF
+python3 "$MERGE" --host-vars-dir "$WORK/test5" --service caddy \
+    --vault-password-file "$WORK/vault.pw" --update "$WORK/set_caddy_domain.json" --mode set
+grep -Eq '^caddy_domain: "?newdomain\.dedyn\.io"?$' "$WORK/test5/10-caddy.yml" \
+    && report "caddy_domain overwritten in 10-caddy.yml" PASS \
+    || report "caddy_domain overwritten in 10-caddy.yml" FAIL
+# Existing siblings should remain intact.
+grep -q 'subdomain: pihole' "$WORK/test5/10-caddy.yml" \
+    && report "caddy_reverse_proxy_services sibling preserved" PASS \
+    || report "caddy_reverse_proxy_services sibling preserved" FAIL
+# Operator-only file untouched.
+grep -q 'operator_custom_var' "$WORK/test5/20-extras.yml" \
+    && report "operator_custom_var untouched" PASS \
+    || report "operator_custom_var untouched" FAIL
+
+echo
 echo "=========================================="
 echo "  $PASS passed, $FAIL failed"
 echo "=========================================="
