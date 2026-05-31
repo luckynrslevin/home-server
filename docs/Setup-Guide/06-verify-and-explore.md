@@ -35,7 +35,7 @@ If you see a padlock — congratulations, you're done. 🎉
 |---|---|---|
 | **DNS doesn't resolve** the subdomain | Your laptop isn't using Pi-hole as DNS, OR you haven't picked Pi-hole in the service list | Set your laptop's DNS to the homeserver's IP, or add the homeserver to your router's DHCP DNS server. |
 | **Cert warning** | Caddy's first cert issuance hadn't completed yet when you opened the URL | Wait 1–2 min; reload. If still wrong, check `journalctl --user -u caddy -n 50` on the server for an ACME error. |
-| **Apex works, subdomains fail with `SSL_ERROR_INTERNAL_ERROR_ALERT`** | Apex cert issued; wildcard cert stuck in an ACME retry loop because the deSEC plugin left stale `_acme-challenge` TXT records. Rare since homeserver.sh pre-clears them, but possible if Caddy's apex + wildcard orders ever truly race. | `ssh <host> 'sudo -u webproxy XDG_RUNTIME_DIR=/run/user/1011 systemctl --user restart caddy'` then wait ~2 min. Background: [#170](https://github.com/luckynrslevin/home-server/issues/170). |
+| **Some subdomains work, others fail with `SSL_ERROR_INTERNAL_ERROR_ALERT`** | One subdomain's cert hasn't been issued yet — Caddy issues one cert per name (apex + each reverse-proxied subdomain) and they trickle in on first deploy. | Wait ~2 min and reload. If still failing, check `sudo -u webproxy XDG_RUNTIME_DIR=/run/user/1011 podman logs caddy` for the failed name. Closes the apex+wildcard race that was [#170](https://github.com/luckynrslevin/home-server/issues/170). |
 | **Connection refused** | Server's firewall not yet open on 443 | Re-run `homeserver.sh upgrade` on the server. |
 
 ## Explore

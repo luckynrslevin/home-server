@@ -28,7 +28,7 @@ Caddy is **mandatory** — `playbooks/site.yml` asserts it.
 
 ### 3. Backup manifests (`roles/platform/backup`)
 
-Apps declare a `backup_manifest` in `defaults/main.yml`. The backup role reads manifests from any role in `deploy_services`. **App behavior is unchanged whether or not backup is deployed** — the manifest is free metadata.
+Apps declare a `backup_manifest` in `defaults/main.yml`. The backup role reads manifests from any role in `platform_services + apps` (the union exposed by `inventory/group_vars/all.yml` as `deploy_services` for back-compat). **App behavior is unchanged whether or not backup is deployed** — the manifest is free metadata.
 
 Schema: see `roles/META-SCHEMA.md`.
 
@@ -57,5 +57,5 @@ These rules are enforced by `scripts/check-role-boundaries.sh`.
 1. Default to `roles/apps/<name>/`.
 2. Declare a `backup_manifest` in `defaults/main.yml` if the role has state worth restoring.
 3. Add a `caddy_route` template if it has a web UI.
-4. Add `<name>` to your host's `deploy_services` list.
+4. Add `<name>` to your host's `apps:` list in `00-services.yml` (or `platform_services:` if it's foundational infra). The convenient way is `homeserver.sh add <name>` — that prompts for any required secrets, vaults them, updates `apps:` / `platform_services` / `caddy_reverse_proxy_services` / `my_linux_users`, and runs the role's playbook.
 5. Run `scripts/check-role-boundaries.sh` before opening a PR.

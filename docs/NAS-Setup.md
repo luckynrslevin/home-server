@@ -145,7 +145,8 @@ If it fails, check:
 
 ## 9. Inventory wiring
 
-In `inventory/host_vars/<host>/main.yml`:
+In `inventory/host_vars/<host>/20-extras.yml` (operator-managed,
+never touched by `homeserver.sh install`):
 
 ```yaml
 backup_nas_snapshot_user: homeserver-backup

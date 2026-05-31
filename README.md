@@ -4,7 +4,7 @@
 > **Work in progress — not ready for production use yet.**
 > The project is under active development and as of now it's not
 > exactly working as described. The architecture, role
-> contracts, inventory layout, and even the deploy_services list
+> contracts, inventory layout, and even the platform_services + apps lists
 > still change without warning between commits.
 
 ## Objective
