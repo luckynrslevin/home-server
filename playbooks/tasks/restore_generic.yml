@@ -45,7 +45,74 @@
     label: "{{ item.container }}"
   changed_when: false
 
-# --- Stop the service ---
+# ===================================================================
+# Image-version manifest check + pin
+# -------------------------------------------------------------------
+# The backup script captured {name, image-tag, image-digest} for each
+# container running at backup time. Restoring volumes into a newer
+# auto-pulled :latest image risks DB-schema-vs-binary mismatches.
+#
+# Default behaviour: pull the recorded digests and re-tag them as the
+# current image name so the post-restore start picks up the
+# backup-time version. Override with `-e restore_pin_images=false`
+# (e.g. for a deliberate "restore into the newer version" path,
+# accepting upgrade-on-first-start migrations).
+# ===================================================================
+
+- name: "{{ svc._role_name | upper }}: find latest image manifest"
+  ansible.builtin.shell: >-
+    ls -t {{ restore_root }}/{{ svc._role_name }}/images/*.json 2>/dev/null | head -1
+  register: _manifest_path
+  changed_when: false
+  failed_when: false
+
+- name: "{{ svc._role_name | upper }}: read image manifest"
+  ansible.builtin.slurp:
+    src: "{{ _manifest_path.stdout }}"
+  register: _manifest_raw
+  when: _manifest_path.stdout | length > 0
+
+- name: "{{ svc._role_name | upper }}: parse image manifest"
+  ansible.builtin.set_fact:
+    _image_manifest: "{{ (_manifest_raw.content | b64decode | from_json).containers }}"
+    _image_manifest_ts: "{{ (_manifest_raw.content | b64decode | from_json).timestamp }}"
+  when: _manifest_path.stdout | length > 0
+
+- name: "{{ svc._role_name | upper }}: warn when no manifest found"
+  ansible.builtin.debug:
+    msg: >-
+      No image manifest found at
+      {{ restore_root }}/{{ svc._role_name }}/images/.
+      Backups predate PR #281 (capture step). Restore proceeds with
+      whatever image is currently running — verify the data is
+      compatible.
+  when: _manifest_path.stdout | length == 0
+
+- name: "{{ svc._role_name | upper }}: query current image digests for comparison"
+  ansible.builtin.shell: |
+    sudo -u {{ svc.service_user }} \
+      XDG_RUNTIME_DIR=/run/user/{{ my_linux_users[svc.service_user].uid }} \
+      podman inspect {{ item.name }} \
+      --format '{% raw %}{{.ImageDigest}}{% endraw %}' 2>/dev/null
+  loop: "{{ _image_manifest | default([]) }}"
+  loop_control:
+    label: "{{ item.name }}"
+  register: _current_digests
+  changed_when: false
+  failed_when: false
+
+- name: "{{ svc._role_name | upper }}: image manifest comparison"
+  ansible.builtin.debug:
+    msg: >-
+      {{ item.0.name }}: backup={{ item.0.image_digest }} ·
+      current={{ item.1.stdout if item.1.stdout else '(missing)' }} ·
+      {{ 'MATCH' if item.1.stdout == item.0.image_digest else 'MISMATCH' }}
+  loop: "{{ _image_manifest | default([]) | zip(_current_digests.results | default([])) | list }}"
+  loop_control:
+    label: "{{ item.0.name }}"
+  when: _image_manifest is defined
+
+# --- Stop the service (before pulling/tagging so nothing races) ---
 - name: "{{ svc._role_name | upper }}: stop service"
   ansible.builtin.command:
     cmd: >
@@ -54,6 +121,40 @@
       DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/{{ my_linux_users[svc.service_user].uid }}/bus
       systemctl --user stop {{ svc.service_unit }}
   changed_when: false
+  failed_when: false
+
+# Pin: pull each recorded digest + retag as the current image name.
+# Iterate every manifest entry — the shell short-circuits when the
+# digest already matches (a no-op match logs "already pinned" and
+# moves on). Pulling an already-cached digest is fast and idempotent.
+#
+# `podman tag` overwrites the existing tag in local storage; the next
+# container start uses the now-tagged digest. Auto-update will re-bump
+# to :latest at its next tick — operator should pause auto-update if
+# they want the pin to persist beyond the immediate restart.
+- name: "{{ svc._role_name | upper }}: pin images to backup-time digests"
+  ansible.builtin.shell: |
+    set -eu
+    REPO='{{ item.image | regex_replace(":[^:/]+$", "") }}'
+    DIGEST='{{ item.image_digest }}'
+    TAGGED='{{ item.image }}'
+    SUDO='sudo -u {{ svc.service_user }} XDG_RUNTIME_DIR=/run/user/{{ my_linux_users[svc.service_user].uid }}'
+    CURRENT=$($SUDO podman inspect {{ item.name }} --format '{% raw %}{{.ImageDigest}}{% endraw %}' 2>/dev/null || echo '')
+    if [ "$CURRENT" = "$DIGEST" ]; then
+        echo "already pinned ({{ item.name }} @ $DIGEST)"
+        exit 0
+    fi
+    echo "pinning {{ item.name }}: $CURRENT -> $DIGEST"
+    $SUDO podman pull "${REPO}@${DIGEST}"
+    $SUDO podman tag  "${REPO}@${DIGEST}" "${TAGGED}"
+  loop: "{{ _image_manifest | default([]) }}"
+  loop_control:
+    label: "{{ item.name }}"
+  when:
+    - restore_pin_images | default(true)
+    - _image_manifest is defined
+  register: _pin_result
+  changed_when: '"pinning" in _pin_result.stdout'
   failed_when: false
 
 # --- Restore tar volumes ---
