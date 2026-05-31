@@ -120,6 +120,62 @@ def load_role_meta(roles_dir, service):
     return None
 
 
+def discover_role_container_names(roles_dir, service):
+    """Parse the role's quadlets to find which container names it owns.
+
+    Why: roles that share a rootless user (entephoto + entephoto-export)
+    can't be distinguished by `podman ps --user <u>` alone — both would
+    return the union. Filtering the dashboard's container list by names
+    declared in each role's own quadlets keeps the per-role tables
+    accurate.
+
+    Logic: walk `templates/quadlets/*.container.j2` and
+    `files/quadlets/*.container` for the role. Each quadlet's container
+    name is either explicit via `ContainerName=<name>` (with `%N` =
+    quadlet basename), or implicit (= basename without .container[.j2]).
+    Returns a set of names; empty set means "no allowlist" → no
+    filtering applied.
+    """
+    names = set()
+    for layer in ("platform", "apps"):
+        base = os.path.join(roles_dir, layer, service)
+        for quadlet_dir, suffix in (
+            (os.path.join(base, "templates", "quadlets"), ".container.j2"),
+            (os.path.join(base, "files",     "quadlets"), ".container"),
+        ):
+            if not os.path.isdir(quadlet_dir):
+                continue
+            for entry in os.listdir(quadlet_dir):
+                if not entry.endswith(suffix):
+                    continue
+                quadlet_basename = entry[: -len(suffix)]
+                path = os.path.join(quadlet_dir, entry)
+                # Default name from filename; overridden by an explicit
+                # ContainerName= line (which may use %N to mean the
+                # systemd unit name = the quadlet basename, or a Jinja
+                # var like {{ podman_quadlet_app_name }} that the
+                # podman_quadlet Galaxy role resolves to the role name
+                # at deploy time). Jinja-templated names fall back to
+                # the quadlet basename since podman_quadlet defaults
+                # match that convention.
+                resolved = quadlet_basename
+                try:
+                    with open(path) as fh:
+                        for line in fh:
+                            m = re.match(r"^\s*ContainerName=(.+?)\s*$", line)
+                            if m:
+                                val = m.group(1).strip()
+                                if val == "%N" or "{{" in val or "{%" in val:
+                                    resolved = quadlet_basename
+                                else:
+                                    resolved = val
+                                break
+                except Exception:
+                    pass
+                names.add(resolved)
+    return names
+
+
 def build_service_specs(inventory, roles_dir):
     """Translate inventory + role meta into the per-service display spec
     consumed by the rest of the generator. One entry per visible service."""
@@ -137,6 +193,8 @@ def build_service_specs(inventory, roles_dir):
                 "name": svc,
                 "user": None,
                 "urls": [],
+                "rootful": False,
+                "container_names": set(),
                 "_warn": f"No meta/install.yml found for {svc}",
             })
             continue
@@ -165,6 +223,15 @@ def build_service_specs(inventory, roles_dir):
             "name": meta.get("display_name") or svc,
             "user": user,
             "urls": urls,
+            # rootful flag: roles like shairportsync set this so the
+            # container query runs as root (host namespace) instead of
+            # `su - <user>` into the rootless user that owns nothing.
+            "rootful": bool(meta.get("rootful")),
+            # Allowlist of container names owned by this role's quadlets.
+            # Filters podman ps output so co-tenant roles (e.g. entephoto +
+            # entephoto-export both running as `entephoto`) don't show
+            # each other's containers.
+            "container_names": discover_role_container_names(roles_dir, svc),
         })
     return specs
 
@@ -184,9 +251,18 @@ def run_cmd(cmd, timeout=30):
         return ""
 
 
-def get_containers(user):
-    """Get running containers for a rootless user."""
-    output = run_cmd("su - %s -c 'podman ps --format json' 2>/dev/null" % user)
+def _podman_wrap(inner, user, rootful):
+    """Wrap a podman invocation so it runs in the right user-namespace.
+    Rootful: invoke directly (the generator already runs as root).
+    Rootless: su into the service user so the per-user podman is queried."""
+    if rootful:
+        return "%s 2>/dev/null" % inner
+    return "su - %s -c '%s' 2>/dev/null" % (user, inner)
+
+
+def get_containers(user, rootful=False):
+    """Get running containers — rootless or rootful per `rootful` flag."""
+    output = run_cmd(_podman_wrap("podman ps --format json", user, rootful))
     if not output:
         return []
     try:
@@ -195,11 +271,9 @@ def get_containers(user):
         return []
 
 
-def get_container_inspect(user, name):
+def get_container_inspect(user, name, rootful=False):
     """Inspect a specific container."""
-    output = run_cmd(
-        "su - %s -c 'podman inspect %s' 2>/dev/null" % (user, name)
-    )
+    output = run_cmd(_podman_wrap("podman inspect %s" % name, user, rootful))
     if not output:
         return None
     try:
@@ -209,10 +283,10 @@ def get_container_inspect(user, name):
         return None
 
 
-def get_image_inspect(user, image_id):
+def get_image_inspect(user, image_id, rootful=False):
     """Inspect a container image."""
     output = run_cmd(
-        "su - %s -c 'podman image inspect %s' 2>/dev/null" % (user, image_id)
+        _podman_wrap("podman image inspect %s" % image_id, user, rootful)
     )
     if not output:
         return None
@@ -223,18 +297,24 @@ def get_image_inspect(user, image_id):
         return None
 
 
-def get_volume_size(user, volume_name):
+def get_volume_size(user, volume_name, rootful=False):
     """Return the on-disk size of a volume in bytes, or None on failure.
 
-    Uses `podman unshare du -sb` so the rootless user namespace maps the
-    container-internal UIDs back to the host user, making the volume
-    contents readable for du.
+    Rootless: `podman unshare du -sb` so the user namespace maps
+    container-internal UIDs back to the host user (otherwise du can't
+    read the contents). Rootful: plain du on the volume mountpoint.
     """
-    cmd = (
-        "su - %s -c 'podman unshare du -sb "
-        "\"$(podman volume inspect %s --format {{.Mountpoint}})\" 2>/dev/null' "
-        "2>/dev/null"
-    ) % (user, volume_name)
+    if rootful:
+        cmd = (
+            "du -sb \"$(podman volume inspect %s --format '{{.Mountpoint}}')\" "
+            "2>/dev/null"
+        ) % volume_name
+    else:
+        inner = (
+            "podman unshare du -sb "
+            "\"$(podman volume inspect %s --format {{.Mountpoint}})\""
+        ) % volume_name
+        cmd = _podman_wrap(inner, user, False)
     output = run_cmd(cmd, timeout=300)
     if not output:
         return None
@@ -244,7 +324,7 @@ def get_volume_size(user, volume_name):
         return None
 
 
-def get_auto_update_status(user):
+def get_auto_update_status(user, rootful=False):
     """Get update status using podman auto-update --dry-run.
 
     Returns a dict mapping container name to update status:
@@ -252,8 +332,7 @@ def get_auto_update_status(user):
     'failed' = registry check failed (e.g. Docker Hub anonymous rate limit).
     """
     output = run_cmd(
-        "su - %s -c 'podman auto-update --dry-run --format json' 2>/dev/null"
-        % user,
+        _podman_wrap("podman auto-update --dry-run --format json", user, rootful),
         timeout=60,
     )
     if not output:
@@ -359,7 +438,9 @@ def gather_service(spec, last_known, backup_log, nas_host_display):
     container rows (each with its own image / update status / volumes), and
     last-backup."""
     user = spec.get("user")
-    if user is None:
+    rootful = bool(spec.get("rootful"))
+    allowlist = spec.get("container_names") or set()
+    if user is None and not rootful:
         return {
             "name": spec["name"],
             "warn": spec.get("_warn", "no rootless user declared in meta"),
@@ -369,8 +450,8 @@ def gather_service(spec, last_known, backup_log, nas_host_display):
             "last_backup": None,
         }
 
-    containers = get_containers(user)
-    update_status = get_auto_update_status(user)
+    containers = get_containers(user, rootful=rootful)
+    update_status = get_auto_update_status(user, rootful=rootful)
     container_rows = []
     for ct in containers:
         ct_names = ct.get("Names")
@@ -381,16 +462,22 @@ def gather_service(spec, last_known, backup_log, nas_host_display):
         if "infra" in ct_name:
             # Pod infra containers carry no useful info for the operator.
             continue
+        # Allowlist filter: only show containers declared by this role's
+        # quadlets. Skip when the role has no quadlets (empty allowlist),
+        # since "show everything the user owns" is the right behaviour
+        # for single-tenant roles.
+        if allowlist and ct_name not in allowlist:
+            continue
         image = ct.get("Image", "")
         image_id = ct.get("ImageID", "")
 
-        img_info = get_image_inspect(user, image_id) or {}
+        img_info = get_image_inspect(user, image_id, rootful=rootful) or {}
         created = img_info.get("Created", "")
 
         # Per-container mounted volumes — filter to volume-type (not bind),
         # since bind mounts are typically host config files (timezone, etc.)
         # the operator doesn't track on the dashboard.
-        inspect = get_container_inspect(user, ct_name) or {}
+        inspect = get_container_inspect(user, ct_name, rootful=rootful) or {}
         ct_volumes = []
         for m in inspect.get("Mounts") or []:
             if m.get("Type") != "volume":
@@ -399,7 +486,7 @@ def gather_service(spec, last_known, backup_log, nas_host_display):
             if name:
                 ct_volumes.append({
                     "name": name,
-                    "size": get_volume_size(user, name),
+                    "size": get_volume_size(user, name, rootful=rootful),
                 })
 
         # Update status with persistent-state fallback: see the long comment
