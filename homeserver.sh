@@ -838,8 +838,15 @@ PY
             # values. prompt_default / prompt_default_hidden write into
             # the shell variable named by their first arg (and honour
             # the existing inventory value via inv_get + YES_FLAG).
+            #
+            # Route the spec through FD 3 (not stdin) so prompt_default's
+            # `read -r answer` keeps reading from the terminal. Without
+            # this, the inner `read` swallows the next SPEC line as the
+            # operator's "answer" — which silently writes garbage like
+            #   backup_nas_hostname: "backup_nas_ip\tNAS IP address..."
+            # to the split file.
             declare -A NEW_VALUES NEW_VAULT
-            while IFS=$'\t' read -r vname vprompt vdefault vvault vmask; do
+            while IFS=$'\t' read -r vname vprompt vdefault vvault vmask <&3; do
                 [[ -z "$vname" ]] && continue
                 if [[ "$vmask" == "true" ]]; then
                     prompt_default_hidden "$vname" "$vprompt"
@@ -848,7 +855,7 @@ PY
                 fi
                 NEW_VALUES["$vname"]="${!vname}"
                 NEW_VAULT["$vname"]="$vvault"
-            done <<< "$SPEC"
+            done 3<<< "$SPEC"
 
             # Caddy: caddy_domain is `<subdomain>.dedyn.io`; auto-derive
             # so the operator only ever sees the subdomain prompt above.
