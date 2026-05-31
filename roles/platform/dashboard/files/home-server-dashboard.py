@@ -21,9 +21,6 @@ Auto-discovery contract (no per-host config file):
 
 Runs as root (needs to su to each service user for podman queries).
 Output: /var/www/dashboard/index.html
-
-Back-compat: if /etc/home-server-dashboard.yaml exists and the inventory
-layout isn't reachable, fall back to the legacy config-driven path.
 """
 
 import argparse
@@ -42,7 +39,6 @@ except ImportError:
     yaml = None
 
 
-LEGACY_CONFIG_PATH = "/etc/home-server-dashboard.yaml"
 OUTPUT_DIR = "/var/www/dashboard"
 BACKUP_LOG = "/var/log/home-server-backup.log"
 BACKUP_DIR = "/var/log"
@@ -830,25 +826,6 @@ def render_dashboard(services, generated_at):
 
 
 # ---------------------------------------------------------------------------
-# Legacy config-driven path (back-compat, deleted next release)
-# ---------------------------------------------------------------------------
-
-def legacy_specs_from_config(config):
-    """Translate the old /etc/home-server-dashboard.yaml schema into the
-    spec shape build_service_specs returns. Used only when the inventory
-    layout can't be read (pre-migration host)."""
-    specs = []
-    for svc in config.get("services", []) or []:
-        specs.append({
-            "name": svc.get("name", "?"),
-            "user": svc.get("user"),
-            "urls": svc.get("urls", []),
-            "_legacy_volumes": svc.get("volumes", []),
-        })
-    return specs
-
-
-# ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
 
@@ -883,34 +860,16 @@ def main(argv=None):
     last_known = state.get("update_status", {}) or {}
 
     inventory = load_host_inventory(args.inventory_dir, args.host)
-    have_inventory = bool(
-        inventory["platform_services"] or inventory["apps"]
-    )
-
-    if have_inventory:
-        specs = build_service_specs(inventory, args.roles_dir)
-        nas_host_display = inventory["nas_host_display"]
-    elif os.path.exists(LEGACY_CONFIG_PATH):
-        # Pre-migration host — fall back to the old config file. This path
-        # will be removed in a future release; the warning helps operators
-        # notice they should re-deploy the dashboard role.
+    if not (inventory["platform_services"] or inventory["apps"]):
         print(
-            "WARN: inventory not reachable at %s for %s; "
-            "falling back to legacy %s"
-            % (args.inventory_dir, args.host, LEGACY_CONFIG_PATH),
-            file=sys.stderr,
-        )
-        legacy = _safe_yaml_load(LEGACY_CONFIG_PATH) or {}
-        specs = legacy_specs_from_config(legacy)
-        nas_host_display = legacy.get("nas_host_display", "")
-    else:
-        print(
-            "ERROR: no inventory found at %s and no legacy config at %s — "
-            "nothing to render."
-            % (args.inventory_dir, LEGACY_CONFIG_PATH),
+            "ERROR: no inventory found at %s for %s — nothing to render."
+            % (args.inventory_dir, args.host),
             file=sys.stderr,
         )
         return 1
+
+    specs = build_service_specs(inventory, args.roles_dir)
+    nas_host_display = inventory["nas_host_display"]
 
     services = [
         gather_service(spec, last_known, BACKUP_LOG, nas_host_display)

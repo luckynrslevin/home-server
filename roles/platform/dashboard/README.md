@@ -94,13 +94,6 @@ finishes so the first page view shows real container state instead of
 "all stopped" (rootless containers are still pulling/starting when the
 playbook returns).
 
-## Back-compat
-
-If `/etc/home-server-dashboard.yaml` exists and the inventory layout
-isn't reachable, the generator falls back to the legacy file. The
-back-compat path is intended for one release only — re-running
-`playbooks/dashboard.yml` removes the file.
-
 ## Cross-role dependencies
 
 Pairs with [caddy](../caddy/README.md), which serves the generated HTML.
