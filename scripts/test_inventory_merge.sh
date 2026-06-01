@@ -173,6 +173,53 @@ grep -q 'operator_custom_var' "$WORK/test5/20-extras.yml" \
     || report "operator_custom_var untouched" FAIL
 
 echo
+echo "Test 6: caddy_reverse_proxy_services dedup by subdomain (not full equality)"
+# Existing inventory carries an old-shape row for cloud (no `label`
+# hint); a meta-shape add of the same subdomain should REPLACE it,
+# not append a duplicate. Regression for the homeserver2 Caddyfile
+# bug where two `cloud.<domain>` blocks crashed Caddy.
+make_baseline "$WORK/test6"
+python3 - "$WORK/test6/10-caddy.yml" <<'PY'
+import sys
+from ruamel.yaml import YAML
+yaml = YAML(typ='rt'); yaml.indent(mapping=2, sequence=4, offset=2)
+with open(sys.argv[1]) as f: doc = yaml.load(f)
+doc["caddy_reverse_proxy_services"].append({"port": 8090, "subdomain": "cloud"})
+with open(sys.argv[1], "w") as f: yaml.dump(doc, f)
+PY
+cat > "$WORK/upd_cloud.json" << 'EOF'
+{"scalars": {}, "lists": {"caddy_reverse_proxy_services": {"items": [
+    {"subdomain": "cloud", "port": 8090, "label": "Web UI"}
+]}}, "dicts": {}}
+EOF
+python3 "$MERGE" --host-vars-dir "$WORK/test6" --service nextcloud \
+    --vault-password-file "$WORK/vault.pw" --update "$WORK/upd_cloud.json" --mode add
+n_cloud=$(grep -c "subdomain: cloud" "$WORK/test6/10-caddy.yml")
+[[ "$n_cloud" == "1" ]] \
+    && report "add dedupes cloud by subdomain (single entry)" PASS \
+    || report "add dedupes cloud by subdomain (got $n_cloud entries)" FAIL
+grep -q 'label: Web UI' "$WORK/test6/10-caddy.yml" \
+    && report "add overwrites with the meta-shape row (has label)" PASS \
+    || report "add overwrites with the meta-shape row (has label)" FAIL
+
+# `remove` with a meta-shape item should drop the inventory row even
+# when the inventory row lacks the cosmetic `label` field.
+make_baseline "$WORK/test7"
+python3 - "$WORK/test7/10-caddy.yml" <<'PY'
+import sys
+from ruamel.yaml import YAML
+yaml = YAML(typ='rt'); yaml.indent(mapping=2, sequence=4, offset=2)
+with open(sys.argv[1]) as f: doc = yaml.load(f)
+doc["caddy_reverse_proxy_services"].append({"port": 8090, "subdomain": "cloud"})
+with open(sys.argv[1], "w") as f: yaml.dump(doc, f)
+PY
+python3 "$MERGE" --host-vars-dir "$WORK/test7" --service nextcloud \
+    --vault-password-file "$WORK/vault.pw" --update "$WORK/upd_cloud.json" --mode remove
+! grep -q 'subdomain: cloud' "$WORK/test7/10-caddy.yml" \
+    && report "remove drops cloud by subdomain (label-field mismatch)" PASS \
+    || report "remove drops cloud by subdomain (label-field mismatch)" FAIL
+
+echo
 echo "=========================================="
 echo "  $PASS passed, $FAIL failed"
 echo "=========================================="

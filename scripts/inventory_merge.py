@@ -244,6 +244,39 @@ def _set_dict_entry_preserving_comments(mapping, key, value):
             mapping.ca.items[key] = saved
 
 
+# Lists of dicts that are logically keyed by one field, not by full-row
+# equality. Without this, an existing entry `{port: 8090, subdomain: cloud}`
+# in inventory looks "different" from a fresh meta entry like
+# `{subdomain: cloud, port: 8090, label: "Web UI"}` because the meta added
+# a `label` field over time. cmd_add's full-equality check then appends
+# the new entry alongside the old, producing duplicate Caddyfile blocks
+# and crashing Caddy at next reload; cmd_remove's `seq.index(item)` fails
+# for the same reason and silently leaves stale entries behind.
+#
+# Map each list-key to its identity field. Items matching by that field
+# are treated as the same logical entry for add (overwrite) and remove
+# (drop) semantics.
+LIST_IDENTITY_KEY = {
+    "caddy_reverse_proxy_services": "subdomain",
+}
+
+
+def _seq_find_by_identity(seq, item, identity_key):
+    """Return the index of the existing item in <seq> whose identity_key
+    matches <item>'s, or -1 if none. Used to dedup list-of-dicts entries
+    where two rows for the same logical thing may differ on cosmetic
+    fields the schema picked up later (e.g. dashboard `label` hint)."""
+    if not isinstance(item, (dict, CommentedMap)):
+        return -1
+    needle = item.get(identity_key)
+    if needle is None:
+        return -1
+    for i, existing in enumerate(seq):
+        if isinstance(existing, (dict, CommentedMap)) and existing.get(identity_key) == needle:
+            return i
+    return -1
+
+
 def cmd_add(data, update, vault_pw_file):
     # scalars (top-level)
     for key, spec in (update.get("scalars") or {}).items():
@@ -259,8 +292,20 @@ def cmd_add(data, update, vault_pw_file):
         if existing is None:
             existing = CommentedSeq()
             _set_dict_entry_preserving_comments(data, key, existing)
+        identity_key = LIST_IDENTITY_KEY.get(key)
         for item in spec.get("items", []):
             item = _to_commented(item)
+            # Identity-keyed lists: overwrite the existing row by index so
+            # cosmetic-field drift (e.g. caddy_reverse_proxy_services
+            # gaining a `label`) doesn't strand duplicates.
+            if identity_key is not None:
+                idx = _seq_find_by_identity(existing, item, identity_key)
+                if idx >= 0:
+                    existing[idx] = item
+                    continue
+                _append_seq_preserving_comments(existing, item)
+                continue
+            # Plain lists: dedup by full equality.
             if item not in existing:
                 _append_seq_preserving_comments(existing, item)
     # dicts — merge entries
@@ -349,7 +394,15 @@ def cmd_remove(data, update):
         existing = data.get(key)
         if existing is None:
             continue
+        identity_key = LIST_IDENTITY_KEY.get(key)
         for item in spec.get("items", []):
+            # Identity-keyed lists: drop by matching the identity field
+            # rather than full equality (see LIST_IDENTITY_KEY comment).
+            if identity_key is not None:
+                idx = _seq_find_by_identity(existing, _to_commented(item), identity_key)
+                if idx >= 0:
+                    _remove_seq_item_preserving_comments(existing, existing[idx])
+                continue
             _remove_seq_item_preserving_comments(existing, item)
     # dicts — remove entry keys
     for key, spec in (update.get("dicts") or {}).items():
