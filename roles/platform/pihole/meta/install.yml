@@ -14,6 +14,16 @@ description: "DNS-level ad-blocker for every device on the LAN"
 #        config    → prompt with `default` (literal string or host-detect spec)
 #        computed  → render `template` (Jinja) against already-resolved values
 #        literal   → use `value` verbatim
+#
+# Optional `user_facing: true` flag — set on secrets that bootstrap an
+# app's admin login the user can later change via the app's web UI.
+# Inventory holds the value the tool generated at install time, but
+# the user owns the live value via the UI. `homeserver.sh secret`
+# warns when reading these so the operator knows the returned value
+# may be stale (latest bootstrap value, not what the user is actually
+# typing right now). Machine-internal secrets (DB passwords, signing
+# keys, encryption keys) leave the flag off — inventory IS the source
+# of truth there.
 inventory_vars:
   - name: pihole_local_network
     type: config
@@ -27,6 +37,7 @@ inventory_vars:
     type: secret
     generator: "openssl rand -base64 24"
     vault: true
+    user_facing: true  # operator can rotate via `pihole -a -p` in the admin UI
 
 # Side-effects on shared inventory keys when this role is added.
 # `homeserver.sh add` merges these in; `homeserver.sh remove` reverses them.

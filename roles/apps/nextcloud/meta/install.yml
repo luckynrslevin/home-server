@@ -8,6 +8,10 @@ inventory_vars:
     type: secret
     generator: "openssl rand -base64 24"
     vault: true
+    # Bootstrap value used on first nextcloud occ install. After that,
+    # the user owns the live password via the nextcloud web UI (or
+    # `occ user:resetpassword admin`). Inventory may drift out of sync.
+    user_facing: true
   - name: nextcloud_db_password
     type: secret
     generator: "openssl rand -base64 24"

@@ -702,6 +702,35 @@ PY
             err "Key '$KEY' not found in inventory for $TARGET (or empty)."
             exit 1
         fi
+        # Surface drift risk for user-facing bootstrap secrets (admin
+        # passwords the user owns via the app's web UI). Inventory may
+        # be the value the tool generated at install time, NOT what
+        # the user is currently typing. Warning goes to stderr so the
+        # value-on-stdout pipe stays clean.
+        meta_lookup=$(python3 - "$KEY" "$INSTALL_DIR" <<'PY' 2>/dev/null || true
+import sys, glob, os
+key, repo = sys.argv[1], sys.argv[2]
+try:
+    import yaml
+except ImportError:
+    sys.exit(0)
+for m in glob.glob(os.path.join(repo, "roles/platform/*/meta/install.yml")) \
+       + glob.glob(os.path.join(repo, "roles/apps/*/meta/install.yml")):
+    with open(m) as f:
+        doc = yaml.safe_load(f) or {}
+    for v in (doc.get("inventory_vars") or []):
+        if v.get("name") == key and v.get("user_facing"):
+            role = m.split("/")[-3]
+            print(role)
+            sys.exit(0)
+PY
+        )
+        if [[ -n "$meta_lookup" ]]; then
+            warn "$KEY is a user-facing bootstrap secret for '$meta_lookup'."
+            warn "The value below is what the tool generated at install time."
+            warn "If you (or anyone) changed it via the app's web UI since"
+            warn "then, that newer value is NOT reflected here."
+        fi
         # Plain stdout so the value pipes cleanly into other tools.
         printf '%s\n' "$value"
         exit 0
