@@ -220,17 +220,32 @@ if [[ "$VERB" == "install" && "$YES_FLAG" != "true" && ! -t 0 ]]; then
 fi
 
 # --- Colors ---
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-CYAN='\033[0;36m'
-BOLD='\033[1m'
-NC='\033[0m'
+# Only emit ANSI when the corresponding stream is a TTY. Otherwise an
+# operator capturing output (e.g. `NEWPW=$(homeserver.sh secret X 2>&1
+# | tail -1 | tr -d '[:space:]')`) would silently pick up colored
+# error/info lines as data — `tr -d [:space:]` strips spaces but not
+# `\033[`, so the captured string ends up being the raw escape codes +
+# text of the wrong line. One past instance fed a colored error
+# message into `User.set_password()` in a paperless DB recovery.
+if [[ -t 1 ]]; then
+    RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'
+    CYAN='\033[0;36m'; BOLD='\033[1m'; NC='\033[0m'
+else
+    RED=''; GREEN=''; YELLOW=''; CYAN=''; BOLD=''; NC=''
+fi
+# err() goes to stderr; pick its colors based on stderr's TTY-ness
+# independently so e.g. `homeserver.sh foo 2>err.log` writes plain text
+# into err.log even when stdout is still a terminal.
+if [[ -t 2 ]]; then
+    ERR_RED='\033[0;31m'; ERR_NC='\033[0m'
+else
+    ERR_RED=''; ERR_NC=''
+fi
 
 info()  { echo -e "${CYAN}==>${NC} $*"; }
 ok()    { echo -e "${GREEN}==>${NC} $*"; }
 warn()  { echo -e "${YELLOW}==> WARNING:${NC} $*"; }
-err()   { echo -e "${RED}==> ERROR:${NC} $*" >&2; }
+err()   { echo -e "${ERR_RED}==> ERROR:${ERR_NC} $*" >&2; }
 ask()   { echo -en "${BOLD}$*${NC} "; }
 
 # --- Inventory-as-source-of-truth helpers ---
