@@ -233,13 +233,13 @@ if [[ -t 1 ]]; then
 else
     RED=''; GREEN=''; YELLOW=''; CYAN=''; BOLD=''; NC=''
 fi
-# err() goes to stderr; pick its colors based on stderr's TTY-ness
-# independently so e.g. `homeserver.sh foo 2>err.log` writes plain text
-# into err.log even when stdout is still a terminal.
+# err() and other stderr-bound output pick their colors based on
+# stderr's TTY-ness independently so e.g. `homeserver.sh foo 2>err.log`
+# writes plain text into err.log even when stdout is still a terminal.
 if [[ -t 2 ]]; then
-    ERR_RED='\033[0;31m'; ERR_NC='\033[0m'
+    ERR_RED='\033[0;31m'; ERR_YELLOW='\033[1;33m'; ERR_NC='\033[0m'
 else
-    ERR_RED=''; ERR_NC=''
+    ERR_RED=''; ERR_YELLOW=''; ERR_NC=''
 fi
 
 info()  { echo -e "${CYAN}==>${NC} $*"; }
@@ -726,10 +726,16 @@ for m in glob.glob(os.path.join(repo, "roles/platform/*/meta/install.yml")) \
 PY
         )
         if [[ -n "$meta_lookup" ]]; then
-            warn "$KEY is a user-facing bootstrap secret for '$meta_lookup'."
-            warn "The value below is what the tool generated at install time."
-            warn "If you (or anyone) changed it via the app's web UI since"
-            warn "then, that newer value is NOT reflected here."
+            # Warning goes to stderr explicitly (warn() emits to stdout
+            # by project convention; the value MUST be the only thing
+            # on stdout so `PW=$(homeserver.sh secret X)` captures it
+            # cleanly without the warning bytes leaking in).
+            {
+                echo -e "${ERR_YELLOW}==> WARNING:${ERR_NC} $KEY is a user-facing bootstrap secret for '$meta_lookup'."
+                echo -e "${ERR_YELLOW}==> WARNING:${ERR_NC} The value below is what the tool generated at install time."
+                echo -e "${ERR_YELLOW}==> WARNING:${ERR_NC} If you (or anyone) changed it via the app's web UI since"
+                echo -e "${ERR_YELLOW}==> WARNING:${ERR_NC} then, that newer value is NOT reflected here."
+            } >&2
         fi
         # Plain stdout so the value pipes cleanly into other tools.
         printf '%s\n' "$value"
