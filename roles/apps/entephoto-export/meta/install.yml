@@ -37,7 +37,16 @@ playbooks:
   - playbooks/entephoto-export.yml
 
 on_remove:
-  inventory_vars_to_clear:
+  inventory_vars_to_clear: []
+  # Paired with entephoto-export-state (preserved by default), which
+  # holds the CLI's persisted auth tied to this specific Ente account
+  # plus the sync cursor. Clearing the inventory creds without --purge
+  # forces the next `add` to re-prompt the operator (these are
+  # `secret_prompt` type), but the state volume still references the
+  # old account — `ente account add` would also need to re-run by
+  # hand. Keeping the creds in inventory across a non-purge remove
+  # lets re-add resume incremental exports cleanly.
+  inventory_vars_to_clear_on_purge:
     - entephoto_export_account_email
     - entephoto_export_account_password
   # The state volume holds CLI auth + sync cursor. Keep it on remove

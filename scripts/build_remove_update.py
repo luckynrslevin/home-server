@@ -6,7 +6,14 @@ remove mode.
 
 Mirror of build_add_update.py for the remove direction. Pulls from
 the `on_remove` block of the meta file:
-  - inventory_vars_to_clear  → scalars to delete from inventory
+  - inventory_vars_to_clear           → always cleared on remove
+  - inventory_vars_to_clear_on_purge  → cleared only when --purge is
+    passed. Use for secrets PAIRED with a preserved-by-default volume
+    (DB passwords, admin passwords, API tokens baked into state) —
+    clearing them while the volume survives makes the next `add`
+    regenerate a fresh value that won't match what's already baked
+    into the preserved DB/SQLite/config, locking the operator out.
+    With --purge, the volume goes too, so the secret must follow.
   - side_effect_reversals=auto → remove side_effects entries from
     caddy_reverse_proxy_services + my_linux_users that this role added
 
@@ -15,6 +22,7 @@ Always also removes the service name from deploy_services.
 Usage:
     build_remove_update.py --meta roles/nextcloud/meta/install.yml
                            --service nextcloud
+                           [--purge]
                            --output /tmp/update.json
 """
 
@@ -27,6 +35,10 @@ def main():
     p = argparse.ArgumentParser()
     p.add_argument("--meta", required=True)
     p.add_argument("--service", required=True)
+    p.add_argument("--purge", action="store_true",
+                   help="Also clear `inventory_vars_to_clear_on_purge` "
+                        "secrets (paired with state volumes that --purge "
+                        "is deleting).")
     p.add_argument("--output", required=True)
     args = p.parse_args()
 
@@ -42,8 +54,13 @@ def main():
     side_effects = meta.get("side_effects") or {}
 
     # scalars to remove (the merge helper ignores `value` in remove mode,
-    # so a placeholder is fine — we just need the keys)
-    scalars = {k: {"value": "_"} for k in on_remove.get("inventory_vars_to_clear", []) or []}
+    # so a placeholder is fine — we just need the keys).
+    # `inventory_vars_to_clear` always fires; the on_purge bucket only
+    # fires with --purge (state-paired secrets — see module docstring).
+    clear_keys = list(on_remove.get("inventory_vars_to_clear", []) or [])
+    if args.purge:
+        clear_keys += list(on_remove.get("inventory_vars_to_clear_on_purge", []) or [])
+    scalars = {k: {"value": "_"} for k in clear_keys}
 
     # lists — remove the items this role added (platform_services/apps + caddy entries)
     _PLATFORM = {"caddy", "dashboard", "pihole", "backup", "os-tailscale"}

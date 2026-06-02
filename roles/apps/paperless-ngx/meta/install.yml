@@ -36,13 +36,22 @@ playbooks:
 on_remove:
   inventory_vars_to_clear:
     - paperless_url
+    # paperless_secret_key only signs Django session cookies — rotating
+    # it invalidates browser sessions but doesn't touch DB state.
     - paperless_secret_key
-    - paperless_db_password
-    - paperless_admin_password
     # paperless_oidc_* deliberately not listed — if the operator has
     # wired SSO via the SSO-Bootstrap walkthrough, removing Paperless
     # leaves the (now-orphaned) OIDC client in Nextcloud and the
     # inventory keys for it. Operator removes those manually.
+  inventory_vars_to_clear_on_purge:
+    # Paired with paperless-db-data (postgres role + admin user record).
+    # Without --purge the DB volume survives the remove, so the OLD
+    # passwords are still baked into postgres and into the admin row.
+    # Regenerating these on the next `add` would lock the operator
+    # out of both DB-auth and the admin UI. --purge nukes the volume,
+    # at which point regenerating is correct.
+    - paperless_db_password
+    - paperless_admin_password
   volumes_to_preserve_unless_purge:
     - paperless-data
     - paperless-db-data

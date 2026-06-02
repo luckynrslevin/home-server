@@ -68,17 +68,30 @@ playbooks:
 
 on_remove:
   inventory_vars_to_clear:
+    # Derived URLs / endpoint values — safely re-rendered from
+    # caddy_domain on the next add.
+    - entephoto_api_url
+    - entephoto_photos_url
+    - entephoto_s3_endpoint
+    - entephoto_s3_host
+    - entephoto_s3_local_buckets
+  # Paired with preserved-by-default state:
+  #   db_password          ↔ entephoto-postgres-data (postgres role)
+  #   garage_rpc_secret    ↔ entephoto-garage-meta (cluster identity)
+  #   garage_admin_token   ↔ Garage admin auth-list (set on first init)
+  #   encryption/hash/jwt  ↔ entephoto-postgres-data — these sign and
+  #                          decrypt rows already written to the museum
+  #                          DB; rotating without --purge silently
+  #                          breaks every existing user.
+  # All only safe to regenerate when the matching volumes are also
+  # being purged.
+  inventory_vars_to_clear_on_purge:
     - entephoto_db_password
     - entephoto_garage_rpc_secret
     - entephoto_garage_admin_token
     - entephoto_encryption_key
     - entephoto_hash_key
     - entephoto_jwt_secret
-    - entephoto_api_url
-    - entephoto_photos_url
-    - entephoto_s3_endpoint
-    - entephoto_s3_host
-    - entephoto_s3_local_buckets
   volumes_to_preserve_unless_purge:
     - entephoto-postgres-data
     - entephoto-garage-data

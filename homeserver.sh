@@ -1293,8 +1293,12 @@ print(' '.join(on_remove.get('volumes_to_preserve_unless_purge') or []))
         UPDATE_JSON=$(mktemp --suffix=.json)
         # shellcheck disable=SC2064
         trap "rm -f $UPDATE_JSON" EXIT
-        if ! python3 scripts/build_remove_update.py \
-                --meta "$META" --service "$SERVICE" --output "$UPDATE_JSON"; then
+        BUILD_REMOVE_ARGS=(--meta "$META" --service "$SERVICE" --output "$UPDATE_JSON")
+        # Pass --purge through so state-paired secrets get cleared only
+        # when the paired volume is also being deleted (avoids the
+        # "regenerate password into preserved DB → can't log in" trap).
+        [[ "$PURGE" == "true" ]] && BUILD_REMOVE_ARGS+=(--purge)
+        if ! python3 scripts/build_remove_update.py "${BUILD_REMOVE_ARGS[@]}"; then
             err "Failed to build remove spec for $SERVICE."
             exit 1
         fi

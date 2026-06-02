@@ -27,7 +27,15 @@ playbooks:
   - playbooks/dashboard.yml
 
 on_remove:
-  inventory_vars_to_clear:
+  inventory_vars_to_clear: []
+  # Both passwords are paired with preserved-by-default state:
+  # nextcloud-postgres-data holds the postgres role for the DB
+  # password and the user record (where the admin password hash
+  # lives). Regenerating these on the next `add` while the volume
+  # survives causes DB-auth failure on nextcloud ↔ postgres and
+  # locks the operator out of the admin UI. --purge nukes the
+  # volume, at which point regenerating is correct.
+  inventory_vars_to_clear_on_purge:
     - nextcloud_admin_password
     - nextcloud_db_password
   volumes_to_preserve_unless_purge:
