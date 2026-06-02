@@ -23,7 +23,13 @@ playbooks:
   - playbooks/dashboard.yml
 
 on_remove:
-  inventory_vars_to_clear:
+  inventory_vars_to_clear: []
+  # Paired with systemd-jellyfin-config (preserved by default), which
+  # holds jellyfin.db — the SQLite with the admin user row. Regenerating
+  # this without --purge would lock the operator out of the UI on the
+  # next add. --purge nukes the config volume, at which point a fresh
+  # password makes sense.
+  inventory_vars_to_clear_on_purge:
     - jellyfin_admin_password
   volumes_to_preserve_unless_purge:
     - systemd-jellyfin-config

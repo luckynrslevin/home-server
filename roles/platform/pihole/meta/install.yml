@@ -48,12 +48,20 @@ playbooks:
 # `homeserver.sh remove` cleanup. Volumes preserved by default; --purge
 # also deletes them.
 on_remove:
-  inventory_vars_to_clear:
+  inventory_vars_to_clear: []
+  # pihole_local_network and pihole_local_router stay — they're
+  # host-config (LAN subnet + gateway), not pihole-owned secrets.
+  # An operator removing pihole probably wants them remembered so
+  # re-adding pihole later picks them up without re-prompting.
+  #
+  # pihole_api_password is paired with systemd-pihole-etc (preserved
+  # by default), which holds setupVars.conf with the WEBPASSWORD hash
+  # baked in. Regenerating it without --purge produces a fresh hash
+  # that doesn't match what pihole has on disk → operator locked out
+  # of the admin UI on the next add. --purge nukes the volume, at
+  # which point a fresh password is correct.
+  inventory_vars_to_clear_on_purge:
     - pihole_api_password
-    # pihole_local_network and pihole_local_router stay — they're
-    # host-config (LAN subnet + gateway), not pihole-owned secrets.
-    # An operator removing pihole probably wants them remembered so
-    # re-adding pihole later picks them up without re-prompting.
   volumes_to_preserve_unless_purge:
     - systemd-pihole-etc
     - systemd-pihole-dnsmasq

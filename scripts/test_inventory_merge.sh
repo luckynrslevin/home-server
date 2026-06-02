@@ -220,6 +220,58 @@ python3 "$MERGE" --host-vars-dir "$WORK/test7" --service nextcloud \
     || report "remove drops cloud by subdomain (label-field mismatch)" FAIL
 
 echo
+echo "Test 8: build_remove_update.py respects inventory_vars_to_clear_on_purge"
+# Bug class: secret declared as something to regenerate, but the
+# matching state volume is preserved-by-default. Clearing the secret
+# without --purge desyncs inventory from the live DB / config, and
+# the operator gets locked out on the next add. The fix: split into
+# two buckets — always-clear, and on-purge-only.
+BR="$SCRIPT_DIR/build_remove_update.py"
+cat > "$WORK/meta_split.yml" << 'EOF'
+display_name: "Test"
+description: "synthetic role for buckets test"
+inventory_vars: []
+side_effects: {}
+playbooks: []
+on_remove:
+  inventory_vars_to_clear:
+    - safe_to_rotate
+  inventory_vars_to_clear_on_purge:
+    - paired_with_volume
+EOF
+
+python3 "$BR" --meta "$WORK/meta_split.yml" --service testsvc --output "$WORK/r_nopurge.json"
+python3 "$BR" --meta "$WORK/meta_split.yml" --service testsvc --purge --output "$WORK/r_purge.json"
+
+python3 -c "
+import json, sys
+nop = set((json.load(open('$WORK/r_nopurge.json')).get('scalars') or {}).keys())
+pur = set((json.load(open('$WORK/r_purge.json')).get('scalars') or {}).keys())
+assert nop == {'safe_to_rotate'}, f'no-purge cleared {nop}'
+assert pur == {'safe_to_rotate', 'paired_with_volume'}, f'purge cleared {pur}'
+" \
+    && report "no-purge clears only always-bucket; --purge adds on-purge bucket" PASS \
+    || report "no-purge clears only always-bucket; --purge adds on-purge bucket" FAIL
+
+# Also confirm that --purge is purely additive: a role with no on-purge
+# bucket behaves identically with and without --purge.
+cat > "$WORK/meta_legacy.yml" << 'EOF'
+display_name: "Legacy"
+description: "no on-purge bucket"
+inventory_vars: []
+side_effects: {}
+playbooks: []
+on_remove:
+  inventory_vars_to_clear:
+    - some_var
+EOF
+python3 "$BR" --meta "$WORK/meta_legacy.yml" --service legacysvc --output "$WORK/l_nopurge.json"
+python3 "$BR" --meta "$WORK/meta_legacy.yml" --service legacysvc --purge --output "$WORK/l_purge.json"
+diff -q "$WORK/l_nopurge.json" "$WORK/l_purge.json" >/dev/null \
+    && report "missing on-purge bucket: --purge is a no-op (back-compat)" PASS \
+    || report "missing on-purge bucket: --purge is a no-op (back-compat)" FAIL
+
+echo
 echo "=========================================="
 echo "  $PASS passed, $FAIL failed"
 echo "=========================================="
