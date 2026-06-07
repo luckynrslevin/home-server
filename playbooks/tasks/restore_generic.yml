@@ -202,6 +202,46 @@
     file: "{{ playbook_dir }}/../roles/{{ svc._role_name }}/tasks/{{ svc.post_restore_tasks }}"
   when: svc.post_restore_tasks is defined
 
+# --- User-facing secret drift warning ---
+# Restore brings back an older volume. If the user changed their admin
+# password (or other user-facing secret) via the app UI between the
+# snapshot time and the restore, the restored DB has the OLDER value.
+# The password they remember no longer works; inventory's bootstrap
+# value might match the restored DB, but only if the user never changed
+# it post-install. Flag this so the operator knows to verify before
+# declaring the restore successful.
+- name: "{{ svc._role_name | upper }}: load role meta for user-facing scan"
+  ansible.builtin.include_vars:
+    file: "{{ lookup('ansible.builtin.first_found', [
+                playbook_dir + '/../roles/platform/' + svc._role_name + '/meta/install.yml',
+                playbook_dir + '/../roles/apps/'     + svc._role_name + '/meta/install.yml']) }}"
+    name: "_meta_{{ svc._role_name | replace('-', '_') }}"
+  failed_when: false
+
+- name: "{{ svc._role_name | upper }}: identify user-facing secrets"
+  ansible.builtin.set_fact:
+    _user_facing_secrets: >-
+      {{ (lookup('vars', '_meta_' + (svc._role_name | replace('-', '_')), default={})
+          .get('inventory_vars') or [])
+         | selectattr('user_facing', 'defined') | selectattr('user_facing')
+         | map(attribute='name') | list }}
+
+- name: "{{ svc._role_name | upper }}: warn about user-facing secret drift"
+  ansible.builtin.debug:
+    msg: |
+      Restore brought back an older {{ svc._role_name }} volume. Heads-up —
+      the restored DB / config still carries whatever value these
+      user-facing secrets had at snapshot time:
+        {{ _user_facing_secrets | join(', ') }}
+      If the user changed any of those via the app UI between then
+      and now, the password they currently remember will NOT work.
+      Either log in with the snapshot-time value, or reset via the
+      app's password-reset mechanism (e.g. `manage.py changepassword`,
+      `occ user:resetpassword`, `pihole -a -p`).
+      Inventory was not modified; `homeserver.sh secret <var>` still
+      returns the install-time bootstrap value.
+  when: _user_facing_secrets | default([]) | length > 0
+
 # --- Unmount the host's NAS share ---
 - name: "{{ svc._role_name | upper }}: unmount NAS host share"
   ansible.posix.mount:
