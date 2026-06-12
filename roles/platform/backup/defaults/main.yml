@@ -52,3 +52,19 @@ backup_nas_snapshot_key_path: /root/.ssh/nas-snapshot
 # 22 reserved for other use). Override per-host if your NAS uses a
 # different port.
 backup_nas_snapshot_port: 22
+
+# --- Verification (run at end of deploy) -------------------------------
+# When true, runs tasks/verify.yml at the tail of the role: confirms
+# the timer is enabled+active, the NFS share mounts ro round-trip, and
+# the last completed run logged "0 errors". Hard-fails the play on any
+# regression. Skip with --skip-tags verify or set to false on hosts
+# where flaky upstream (NAS, NFS) would make the play unreliable.
+backup_run_verification: true
+
+# When true, the verify task additionally invokes the SSH-based
+# snapshot trigger end-to-end. This ACTUALLY CREATES a snapshot on
+# the NAS each time — the authorized_keys forced command is the
+# snapshot-create call and there's no dry-run mode. Off by default
+# so routine redeploys don't pollute the snapshot list; the E2E
+# test runner flips it on for a real round-trip check.
+backup_verify_snapshot_trigger: false

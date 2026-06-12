@@ -1,0 +1,128 @@
+---
+# Post-deploy smoke tests for the backup chain. Hard-fails the play
+# when any link in the chain (timer → script → NAS NFS mount → SSH
+# snapshot trigger) is broken. Re-runnable with `--tags verify`. Skip
+# with `--skip-tags verify` or set `backup_run_verification: false`.
+
+- name: Verify home-server-backup.timer is enabled + active # noqa: command-instead-of-module
+  become: true
+  ansible.builtin.command:
+    cmd: systemctl is-enabled home-server-backup.timer
+  register: _bk_verify_timer_enabled
+  changed_when: false
+  failed_when: _bk_verify_timer_enabled.stdout | trim != "enabled"
+
+- name: Verify home-server-backup.timer is active # noqa: command-instead-of-module
+  become: true
+  ansible.builtin.command:
+    cmd: systemctl is-active home-server-backup.timer
+  register: _bk_verify_timer_active
+  changed_when: false
+  failed_when: _bk_verify_timer_active.stdout | trim != "active"
+
+# The NFS mount is the most common silent breakage point — a stale
+# DHCP-driven NAS IP, a Synology share rename, an NFS perms tweak.
+# Try a read-only mount + unmount round-trip via a dedicated test path
+# so we don't disturb /mnt/backup-tar that the live backup uses.
+- name: Verify NAS NFS share mounts read-only
+  become: true
+  block:
+    - name: Create temp mount dir
+      ansible.builtin.file:
+        path: /mnt/_backup-verify
+        state: directory
+        mode: "0755"
+
+    - name: Try ro mount of host's backup share # noqa: command-instead-of-module
+      ansible.builtin.command:
+        cmd: >-
+          mount -t nfs -o ro,noatime,vers=4
+          {{ backup_nas_hostname }}:{{ backup_nas_volume }}/backup-{{ inventory_hostname }}
+          /mnt/_backup-verify
+      changed_when: false
+      register: _bk_verify_mount
+
+    - name: List share contents (smoke — confirms the mount is actually live)
+      ansible.builtin.command: ls /mnt/_backup-verify
+      register: _bk_verify_ls
+      changed_when: false
+      failed_when: _bk_verify_ls.rc != 0
+  always:
+    - name: Unmount host's backup share # noqa: command-instead-of-module
+      ansible.builtin.command:
+        cmd: umount /mnt/_backup-verify
+      changed_when: false
+      failed_when: false
+
+    - name: Remove temp mount dir
+      ansible.builtin.file:
+        path: /mnt/_backup-verify
+        state: absent
+
+# Optional: verify the SSH-based snapshot trigger end-to-end. This
+# ACTUALLY CREATES A SNAPSHOT on the NAS every time it runs (the
+# authorized_keys forced command is the snapshot create call — we
+# can't dry-run it). Off by default so every routine deploy doesn't
+# pollute the snapshot list. The E2E test runner flips this on; for
+# day-to-day deploys the post-backup snapshot logged in the nightly
+# log gives the same signal at no extra cost.
+- name: Verify SSH-based snapshot trigger reaches the NAS (creates a real snapshot)
+  become: true
+  ansible.builtin.command:
+    cmd: >-
+      ssh -o BatchMode=yes -o ConnectTimeout=10
+      -i {{ backup_nas_snapshot_key_path }}
+      -p {{ backup_nas_snapshot_port }}
+      {{ backup_nas_snapshot_user }}@{{ backup_nas_hostname }}
+  register: _bk_verify_snapshot_trigger
+  changed_when: false
+  # Exit 0 + "was created from share" in the output = healthy.
+  # Common failure modes: shell got reset to /sbin/nologin on the
+  # NAS (DSM auto-resets after user-edit ops — see docs/NAS-Setup.md),
+  # sudoers drop-in was wiped on DSM update, SSH key not in
+  # authorized_keys yet.
+  failed_when: >-
+    _bk_verify_snapshot_trigger.rc != 0 or
+    "was created from share" not in (_bk_verify_snapshot_trigger.stdout
+                                     + _bk_verify_snapshot_trigger.stderr)
+  when:
+    - backup_verify_snapshot_trigger | default(false) | bool
+    - backup_nas_snapshot_user | default('') | length > 0
+    - backup_nas_snapshot_key_path | default('') | length > 0
+
+# Last-run health: parse the script's own log. Only meaningful AFTER
+# the first scheduled run has happened — on a brand-new install the
+# log won't exist yet, which is fine (skip with a notice, not a fail).
+- name: Check whether a backup log exists yet
+  become: true
+  ansible.builtin.stat:
+    path: /var/log/home-server-backup.log
+  register: _bk_verify_log_stat
+
+- name: Read tail of the backup log (last run summary)
+  become: true
+  ansible.builtin.command:
+    cmd: tail -n 50 /var/log/home-server-backup.log
+  register: _bk_verify_log_tail
+  changed_when: false
+  when: _bk_verify_log_stat.stat.exists
+
+- name: Assert most recent backup completed with 0 errors
+  ansible.builtin.assert:
+    that:
+      - _bk_verify_log_tail.stdout is search('=== Backup finished \\(0 errors\\) ===')
+    fail_msg: >-
+      Latest backup did not finish cleanly. Tail of
+      /var/log/home-server-backup.log:
+      {{ _bk_verify_log_tail.stdout | default('(empty)') }}
+  when: _bk_verify_log_stat.stat.exists
+
+- name: Note that no backup has run yet
+  ansible.builtin.debug:
+    msg: >-
+      /var/log/home-server-backup.log not present yet — backup hasn't
+      run for the first time. Either wait for the next 02:00 timer
+      fire, or trigger manually:
+        sudo systemctl start home-server-backup.service
+      Then re-run with `--tags verify`.
+  when: not _bk_verify_log_stat.stat.exists

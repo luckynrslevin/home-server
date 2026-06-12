@@ -46,3 +46,9 @@
     name: home-server-backup.timer
     enabled: true
     state: started
+
+- name: Run post-install verification
+  ansible.builtin.import_tasks: verify.yml
+  when: backup_run_verification | bool
+  tags:
+    - verify
