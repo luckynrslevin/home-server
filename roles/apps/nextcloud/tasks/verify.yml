@@ -5,15 +5,20 @@
 # `--tags verify`. Skip with `--skip-tags verify` or set
 # `nextcloud_run_verification: false`.
 
-- name: Verify nextcloud-server container is healthy
+# Container state — `.State.Status == "running"` rather than
+# `.State.Health.Status == "healthy"` because the upstream Nextcloud
+# image doesn't declare a HEALTHCHECK and our quadlet doesn't add
+# one. Running + responding-on-port is what we actually care about;
+# the /status.php probe below validates the latter.
+- name: Verify nextcloud-server container is running
   become: true
   ansible.builtin.command:
     cmd: >-
       su - nextcloud -c "podman inspect nextcloud-server
-      --format '{{ '{{' }}.State.Health.Status{{ '}}' }}'"
-  register: _nc_verify_health
+      --format '{{ '{{' }}.State.Status{{ '}}' }}'"
+  register: _nc_verify_running
   changed_when: false
-  failed_when: _nc_verify_health.stdout | trim != "healthy"
+  failed_when: _nc_verify_running.stdout | trim != "running"
 
 # /status.php is Nextcloud's lightweight readiness endpoint — JSON with
 # {installed, maintenance, version, ...}. Probing it via Caddy
