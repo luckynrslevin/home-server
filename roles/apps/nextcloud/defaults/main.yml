@@ -26,6 +26,15 @@ nextcloud_db_user: "ncuser"
 nextcloud_db_name: "nextcloud"
 nextcloud_db_password: ""
 
+# Run tasks/verify.yml at the end of deploy to assert that the
+# nextcloud-server container is healthy, /status.php returns
+# installed=true, the admin password in inventory still authenticates
+# against the DB (catches the inventory↔DB drift class of bug), and
+# `occ status` agrees. Hard-fails the play on regression. Override
+# to false to skip — useful for hosts running on a flaky upstream
+# where the WebDAV probe might timeout transiently.
+nextcloud_run_verification: true
+
 # Trusted domain Nextcloud will accept Host: headers for. Defaults to
 # cloud.<caddy_domain>; override only if you want a different
 # subdomain.

@@ -1,0 +1,84 @@
+---
+# Post-install smoke tests. Hard-fails the playbook when Nextcloud is up
+# but not actually serving (container unhealthy, /status.php broken,
+# admin auth desynced from inventory, etc.). Re-runnable with
+# `--tags verify`. Skip with `--skip-tags verify` or set
+# `nextcloud_run_verification: false`.
+
+# Container state — `.State.Status == "running"` rather than
+# `.State.Health.Status == "healthy"` because the upstream Nextcloud
+# image doesn't declare a HEALTHCHECK and our quadlet doesn't add
+# one. Running + responding-on-port is what we actually care about;
+# the /status.php probe below validates the latter.
+- name: Verify nextcloud-server container is running
+  become: true
+  ansible.builtin.command:
+    cmd: >-
+      su - nextcloud -c "podman inspect nextcloud-server
+      --format '{{ '{{' }}.State.Status{{ '}}' }}'"
+  register: _nc_verify_running
+  changed_when: false
+  failed_when: _nc_verify_running.stdout | trim != "running"
+
+# /status.php is Nextcloud's lightweight readiness endpoint — JSON with
+# {installed, maintenance, version, ...}. Probing it via Caddy
+# exercises the whole reverse-proxy + TLS + nextcloud chain in one shot.
+- name: Probe /status.php through Caddy
+  ansible.builtin.uri:
+    url: "https://{{ nextcloud_subdomain }}.{{ caddy_domain }}/status.php"
+    return_content: true
+    timeout: 10
+    # Caddy serves a real LE cert in production but this play may run
+    # on a fresh deploy where the cert is still being issued. Accept the
+    # cert chain Caddy hands us either way — we're testing the app, not
+    # the CA pinning.
+    validate_certs: false
+  register: _nc_verify_status_php
+  failed_when: >-
+    _nc_verify_status_php.status != 200 or
+    not (_nc_verify_status_php.json.installed | default(false)) or
+    (_nc_verify_status_php.json.maintenance | default(false))
+
+# Live admin-auth roundtrip via WebDAV PROPFIND. Catches the exact
+# inventory↔DB drift that bit us on homeserver2 when the user changed
+# their password in the UI — Nextcloud's stored hash and inventory
+# fell out of sync, login failed silently, and there was no test
+# surfacing it. HTTP 207 (Multi-Status) means auth + WebDAV both
+# worked. 401 means inventory's `nextcloud_admin_password` doesn't
+# match the live DB.
+- name: Verify admin WebDAV auth roundtrip
+  ansible.builtin.uri:
+    url: "https://{{ nextcloud_subdomain }}.{{ caddy_domain }}/remote.php/dav/files/{{ nextcloud_admin_user }}/"
+    method: PROPFIND
+    headers:
+      Depth: "0"
+    user: "{{ nextcloud_admin_user }}"
+    password: "{{ nextcloud_admin_password }}"
+    force_basic_auth: true
+    status_code: [207]
+    validate_certs: false
+    timeout: 10
+  register: _nc_verify_webdav
+  failed_when: _nc_verify_webdav.status != 207
+
+# Final sanity from inside the app: `occ status` confirms Nextcloud
+# itself thinks it's installed and not in maintenance. Catches edge
+# cases where /status.php lies (e.g. cached behind Caddy) or where
+# the app DB is half-migrated.
+- name: Verify `occ status` reports installed
+  become: true
+  ansible.builtin.command:
+    cmd: >-
+      su - nextcloud -c "podman exec --user www-data nextcloud-server
+      php occ status --output=json"
+  register: _nc_verify_occ
+  changed_when: false
+
+- name: Assert occ reports installed + not in maintenance
+  ansible.builtin.assert:
+    that:
+      - (_nc_verify_occ.stdout | from_json).installed | bool
+      - not ((_nc_verify_occ.stdout | from_json).maintenance | bool)
+    fail_msg: >-
+      Nextcloud `occ status` returned unexpected state:
+      {{ _nc_verify_occ.stdout | trim }}

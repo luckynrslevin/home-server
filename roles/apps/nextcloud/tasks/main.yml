@@ -69,6 +69,12 @@
 - name: Run postinstall (OIDC Provider app, Caddy trusted-proxy, etc.)
   ansible.builtin.include_tasks: postinstall.yml
 
+- name: Run post-install verification
+  ansible.builtin.import_tasks: verify.yml
+  when: nextcloud_run_verification | bool
+  tags:
+    - verify
+
 - name: Register backup manifest
   ansible.builtin.set_fact:
     _backup_manifests: >-
