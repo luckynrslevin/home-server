@@ -1,0 +1,5 @@
+home-server E2E fixture file #2
+Reference token: HSE2E-PAYLOAD-2-2026
+This file is uploaded by scripts/test_e2e/upload_nextcloud_files.py
+and verified by scripts/test_e2e/verify_backup_contents.py.
+If you see these files outside an E2E test run, something went wrong.
