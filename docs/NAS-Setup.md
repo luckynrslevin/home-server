@@ -127,6 +127,38 @@ sudo chmod 0600 /var/services/homes/homeserver-backup/.ssh/authorized_keys
 (DSM may require enabling "User Home" service first — Control Panel →
 User & Group → Advanced → User Home.)
 
+### Login shell must be real (not `nologin`)
+
+DSM assigns `/sbin/nologin` to most non-DSM-admin user accounts by
+default, and **silently resets the shell back to `nologin` after any
+GUI-side change to the user** — including a password change, a group
+membership toggle, or a DSM update. With `nologin` set, the SSH forced
+command above never executes: sshd runs `$SHELL -c "<forced cmd>"`
+and `nologin -c …` just prints a refusal. You'll see:
+
+```
+$ sudo ssh -i /root/.ssh/nas-snapshot -p 1022 homeserver-backup@nas
+Permission denied, please try again.
+```
+
+(misleadingly identical to a sudo / SSH auth failure — but the cert
+auth succeeded; it's the shell rejecting the forced command at the
+other end).
+
+Set the shell to a real one **once at setup time and again any time
+you touch the user via the DSM GUI**:
+
+```bash
+sudo sed -i 's|^\(homeserver-backup:.*\):/sbin/nologin$|\1:/bin/sh|' /etc/passwd
+# Verify:
+grep ^homeserver-backup /etc/passwd   # last field should be /bin/sh
+```
+
+This is safe because the `command=...,no-pty,no-port-forwarding,no-X11-forwarding`
+directives in `authorized_keys` (above) still pin the connection to a
+single forced command — even with `/bin/sh` as the shell, the key
+can't be used for an interactive session.
+
 ## 8. Smoke test from the host
 
 ```bash
@@ -134,6 +166,19 @@ ssh -p <nas-ssh-port> -i /root/.ssh/nas-snapshot homeserver-backup@nas
 ```
 
 (`<nas-ssh-port>` defaults to 22; many Synology setups use 1022 — match what step 5 showed.)
+
+Expected output:
+
+```
+PTY allocation request failed on channel 0
+Snapshot [GMT+02-2026.06.12-09.44.58] was created from share [backup-homeserver]
+Connection to nas closed.
+```
+
+The `PTY allocation request failed` line is your `no-pty` directive
+doing its job — harmless. A `Snapshot [...] was created` line means
+the chain (SSH cert → forced command → sudo NOPASSWD → synosharesnapshot)
+is end-to-end healthy.
 
 Should print a `Snapshot created` line and exit 0. Snapshot Replication
 in DSM should immediately show one new snapshot in the share's history.
