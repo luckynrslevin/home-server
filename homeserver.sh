@@ -1517,12 +1517,32 @@ OVERLAY_DIR="$HOME/home-server-private"
 OVERLAY_URL=""
 USE_EXISTING_INVENTORY=false
 
+# Rebuild path — if the overlay is already in place locally (.git +
+# vault.pw + inventory for this hostname), use it as-is. No network
+# round-trip, no operator having to remember the overlay URL after a
+# `homeserver.sh uninstall + reinstall` cycle. Same detection logic
+# used downstream (host_vars_dir_has_content), just hoisted up so -y
+# can short-circuit the "must pass -i" requirement.
+SERVER_HOSTNAME_TENTATIVE="${HOSTNAME_FLAG:-$(hostname -s 2>/dev/null)}"
+if [[ -z "$OVERLAY_URL_FLAG" \
+   && -d "$OVERLAY_DIR/.git" \
+   && -r "$OVERLAY_DIR/vault.pw" ]] \
+   && host_vars_dir_has_content "$OVERLAY_DIR/inventory/host_vars/$SERVER_HOSTNAME_TENTATIVE"; then
+    OVERLAY_URL_LOCAL=true
+    # Synthesise an OVERLAY_URL so downstream `[[ -n "$OVERLAY_URL" ]]`
+    # branches still run (we want the vault.pw + symlink wiring; we
+    # just don't want to clone or pull). The pull step is gated below.
+    OVERLAY_URL="(local: $OVERLAY_DIR)"
+    ok "Overlay already in place at $OVERLAY_DIR — reusing without clone."
+fi
+
 # Overlay repo URL: CLI flag wins, else interactive prompt (silent in
-# -y mode — empty is a valid "no overlay" answer).
+# -y mode — empty is a valid "no overlay" answer; the rebuild-detection
+# above can also have set OVERLAY_URL).
 if [[ -n "$OVERLAY_URL_FLAG" ]]; then
     OVERLAY_URL="$OVERLAY_URL_FLAG"
     ok "Overlay repo: $OVERLAY_URL (from -i)"
-elif [[ "$YES_FLAG" != "true" ]]; then
+elif [[ -z "$OVERLAY_URL" && "$YES_FLAG" != "true" ]]; then
     echo
     echo -e "${BOLD}--- Private overlay repo (optional) ---${NC}"
     echo
@@ -1565,7 +1585,12 @@ if [[ -n "$OVERLAY_URL" ]]; then
         exit 1
     fi
 
-    if [[ ! -d "$OVERLAY_DIR/.git" ]]; then
+    if [[ "${OVERLAY_URL_LOCAL:-}" == "true" ]]; then
+        # Rebuild-detection path — overlay was already in place when we
+        # started. Skip both clone and pull; the operator's local tree
+        # is authoritative.
+        ok "Using overlay tree at $OVERLAY_DIR as-is (no clone, no pull)."
+    elif [[ ! -d "$OVERLAY_DIR/.git" ]]; then
         info "Cloning overlay into $OVERLAY_DIR ..."
         git clone "$OVERLAY_URL" "$OVERLAY_DIR"
     else
