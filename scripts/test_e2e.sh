@@ -70,8 +70,13 @@ done
 # -----------------------------------------------------------------------------
 # Colors (TTY-aware, mirrors homeserver.sh PR #291)
 # -----------------------------------------------------------------------------
+# Use $'…' ANSI-C quoting so the strings hold the ACTUAL ESC byte, not
+# the literal backslash-zero-three-three sequence. Earlier we used
+# plain '…' quoting and `printf '%s'`, which printed the escape codes
+# verbatim — same class of bug as PR #291, different invocation.
 if [[ -t 1 ]]; then
-    R='\033[0;31m'; G='\033[0;32m'; Y='\033[1;33m'; C='\033[0;36m'; B='\033[1m'; N='\033[0m'
+    R=$'\033[0;31m'; G=$'\033[0;32m'; Y=$'\033[1;33m'
+    C=$'\033[0;36m'; B=$'\033[1m'; N=$'\033[0m'
 else
     R=''; G=''; Y=''; C=''; B=''; N=''
 fi
