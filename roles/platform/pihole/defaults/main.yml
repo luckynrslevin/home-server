@@ -42,6 +42,8 @@ pihole_adlists:
     comment: "Hagezi Multi Pro — ads, trackers, malware, phishing (~300K domains)"
   - address: "https://raw.githubusercontent.com/Turtlecute33/Toolz/master/src/d3host.txt"
     comment: "https://adblock.turtlecute.org/"
+  - address: "https://cdn.jsdelivr.net/gh/hagezi/dns-blocklists@latest/adblock/pro.plus.txt"
+    comment: "Hagezi Pro+"
 
 # Local DNS records (custom A records served by Pi-hole to LAN clients).
 # Stored in pihole.toml under dns.hosts via `pihole-FTL --config`.
