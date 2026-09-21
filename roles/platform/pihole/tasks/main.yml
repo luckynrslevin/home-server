@@ -86,6 +86,14 @@
         proto: udp
         toport: 1053
 
+    podman_quadlet_firewall_port_forwards_v6:
+      - port: 53
+        proto: tcp
+        toport: 1053
+      - port: 53
+        proto: udp
+        toport: 1053
+
 # ----------------------------------------------------------------------
 # OUTPUT-chain DNS redirect — match the PREROUTING port-53→1053 forward
 # above, but for locally-generated traffic.
